@@ -1,3 +1,6 @@
+import net from 'node:net';
+import tls from 'node:tls';
+
 // Schlüssel-Wert-Speicher für Konten und Spielstände.
 // Produktion: Upstash Redis, über den Vercel Marketplace mit dem Projekt verbunden.
 // Die Zugangsdaten stehen ausschließlich in den Umgebungsvariablen des Vercel-Projekts
@@ -20,11 +23,17 @@ function findRest() {
 const restUrl = () => findRest()?.url || '';
 const restToken = () => findRest()?.token || '';
 const memoryMode = () => process.env.BW_DEV_MEMORY_DB === '1';
+// Klassische Redis-Verbindung (z. B. „Redis“ aus dem Vercel Marketplace): REDIS_URL = redis(s)://…
+function findTcp() {
+  const env = process.env;
+  const name = Object.keys(env).filter((k) => /(^|_)(REDIS_URL|KV_URL)$/.test(k) && /^rediss?:\/\//.test(env[k] || '')).sort((a, b) => a.length - b.length)[0];
+  return name ? { url: env[name], source: name } : null;
+}
 
-export const kvConfigured = () => memoryMode() || !!findRest();
+export const kvConfigured = () => memoryMode() || !!findRest() || !!findTcp();
 // Nur die NAMEN der Speicher-Variablen (nie die Werte) – zur Fehlersuche
 export const kvVarNames = () => Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH|STORAGE/.test(k)).sort();
-export const kvSource = () => (memoryMode() ? 'memory' : findRest()?.source || null);
+export const kvSource = () => (memoryMode() ? 'memory' : findRest()?.source || findTcp()?.source || null);
 
 // Spielstand nur speichern, wenn das Konto noch existiert, die Revision passt (Schutz vor Überschreiben
 // von einem anderen Gerät) und der Spielstand nicht von einer älteren Spielversion stammt.
@@ -64,6 +73,92 @@ class UpstashKV {
     const j = await this.req('/pipeline', cmds.map((c) => c.map(String)));
     return j.map((x) => { if (x.error) throw new Error('KV_ERROR ' + x.error); return x.result; });
   }
+  async casSave(userKey, saveKey, base, data, now, force, version) {
+    const r = await this.cmd('EVAL', CAS_SCRIPT, 2, userKey, saveKey, base, data, now, force ? '1' : '0', version);
+    return { code: Number(r[0]), ok: Number(r[0]) === 1, rev: Number(r[1]) };
+  }
+}
+
+// ---------- Redis über TCP (RESP-Protokoll), ohne zusätzliche Pakete ----------
+const enc = (args) => {
+  let out = `*${args.length}\r\n`;
+  for (const a of args) { const b = Buffer.from(String(a), 'utf8'); out += `$${b.length}\r\n${b.toString('utf8')}\r\n`; }
+  return out;
+};
+// Liest eine Antwort ab Position i; gibt [Wert, neue Position] zurück oder null, wenn noch Daten fehlen
+function parse(buf, i) {
+  if (i >= buf.length) return null;
+  const end = buf.indexOf('\r\n', i);
+  if (end < 0) return null;
+  const t = String.fromCharCode(buf[i]), line = buf.toString('utf8', i + 1, end);
+  if (t === '+') return [line, end + 2];
+  if (t === '-') { const e = new Error('KV_ERROR ' + line); e.redis = true; return [e, end + 2]; }
+  if (t === ':') return [Number(line), end + 2];
+  if (t === '$') {
+    const n = Number(line);
+    if (n < 0) return [null, end + 2];
+    if (buf.length < end + 2 + n + 2) return null;
+    return [buf.toString('utf8', end + 2, end + 2 + n), end + 2 + n + 2];
+  }
+  if (t === '*') {
+    const n = Number(line);
+    if (n < 0) return [null, end + 2];
+    const arr = [];
+    let p = end + 2;
+    for (let k = 0; k < n; k++) { const r = parse(buf, p); if (!r) return null; arr.push(r[0]); p = r[1]; }
+    return [arr, p];
+  }
+  throw new Error('KV_PROTOCOL');
+}
+
+class TcpKV {
+  constructor(url) { this.u = new URL(url); this.sock = null; this.queue = []; this.buf = Buffer.alloc(0); this.last = 0; }
+  async connect() {
+    // Nach einer Pause neu verbinden (Server-Funktionen werden zwischendurch eingefroren)
+    if (this.sock && !this.sock.destroyed && Date.now() - this.last < 15_000) return;
+    if (this.sock) { try { this.sock.destroy(); } catch { /* egal */ } }
+    const u = this.u, host = u.hostname, port = Number(u.port) || 6379;
+    this.buf = Buffer.alloc(0); this.queue = [];
+    const sock = await new Promise((resolve, reject) => {
+      const s = u.protocol === 'rediss:' ? tls.connect({ host, port, servername: host }, () => resolve(s)) : net.connect({ host, port }, () => resolve(s));
+      s.once('error', reject);
+      s.setTimeout(8000, () => s.destroy(new Error('KV_TIMEOUT')));
+    });
+    sock.removeAllListeners('error');
+    // Ereignisse nur für die aktuelle Verbindung auswerten (alte Verbindungen schließen verzögert)
+    sock.on('data', (d) => { if (this.sock === sock) this.onData(d); });
+    sock.on('error', (e) => { if (this.sock === sock) this.failAll(e); });
+    sock.on('close', () => { if (this.sock === sock) this.failAll(new Error('KV_CLOSED')); });
+    this.sock = sock;
+    this.last = Date.now();
+    const user = decodeURIComponent(u.username || ''), pass = decodeURIComponent(u.password || '');
+    if (pass) await this.raw(user && user !== 'default' ? ['AUTH', user, pass] : ['AUTH', pass]);
+    const db = u.pathname.replace('/', '');
+    if (db) await this.raw(['SELECT', db]);
+  }
+  onData(d) {
+    this.buf = this.buf.length ? Buffer.concat([this.buf, d]) : d;
+    let p = 0;
+    while (this.queue.length) {
+      const r = parse(this.buf, p);
+      if (!r) break;
+      p = r[1];
+      const q = this.queue.shift();
+      if (r[0] instanceof Error) q.reject(r[0]); else q.resolve(r[0]);
+    }
+    this.buf = this.buf.subarray(p);
+  }
+  failAll(e) { const q = this.queue; this.queue = []; for (const x of q) x.reject(e); if (this.sock) { this.sock = null; } }
+  raw(args) {
+    return new Promise((resolve, reject) => {
+      if (!this.sock) return reject(new Error('KV_CLOSED'));
+      this.queue.push({ resolve, reject });
+      this.last = Date.now();
+      this.sock.write(enc(args));
+    });
+  }
+  async cmd(...args) { await this.connect(); return this.raw(args); }
+  async pipe(cmds) { await this.connect(); return Promise.all(cmds.map((c) => this.raw(c))); }
   async casSave(userKey, saveKey, base, data, now, force, version) {
     const r = await this.cmd('EVAL', CAS_SCRIPT, 2, userKey, saveKey, base, data, now, force ? '1' : '0', version);
     return { code: Number(r[0]), ok: Number(r[0]) === 1, rev: Number(r[1]) };
@@ -120,7 +215,7 @@ class MemoryKV {
 
 let instance = null;
 export function kv() {
-  if (!instance) instance = memoryMode() ? (globalThis.__bwMemoryKV ||= new MemoryKV()) : new UpstashKV();
+  if (!instance) instance = memoryMode() ? (globalThis.__bwMemoryKV ||= new MemoryKV()) : findRest() ? new UpstashKV() : new TcpKV(findTcp().url);
   return instance;
 }
 

@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 
-process.env.BW_DEV_MEMORY_DB = '1';
+// Standard: Test-Datenbank im Speicher. Mit BW_TEST_REDIS_URL=redis://… gegen einen echten Redis-Server.
+if (process.env.BW_TEST_REDIS_URL) process.env.REDIS_URL = process.env.BW_TEST_REDIS_URL;
+else process.env.BW_DEV_MEMORY_DB = '1';
 const auth = (await import('../api/auth.js')).default;
 const save = (await import('../api/save.js')).default;
 
