@@ -22,7 +22,7 @@ export function ground() {
   const noise = (x, z) => Math.sin(x * 0.21) * Math.cos(z * 0.17) + Math.sin(x * 0.07 + z * 0.11) * 1.6;
   const height = (x, z) => {
     const d = Math.max(Math.abs(x), Math.abs(z));
-    const k = Math.max(0, Math.min(1, (d - 13) / 30));
+    const k = Math.max(0, Math.min(1, (d - 21) / 30)); // innen flach: Platz für Gartenerweiterungen
     return k * k * (3 + noise(x, z) * 2.2 + d * 0.12);
   };
   const c1 = col(PAL.meadow), c2 = col('#4f9b37', ), c3 = col('#7dbb55');
@@ -763,5 +763,109 @@ DECO_MODELS.leafPile = () => {
     const a = R() * P * 2, d = Math.sqrt(R()) * 0.7;
     g.add(petal(0.18, 0.1, cs[i % cs.length], { cup: 0.1, curl: 0.15, tip: 0.8, colorTip: cs[(i + 2) % cs.length] }), T(Math.cos(a) * d, 0.12 + (0.7 - d) * 0.35, Math.sin(a) * d * 0.85, R() * 6, -0.3 + R() * 0.6));
   }
+  return g;
+};
+
+// ---------------- Mehr Deko zum Verschönern ----------------
+DECO_MODELS.fountain = () => {
+  const g = new Geo();
+  const stone = '#d9d2c5', stoneDark = '#b8afa2';
+  g.add(lathe([[0, 0], [0.95, 0], [0.98, 0.08], [0.98, 0.38], [0.86, 0.42], [0.8, 0.12], [0, 0.12]], stone, 28));
+  g.add(cylinder(0.82, 0.82, 0.04, '#5fc4ef', 28), T(0, 0.3, 0), { emissive: 0.15 });
+  g.add(cylinder(0.14, 0.2, 0.75, stoneDark, 12), T(0, 0.3, 0));
+  g.add(lathe([[0, 0], [0.48, 0.05], [0.5, 0.15], [0.42, 0.18], [0.0, 0.1]], stone, 20), T(0, 1.0, 0));
+  g.add(cylinder(0.4, 0.4, 0.03, '#7fd3f5', 20), T(0, 1.12, 0), { emissive: 0.15 });
+  g.add(cylinder(0.06, 0.09, 0.35, stoneDark, 8), T(0, 1.1, 0));
+  g.add(sphere(0.1, stone, 10, 8), T(0, 1.5, 0));
+  // Wasserstrahlen
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * P * 2;
+    for (let i = 1; i <= 6; i++) {
+      const t = i / 6, d = 0.12 + t * 0.55, y = 1.5 + Math.sin(t * P) * 0.25 - t * 0.35;
+      g.add(sphere(0.045 - t * 0.015, '#bfe9ff', 5, 4), T(Math.cos(a) * d, y, Math.sin(a) * d), { emissive: 0.2 });
+    }
+  }
+  return g;
+};
+DECO_MODELS.arch = () => {
+  const g = new Geo(), R = rng(41);
+  const white = '#fbfbf7';
+  for (const s of [-1, 1]) g.add(roundedBox(0.12, 1.7, 0.12, 0.03, white, 1), T(s * 0.85, 0.85, 0));
+  for (let i = 0; i <= 12; i++) {
+    const a = (i / 12) * P, x = Math.cos(a) * 0.85, y = 1.7 + Math.sin(a) * 0.55;
+    g.add(roundedBox(0.16, 0.1, 0.12, 0.03, white, 1), T(x, y, 0, 0, 0, a - P / 2));
+  }
+  // Ranken mit Rosen
+  const leaves = ['#4fae3b', '#6ac646'], roses = ['#e3253f', '#ff6f9a', '#ff8fb1'];
+  for (let i = 0; i < 26; i++) {
+    const t = R(), side = R() < 0.5 ? -1 : 1;
+    let x, y;
+    if (t < 0.55) { x = side * 0.85; y = 0.2 + R() * 1.5; } else { const a = R() * P; x = Math.cos(a) * 0.85; y = 1.7 + Math.sin(a) * 0.55; }
+    g.add(icosphere(0.13 + R() * 0.06, leaves[i % 2], 1, false, 0.2, i), T(x + (R() - 0.5) * 0.12, y, (R() - 0.5) * 0.18));
+    if (i % 2 === 0) g.add(sphere(0.075, roses[i % 3], 8, 6, 0.85), T(x + (R() - 0.5) * 0.1, y + 0.05, 0.12 * (R() < 0.5 ? -1 : 1)));
+  }
+  return g.windByHeight(1.2, 2.4, 0.15);
+};
+DECO_MODELS.birdhouse = () => {
+  const g = new Geo();
+  g.add(cylinder(0.05, 0.06, 1.5, PAL.woodDark, 8));
+  g.add(roundedBox(0.42, 0.42, 0.38, 0.04, '#7cc4e8', 1), T(0, 1.68, 0));
+  g.add(extrude([[-0.3, 0], [0.3, 0], [0, 0.26]], 0.5, '#e2654a'), T(0, 1.89, 0));
+  g.add(cylinder(0.075, 0.075, 0.02, '#2d2a36', 12), T(0, 1.7, 0.2, 0, P / 2));
+  g.add(cylinder(0.015, 0.015, 0.12, PAL.woodDark, 5), T(0, 1.58, 0.22, 0, P / 2));
+  g.add(sphere(0.06, '#ffd23f', 6, 5), T(0.12, 1.93, 0.05));
+  return g;
+};
+DECO_MODELS.beehive = () => {
+  const g = new Geo(), R = rng(7);
+  for (const [x, z] of [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]) g.add(cylinder(0.04, 0.04, 0.3, PAL.woodDark, 6), T(x, 0, z));
+  const cols = ['#fff3c4', '#ffd56b', '#fff3c4'];
+  cols.forEach((c, i) => g.add(roundedBox(0.66, 0.26, 0.6, 0.04, c, 1), T(0, 0.43 + i * 0.27, 0)));
+  g.add(roundedBox(0.76, 0.08, 0.7, 0.03, '#d98a3a', 1), T(0, 1.26, 0));
+  g.add(roundedBox(0.2, 0.04, 0.02, 0.01, '#3a2a1e', 1), T(0, 0.34, 0.31));
+  for (let i = 0; i < 5; i++) {
+    const b = new Geo().add(sphere(0.035, '#ffcf1f', 6, 5, 0.8)).add(sphere(0.025, '#ffffff', 5, 4), T(0, 0.03, 0, 0, 0, 0, 1, 0.4, 1.4));
+    g.add(b, T((R() - 0.5) * 0.9, 0.7 + R() * 0.8, 0.35 + R() * 0.3));
+  }
+  return g;
+};
+DECO_MODELS.planter = () => {
+  const g = new Geo(), R = rng(17);
+  g.add(lathe([[0, 0], [0.32, 0], [0.42, 0.5], [0.46, 0.55], [0.46, 0.62], [0.38, 0.6], [0, 0.55]], '#d07a45', 20));
+  g.add(cylinder(0.38, 0.38, 0.03, PAL.soil, 16), T(0, 0.56, 0));
+  const fl = ['#ff6f9a', '#ffd23f', '#ffffff', '#9a7be8'];
+  for (let i = 0; i < 9; i++) g.add(icosphere(0.14 + R() * 0.05, i % 2 ? PAL.leaf1 : PAL.leaf2, 1, false, 0.2, i), T((R() - 0.5) * 0.5, 0.7 + R() * 0.15, (R() - 0.5) * 0.5));
+  for (let i = 0; i < 12; i++) g.add(sphere(0.065, fl[i % 4], 7, 5, 0.8), T((R() - 0.5) * 0.6, 0.82 + R() * 0.15, (R() - 0.5) * 0.6));
+  return g.windByHeight(0.6, 1.0, 0.3);
+};
+DECO_MODELS.pathStone = () => steppingStones([[-0.32, -0.08], [0.32, 0.1]], 11);
+DECO_MODELS.hedgeBlock = () => {
+  const g = new Geo(), R = rng(5);
+  g.add(roundedBox(1.6, 0.85, 0.7, 0.28, PAL.leaf2, 2).shadeByHeight(0, 0.85, 0.7, 1.05), T(0, 0.43, 0));
+  for (let x = -0.55; x <= 0.56; x += 0.55) {
+    const b = icosphere(0.33 + R() * 0.08, R() > 0.4 ? PAL.leaf2 : PAL.leaf1, 1, false, 0.12, Math.round(x * 10) + 3);
+    b.paint((p, n, c) => v3.scale(c, 0.8 + 0.3 * (n[1] * 0.5 + 0.5)));
+    g.add(b, T(x, 0.75 + R() * 0.08, (R() - 0.5) * 0.15));
+  }
+  return g.windByHeight(0.6, 1.2, 0.08);
+};
+DECO_MODELS.tableSet = () => {
+  const g = new Geo();
+  g.add(cylinder(0.45, 0.45, 0.05, '#fbfbf7', 20), T(0, 0.72, 0));
+  g.add(cylinder(0.05, 0.08, 0.72, '#3e4450', 8));
+  g.add(cylinder(0.25, 0.28, 0.04, '#3e4450', 12));
+  for (const s of [-1, 1]) {
+    const c = new Geo();
+    c.add(roundedBox(0.42, 0.06, 0.42, 0.03, PAL.wood, 1), T(0, 0.45, 0));
+    c.add(roundedBox(0.42, 0.45, 0.06, 0.03, PAL.wood, 1), T(0, 0.7, -0.2));
+    for (const [x, z] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) c.add(cylinder(0.025, 0.025, 0.45, '#3e4450', 5), T(x, 0, z));
+    g.add(c, T(s * 0.75, 0, 0, s > 0 ? -P / 2 : P / 2));
+  }
+  // Sonnenschirm mit Streifen
+  g.add(cylinder(0.025, 0.025, 2.0, '#fbfbf7', 6), T(0, 0.75, 0));
+  const shade = lathe([[0, 0.38], [0.5, 0.22], [1.0, 0.0], [1.02, -0.05], [0, 0.0]], '#ff6f9a', 24);
+  shade.paint((p, n, c) => (Math.floor(((Math.atan2(p[2], p[0]) + P) / (P * 2)) * 12) % 2 ? col('#ffffff') : c));
+  g.add(shade, T(0, 2.3, 0));
+  g.add(sphere(0.05, '#fbfbf7', 6, 5), T(0, 2.7, 0));
   return g;
 };

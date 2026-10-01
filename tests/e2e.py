@@ -56,6 +56,11 @@ with sync_playwright() as p:
             print('     Hinweis: Tipp-Punkt verdeckt von', hit)
         tap_at(pt[0], pt[1], wait)
 
+    def settle():
+        # Kamera-Fahrten abwarten (Software-Grafik im Test ist sehr langsam)
+        pg.wait_for_function('!BW.world.camAnim', timeout=90000)
+        pg.wait_for_timeout(200)
+
     def close_modals():
         for _ in range(6):
             if ev('BW.ui.modalOpen'):
@@ -85,7 +90,7 @@ with sync_playwright() as p:
     shot('02_intro')
     click('#modal [data-act=storyOk]', 500)
     check('Startmünzen 50', ev('BW.state.coins') == 50, str(ev('BW.state.coins')))
-    check('15 Beete, 6 frei', ev('BW.state.beds.length') == 15 and ev('BW.state.beds.filter(b => !b.locked).length') == 6)
+    check('24 Beete, 6 frei', ev('BW.state.beds.length') == 24 and ev('BW.state.beds.filter(b => !b.locked).length') == 6)
     check('Story-Anzeige sichtbar', pg.locator('#quest').is_visible())
     shot('03_garden')
 
@@ -194,13 +199,61 @@ with sync_playwright() as p:
     click('#panel .x', 500)
     ev('BW.skip(200000)')
     pg.wait_for_timeout(900)
-    check('Gewächshaus-Blase zeigt fertige Züchtung', pg.locator(f'#bub15.ready').count() == 1)
+    check('Gewächshaus-Blase zeigt fertige Züchtung', pg.locator(f'#bub24.ready').count() == 1)
     shot('11_breed_ready')
-    tap_at(*ev("(() => { const r = document.querySelector('#bub15 .b').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()"))
+    tap_at(*ev("(() => { const r = document.querySelector('#bub24 .b').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()"))
     check('Regenbogentulpe gezüchtet', 'rainbowTulip' in ev('BW.state.bred'))
     check('Dialog „Neue Sorte“', ev('BW.ui.modalOpen') and 'Regenbogen' in pg.locator('#modal').inner_text().replace('­', ''))
     shot('12_new_variety')
     close_modals()
+
+    # ---------- Gestalten: verschieben, drehen, Deko, Lager, Vergrößern ----------
+    click('#editBtn', 600)
+    check('Gestalten-Modus aktiv', pg.locator('#editBar').is_visible() and ev('!!BW.ui.edit'))
+    target = ev("BW.G.findSpot(BW.state, {type: 'bed', i: 0}, [-1.5, 6.5])")
+    ev(f"BW.world.focus(({target[0]} - 2.7) / 2, ({target[1]} - 2.1) / 2, 1.25)")
+    settle()
+    src = ev('BW.world.bedCenterScreen(0)')
+    dst = ev(f'BW.world.screenOf([{target[0]} + 0.3, 0.56, {target[1]} + 0.3])')
+    pg.mouse.move(src[0], src[1]); pg.mouse.down(); pg.wait_for_timeout(120)
+    for k in range(1, 21):
+        pg.mouse.move(src[0] + (dst[0] - src[0]) * k / 20, src[1] + (dst[1] - src[1]) * k / 20); pg.wait_for_timeout(30)
+    shot('12b_drag')
+    pg.mouse.up(); pg.wait_for_timeout(600)
+    moved = ev('BW.state.layout.beds[0]')
+    check('Beet per Ziehen verschoben', abs(moved[0] - target[0]) < 0.6 and abs(moved[1] - target[1]) < 0.6, f'{moved} / Ziel {target}')
+    check('Neue Position ist gültig', ev('(() => { const p = BW.state.layout.beds[0]; return BW.G.canPlace(BW.state, {type: "bed", i: 0}, p[0], p[1], p[2]).ok; })()'))
+    click('#editBar [data-act=editRotate]', 500)
+    check('Beet gedreht', ev('BW.state.layout.beds[0][2]') == 1)
+    click('#editBar [data-act=editDeselect]', 300)
+    n0 = ev('BW.state.decor.length')
+    click('#editBar [data-act=editShop]', 600)
+    click('#panel [data-act=buyDeco][data-id=bench]', 600)
+    click('#panel [data-act=buyDeco][data-id=bench]', 600)
+    check('Deko mehrfach gekauft', ev('BW.state.decor.length') == n0 + 2 and ev("BW.state.decor.filter(d => d.id === 'bench' && !d.stored).length") >= 2)
+    click('#panel .x', 500)
+    click('#editBtn', 500)
+    k = ev('BW.state.decor.length - 1')
+    ev(f"BW.world.focus(BW.state.decor[{k}].x, BW.state.decor[{k}].z, 0.8)")
+    settle()
+    pt = ev(f'BW.world.screenOf([BW.state.decor[{k}].x, 0.5, BW.state.decor[{k}].z])')
+    tap_at(pt[0], pt[1], 600)
+    check('Deko angetippt und ausgewählt', ev('BW.ui.edit && BW.ui.edit.sel && BW.ui.edit.sel.type') == 'deco', str(ev('BW.ui.edit && BW.ui.edit.sel')))
+    shot('12c_deco_selected')
+    if ev('BW.ui.edit && BW.ui.edit.sel && BW.ui.edit.sel.type') == 'deco':
+        click('#editBar [data-act=editStoreSel]', 500)
+    check('Deko eingelagert', ev('BW.state.decor.filter(d => d.stored).length') >= 1)
+    click('#editBar [data-act=editStore]', 600)
+    shot('12d_store')
+    click('#sheet [data-act=storePlace]', 700)
+    check('Deko aus dem Lager aufgestellt', ev('BW.state.decor.filter(d => d.stored).length') == 0)
+    click('#editBar [data-act=editDeselect]', 300)
+    click('#editBar [data-act=editLand]', 600)
+    click('#modal [data-act=expandLand]', 1500)
+    check('Garten vergrößert', ev('BW.state.land') == 1)
+    shot('12e_land')
+    click('#editBar [data-act=editDone]', 500)
+    check('Gestalten-Modus beendet', not ev('BW.ui.edit') and pg.locator('#editBar').is_hidden())
 
     # ---------- Alle Menüs ----------
     panels = [('quests', ['story', 'daily', 'levels']), ('events', []), ('collection', ['flowers', 'shiny', 'animals', 'deco']), ('shop', ['offers', 'supplies', 'flowers', 'deco', 'animals']), ('friends', [])]

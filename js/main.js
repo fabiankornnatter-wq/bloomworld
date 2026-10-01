@@ -160,7 +160,7 @@ async function enter(u, autoStart, isNew = false) {
   if (fromGuest) await guestStore.retire();
 
   world.r.setQuality(resolveQuality(state.settings.quality));
-  world.syncDeco(state.deco);
+  world.syncLayout(state);
   world.syncSkins(state.activeSkin);
   world.syncGreenhouse(state.greenhouse.unlocked);
   ui = new UI({ state: () => state, now, icons, sound, act: actions, world, account: () => ({ user, status: cloud?.status, lastSaved: cloud?.lastSaved }), isNight });
@@ -220,6 +220,7 @@ function loop(t) {
   G.ensureDaily(state, n);
   const infos = state.beds.map((_, i) => G.bedInfo(state, i, n));
   const env = environment(G.cyclePhase(state, n));
+  if (drag?.moved) dragEdgePan(dt);
   if (!ui.coveredFor(300)) {
     world.syncBeds(infos);
     world.update(dt, env);
@@ -268,12 +269,16 @@ function setupInput() {
   cv.addEventListener('pointerdown', (e) => {
     try { cv.setPointerCapture(e.pointerId); } catch { /* egal */ }
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pts.size === 1) g = { x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, t0: performance.now(), moved: false };
-    else if (pts.size === 2 && g) { g.pinch = dist(); g.moved = true; }
+    if (pts.size === 1) {
+      g = { x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, t0: performance.now(), moved: false };
+      // Gestalten: Objekt unter dem Finger greifen
+      if (ui?.edit && started) { const ref = world.pickEditable(e.clientX, e.clientY, state); if (ref) { dragStart(ref, e.clientX, e.clientY); g.drag = true; } }
+    } else if (pts.size === 2 && g) { if (g.drag) dragEnd(true); g.drag = false; g.pinch = dist(); g.moved = true; }
   });
   cv.addEventListener('pointermove', (e) => {
     if (!pts.has(e.pointerId) || !g) return;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (g.drag) { if (drag) { drag.px = e.clientX; drag.py = e.clientY; } if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > 6) { g.moved = true; dragMove(e.clientX, e.clientY); } return; }
     if (pts.size === 1) {
       if (!g.moved && Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > 9) g.moved = true;
       if (g.moved) world.pan(e.clientX - g.lx, e.clientY - g.ly);
@@ -287,6 +292,7 @@ function setupInput() {
   const end = (e) => {
     if (!pts.has(e.pointerId)) return;
     pts.delete(e.pointerId);
+    if (g?.drag) { dragEnd(e.type !== 'pointerup'); g = pts.size ? g : null; if (g) g.drag = false; return; }
     if (g && !g.moved && pts.size === 0 && e.type === 'pointerup' && performance.now() - g.t0 < 650) tap(e.clientX, e.clientY);
     if (pts.size === 0) g = null;
     else if (g) { const p = [...pts.values()][0]; g.lx = p.x; g.ly = p.y; g.pinch = 0; }
@@ -313,8 +319,90 @@ function setupInput() {
 
 function flushAll(leaving) { saver?.flush(); cloud?.flush({ keepalive: !!leaving }); }
 
+// ---------- Gestalten: Ziehen & Ablegen ----------
+let drag = null;
+const sameRef = (a, b) => a && b && a.type === b.type && a.i === b.i && a.k === b.k;
+function showSel() {
+  const e = ui.edit;
+  if (!e?.sel) { world.hideMarker(); return; }
+  const [w, d] = G.footprint(state, e.sel, e.pos[2]);
+  world.showMarker(e.pos[0], e.pos[1], w, d, e.valid);
+}
+function editSelect(ref) {
+  if (!ui.edit) return;
+  if (ui.edit.sel && !sameRef(ui.edit.sel, ref)) actions.editDeselect();
+  const p = G.objectPos(state, ref);
+  if (!p) return;
+  Object.assign(ui.edit, { sel: ref, pos: [...p], orig: [...p], valid: true });
+  sound.play('tap');
+  showSel();
+  ui.renderEditBar();
+}
+function dragStart(ref, px, py) {
+  if (!sameRef(ui.edit.sel, ref)) editSelect(ref);
+  const gp = world.groundAt(px, py), e = ui.edit;
+  drag = { off: gp ? [e.pos[0] - gp[0], e.pos[1] - gp[1]] : [0, 0], moved: false };
+}
+function dragMove(px, py) {
+  const e = ui.edit;
+  if (!drag || !e?.sel) return;
+  const gp = world.groundAt(px, py);
+  if (!gp) return;
+  const snap = (v) => Math.round(v / C.SNAP) * C.SNAP;
+  const x = snap(gp[0] + drag.off[0]), z = snap(gp[1] + drag.off[1]);
+  if (x === e.pos[0] && z === e.pos[1]) return;
+  drag.moved = true;
+  e.pos = [x, z, e.pos[2]];
+  const ok = G.canPlace(state, e.sel, x, z, e.pos[2]).ok;
+  if (ok !== e.valid) { e.valid = ok; ui.renderEditBar(); }
+  world.preview(e.sel, x, z, e.pos[2], 0.3); // beim Tragen leicht angehoben
+  showSel();
+}
+// Am Bildschirmrand mitscrollen, damit man Dinge weit tragen kann
+function dragEdgePan(dt) {
+  if (!drag || !drag.px) return;
+  const W = innerWidth, m = 34, sp = 480 * dt;
+  const bottom = Math.min($('editBar').getBoundingClientRect().top || innerHeight, innerHeight - 90) - 6;
+  let dx = 0, dy = 0;
+  if (drag.px < m) dx = sp; else if (drag.px > W - m) dx = -sp;
+  if (drag.py < 100) dy = sp; else if (drag.py > bottom) dy = -sp;
+  if (!dx && !dy) return;
+  world.pan(dx, dy);
+  world.camAnim = null;
+  dragMove(drag.px, drag.py);
+}
+function dragEnd(cancel) {
+  const d = drag;
+  drag = null;
+  if (!d || !d.moved || !ui.edit?.sel) return;
+  if (cancel) { const e = ui.edit; e.pos = [...e.orig]; e.valid = true; world.preview(e.sel, ...e.orig); showSel(); ui.renderEditBar(); return; }
+  commitMove();
+}
+function commitMove() {
+  const e = ui.edit;
+  const r = G.moveObject(state, e.sel, e.pos[0], e.pos[1], e.pos[2]);
+  if (r.ok) {
+    e.orig = [...e.pos]; e.valid = true;
+    if (r.moved) { sound.play('plant'); world.burstAt(e.pos[0], e.pos[1]); }
+    changed();
+  } else {
+    sound.play('error');
+    ui.toast(r.message, 'err');
+    e.pos = [...e.orig]; e.valid = true;
+    world.preview(e.sel, ...e.orig);
+  }
+  showSel();
+  ui.renderEditBar();
+}
+
 function tap(x, y) {
   if (!started) return;
+  if (ui.edit) {
+    // Antippen im Gestalten-Modus: auswählen oder abwählen
+    const ref = world.pickEditable(x, y, state);
+    if (ref) editSelect(ref); else actions.editDeselect();
+    return;
+  }
   const b = ui.bubbleAt(x, y);
   if (b !== null) { if (b === C.BED_COUNT) actions.tapGreenhouse(); else actions.tapBed(b); return; }
   const hit = world.pick(x, y);
@@ -343,7 +431,7 @@ function newerSave(a, b) {
   if (ma !== mb) return ma > mb ? a : b;
   return (a?.updatedAt || 0) >= (b?.updatedAt || 0) ? a : b;
 }
-function changed() { persist(); ui.refresh(); }
+function changed() { persist(); world.syncLayout(state); ui.refresh(); }
 function fail(r) {
   sound.play('error');
   if (r.code === 'noCoins') ui.toast(r.message, 'err', { label: 'Shop', fn: () => ui.nav('shop', 'offers') });
@@ -366,7 +454,7 @@ function afterLevelUps(ups) {
 }
 
 function syncWorld() {
-  world.syncDeco(state.deco);
+  world.syncLayout(state);
   world.syncSkins(state.activeSkin);
   world.syncGreenhouse(state.greenhouse.unlocked);
   world.r.setQuality(resolveQuality(state.settings.quality));
@@ -607,7 +695,7 @@ const actions = {
     if (!r.ok) return fail(r);
     sound.play('buy');
     ui.bumpCoins();
-    if (r.reward.deco || r.reward.skin) { world.syncDeco(state.deco); world.syncSkins(state.activeSkin); }
+    if (r.reward.skin) world.syncSkins(state.activeSkin);
     ui.owlDialog({ title: r.chapterDone ? 'Kapitel geschafft!' : 'Aufgabe erledigt!', heading: r.chapterDone ? r.chapterTitle : '', text: r.say || (r.chapterDone ? `„${r.chapterTitle}“ ist abgeschlossen. Wunderbar gemacht!` : 'Prima, weiter so! Hier ist deine Belohnung.'), reward: r.reward });
     changed();
     afterLevelUps(r.levelUps);
@@ -620,6 +708,7 @@ const actions = {
     if (a === 'shop') ui.nav('shop', b);
     else if (a === 'breed') ui.nav('breed');
     else if (a === 'bed') actions.showNextBed();
+    else if (a === 'edit') actions.toggleEdit(true);
     else if (a === 'mode') {
       if (b === 'sprinkler' && state.level < C.SPRINKLER.level) return fail({ message: `Die Bewässerung gibt es ab Level ${C.SPRINKLER.level}.` });
       if (b === 'upgrade' && state.level < C.BED_LEVELS[1].level) return fail({ message: `Den Beet-Ausbau gibt es ab Level ${C.BED_LEVELS[1].level}.` });
@@ -631,7 +720,7 @@ const actions = {
   claimMilestone(i) {
     const r = G.claimEventMilestone(state, i, now());
     if (!r.ok) return fail(r);
-    world.syncDeco(state.deco); world.syncSkins(state.activeSkin);
+    world.syncSkins(state.activeSkin);
     sound.play('buy');
     ui.toast('Event-Belohnung abgeholt!', 'good');
     changed();
@@ -641,7 +730,6 @@ const actions = {
   buyEventItem(id) {
     const r = G.buyEventItem(state, id, now());
     if (!r.ok) return fail(r);
-    world.syncDeco(state.deco);
     sound.play('buy');
     ui.toast('Eingetauscht!', 'good');
     changed();
@@ -677,12 +765,98 @@ const actions = {
   },
 
   buyDeco(id) {
-    const r = G.buyDeco(state, id);
+    const r = G.buyDeco(state, id, null);
     if (!r.ok) return fail(r);
-    world.syncDeco(state.deco);
     sound.play('buy');
-    ui.toast(`${C.DECO[id].name} steht jetzt in deinem Garten!`, 'good', { label: 'Ansehen', fn: () => { ui.nav('garden'); const o = world.deco[id]?.[0]; if (o) world.focus(o.model[12], o.model[14], 0.75); } });
     changed();
+    const d = state.decor[r.k];
+    if (d.stored) ui.toast(`${C.DECO[id].name} liegt im Lager – im Garten ist gerade kein Platz frei.`, 'good', { label: 'Gestalten', fn: () => actions.toggleEdit(true) });
+    else ui.toast(`${C.DECO[id].name} steht jetzt in deinem Garten!`, 'good', { label: 'Verschieben', fn: () => { actions.toggleEdit(true); editSelect({ type: 'deco', k: r.k }); world.focus(d.x, d.z, 0.8); } });
+  },
+
+  // ----- Gestalten -----
+  toggleEdit(on) {
+    if (ui.edit && on !== true) return actions.exitEdit();
+    if (ui.edit) return;
+    ui.closeSheet(); ui.closeModal();
+    if (ui.panel) ui.closePanel();
+    if (ui.mode) ui.setMode(null, true);
+    ui.edit = { sel: null };
+    sound.play('open');
+    ui.renderEditBar();
+    ui.syncHistory();
+  },
+
+  exitEdit(silent) {
+    if (!ui.edit) return;
+    if (ui.edit.sel) actions.editDeselect();
+    ui.edit = null;
+    world.hideMarker();
+    ui.renderEditBar();
+    if (!silent) { sound.play('tap'); ui.syncHistory(); }
+  },
+
+  editDeselect() {
+    const e = ui.edit;
+    if (!e?.sel) return;
+    if (!e.valid) { world.preview(e.sel, ...e.orig); }
+    e.sel = null;
+    world.hideMarker();
+    ui.renderEditBar();
+  },
+
+  editRotate() {
+    const e = ui.edit;
+    if (!e?.sel) return;
+    const r = (e.pos[2] + 1) % 4;
+    let spot = G.canPlace(state, e.sel, e.pos[0], e.pos[1], r).ok ? [e.pos[0], e.pos[1], r] : null;
+    if (!spot) { const f = G.findSpot(state, e.sel, [e.pos[0], e.pos[1]], r); if (f && Math.hypot(f[0] - e.pos[0], f[1] - e.pos[1]) < 3) spot = f; }
+    if (!spot) return fail({ message: 'Zum Drehen ist hier nicht genug Platz.' });
+    e.pos = spot;
+    commitMove();
+  },
+
+  editStoreSel() {
+    const e = ui.edit;
+    if (!e?.sel || e.sel.type !== 'deco') return;
+    const r = G.storeDeco(state, e.sel.k);
+    if (!r.ok) return fail(r);
+    e.sel = null;
+    world.hideMarker();
+    sound.play('tap');
+    ui.toast('Eingelagert. Du findest es unter „Lager“.', 'good');
+    changed();
+  },
+
+  storePlace(k) {
+    const r = G.placeDeco(state, k, [world.cam.target[0], world.cam.target[2]]);
+    if (!r.ok) return fail(r);
+    sound.play('plant');
+    ui.closeSheet();
+    changed();
+    if (!ui.edit) actions.toggleEdit(true);
+    editSelect({ type: 'deco', k });
+  },
+
+  storeSell(k) {
+    const d = state.decor[k];
+    if (!d) return;
+    ui.confirm({ title: 'Verkaufen?', text: `${C.DECO[d.id].name} für ${Math.floor((C.DECO[d.id].price || 0) / 2)} Münzen verkaufen?`, ok: 'Verkaufen', onOk: () => {
+      const r = G.sellDeco(state, k);
+      if (!r.ok) return fail(r);
+      if (ui.edit) { ui.edit.sel = null; world.hideMarker(); }
+      sound.play('buy');
+      changed();
+    } });
+  },
+
+  expandLand() {
+    const r = G.expandLand(state);
+    if (!r.ok) return fail(r);
+    sound.play('unlock');
+    changed();
+    world.focus(0.4, 0.4, Math.min(1.3, r.half / 10.2));
+    ui.toast('Dein Garten ist gewachsen! Mehr Platz für Deko und neue Beete.', 'good');
   },
 
   buySkin(id) {

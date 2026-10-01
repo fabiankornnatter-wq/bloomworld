@@ -13,10 +13,10 @@ const memStore = () => { const mem = new Map(); return { mem, ls: { getItem: (k)
 const grow = (s, i, now) => G.bedInfo(s, i, now).remaining + 1;
 const discover = (s, ...ids) => ids.forEach((id) => (s.collection[id] = { count: 1, shiny: 0 }));
 
-test('neuer Spielstand: 50 Münzen, 6 offene + 9 gesperrte Beete', () => {
+test('neuer Spielstand: 50 Münzen, 6 offene + 18 gesperrte Beete', () => {
   const s = G.newState(T0);
   assert.equal(s.coins, 50);
-  assert.equal(s.beds.length, 15);
+  assert.equal(s.beds.length, 24);
   assert.equal(s.beds.filter((b) => !b.locked).length, 6);
 });
 
@@ -217,14 +217,16 @@ test('Speichern/Laden über LocalStore', async () => {
   assert.deepEqual(state.bred, ['goldRose']);
 });
 
-test('Spielstand v2 wird übernommen (goldene -> Funkelblüten, 15 Beete, Rose bleibt)', () => {
+test('Spielstand v2 wird übernommen (goldene -> Funkelblüten, 24 Beete, Rose bleibt)', () => {
   const v2 = { v: 2, coins: 777, xp: 140, level: 4, rareUnlocked: ['rose'], beds: Array.from({ length: 9 }, (_, i) => ({ locked: i >= 6, seed: i === 0 ? 'rose' : null, plantedAt: T0, golden: i === 0, var: 3 })), collection: { daisy: { count: 4, golden: 2 } }, stats: { golden: 2, harvested: 9 }, deco: ['bench'], settings: { cycle: 'night' } };
   const { state, migrated } = G.migrate(v2, T0);
   assert.ok(migrated);
   assert.equal(state.coins, 777);
   assert.equal(state.level, 4);
-  assert.equal(state.beds.length, 15);
+  assert.equal(state.beds.length, 24);
   assert.equal(state.beds[0].shiny, true);
+  assert.equal(state.decor.length, 1);
+  assert.equal(state.decor[0].stored, false);
   assert.equal(state.collection.daisy.shiny, 2);
   assert.equal(state.stats.shiny, 2);
   assert.equal(state.settings.cycle, 'night');
@@ -244,7 +246,7 @@ test('kaputter Spielstand wird repariert statt abzustürzen', () => {
   const bad = { v: 3, coins: -50, xp: 'x', level: 999, beds: [{ seed: 'gift' }], items: { fert: -3, turbo: 'viele' }, greenhouse: { unlocked: true, job: { result: 'banana' } }, story: { ch: 99 }, event: 'kaputt', collection: { daisy: 3, banana: 1 }, stats: { harvested: '10' }, activeSkin: { fox: 'arctic' } };
   const { state } = G.migrate(bad, T0);
   assert.equal(state.coins, 50);
-  assert.equal(state.beds.length, 15);
+  assert.equal(state.beds.length, 24);
   assert.equal(state.level, 30);
   assert.deepEqual(state.items, { fert: 0, turbo: 0, lucky: 0, boost: 0 });
   assert.equal(state.greenhouse.job, null);
@@ -266,4 +268,76 @@ test('Mehr-Tab-Schutz: älterer Tab überschreibt keinen neueren Stand', () => {
   a.coins = 1; sa.request(); sa.flush();
   assert.equal(JSON.parse(mem.get('bloomworld_save_v2')).coins, 772);
   assert.equal(conflict, 1);
+});
+
+// ---------- Garten gestalten ----------
+const allValid = (s) => {
+  const refs = [{ type: 'gh' }, ...s.layout.beds.map((_, i) => ({ type: 'bed', i })).filter((r) => G.bedVisible(s, r.i)), ...s.decor.map((d, k) => ({ type: 'deco', k })).filter((r) => !s.decor[r.k].stored)];
+  return refs.filter((r) => { const p = G.objectPos(s, r); return !G.canPlace(s, r, p[0], p[1], p[2]).ok; });
+};
+
+test('Startaufstellung und alle Ausbaustufen ohne Überschneidungen', () => {
+  const s = G.newState(T0);
+  assert.deepEqual(allValid(s), []);
+  for (const id of C.ALL_DECO) for (const p of C.DECO_PLACE[id] || []) assert.ok(G.canPlace(s, { type: 'deco', id }, p[0], p[1], p[2]).ok, id);
+  for (let l = 1; l < C.LAND.length; l++) { s.land = l; assert.deepEqual(allValid(s), [], 'Land ' + l); }
+});
+
+test('Beet verschieben: frei ok, auf anderes Beet oder außerhalb nicht', () => {
+  const s = G.newState(T0);
+  s.story = { ch: 1, q: 4, count: 0, intro: 1 };
+  const free = G.findSpot(s, { type: 'bed', i: 0 }, [0, 7]);
+  assert.ok(free);
+  const r = G.moveObject(s, { type: 'bed', i: 0 }, free[0], free[1], 1);
+  assert.ok(r.ok && r.moved);
+  assert.deepEqual(s.layout.beds[0], [free[0], free[1], 1]);
+  assert.equal(G.storyStatus(s).done, true, 'Story-Aufgabe „verschieben“ zählt');
+  const onOther = G.moveObject(s, { type: 'bed', i: 1 }, s.layout.beds[2][0], s.layout.beds[2][1], 0);
+  assert.equal(onOther.code, 'noSpace');
+  assert.equal(G.moveObject(s, { type: 'bed', i: 1 }, 30, 0, 0).code, 'outside');
+  assert.equal(G.moveObject(s, { type: 'gh' }, -6, -6.5, 0).code, 'noSpace', 'nicht aufs Haus');
+});
+
+test('Deko mehrfach kaufen, einlagern, aufstellen, verkaufen', () => {
+  const s = G.newState(T0);
+  s.coins = 5000; s.level = 10;
+  const a = G.buyDeco(s, 'lantern'), b = G.buyDeco(s, 'lantern'), c = G.buyDeco(s, 'fountain');
+  assert.ok(a.ok && b.ok && c.ok);
+  assert.equal(s.decor.length, 3);
+  assert.deepEqual(s.deco.sort(), ['fountain', 'lantern']);
+  assert.deepEqual(allValid(s), []);
+  assert.ok(G.storeDeco(s, 2).ok);
+  assert.equal(s.decor[2].stored, true);
+  assert.ok(G.placeDeco(s, 2, [0, 6]).ok);
+  assert.deepEqual(allValid(s), []);
+  const coins = s.coins;
+  assert.equal(G.sellDeco(s, 2).coins, 300);
+  assert.equal(s.coins, coins + 300);
+  s.level = 1;
+  assert.equal(G.buyDeco(s, 'fountain').code, 'level');
+});
+
+test('Garten erweitern: Level, Kosten, neue Beete werden sichtbar', () => {
+  const s = G.newState(T0);
+  s.coins = 99999;
+  assert.equal(G.expandLand(s).code, 'level');
+  s.level = 12;
+  assert.equal(G.bedInfo(s, 15, T0).hidden, true);
+  assert.equal(G.unlockBed(s, 15).code, 'land');
+  assert.ok(G.expandLand(s).ok);
+  assert.equal(s.land, 1);
+  assert.equal(G.bedInfo(s, 15, T0).hidden, undefined);
+  assert.ok(G.unlockBed(s, 15).ok);
+  assert.ok(G.canPlace(s, { type: 'deco', id: 'bench' }, 0.4, 10.5, 0).ok, 'neuer Platz vorne');
+});
+
+test('Spielstand v3 wird auf frei verschiebbare Deko umgestellt', () => {
+  const v3 = { ...G.newState(T0), v: 3, deco: ['lantern', 'bench', 'leafPile'] };
+  delete v3.decor; delete v3.layout; delete v3.land;
+  const { state, migrated } = G.migrate(v3, T0);
+  assert.ok(migrated);
+  assert.equal(state.v, 4);
+  assert.deepEqual(state.decor.map((d) => d.id).sort(), ['bench', 'lantern', 'lantern', 'leafPile']);
+  assert.ok(state.decor.every((d) => !d.stored));
+  assert.deepEqual(allValid(state), []);
 });

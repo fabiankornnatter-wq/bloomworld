@@ -40,14 +40,50 @@ export const GREENHOUSE = { cost: 400, level: 4 };
 export const SHINY_CHANCE = 0.06;
 export const SHINY_MULTIPLIER = 3;
 
-// Beete: 15 Plätze, die ersten 6 sind frei. Weitere kosten Münzen und brauchen ein Level.
-export const BED_COUNT = 15;
+// Beete: 24 Plätze, die ersten 6 sind frei. Weitere kosten Münzen und brauchen ein Level,
+// die letzten 9 liegen auf neuem Land (Gartenerweiterung).
+export const BED_COUNT = 24;
 export const STARTING_BEDS = 6;
 export const BED_UNLOCK = [
   null, null, null, null, null, null,
   { cost: 120, level: 1 }, { cost: 260, level: 2 }, { cost: 500, level: 3 },
   { cost: 700, level: 5 }, { cost: 900, level: 5 }, { cost: 1100, level: 6 },
   { cost: 1400, level: 8 }, { cost: 1700, level: 9 }, { cost: 2000, level: 10 },
+  { cost: 2400, level: 11, land: 1 }, { cost: 2700, level: 12, land: 1 }, { cost: 3000, level: 12, land: 1 },
+  { cost: 3600, level: 14, land: 2 }, { cost: 4000, level: 15, land: 2 }, { cost: 4400, level: 15, land: 2 },
+  { cost: 5000, level: 18, land: 3 }, { cost: 5500, level: 19, land: 3 }, { cost: 6000, level: 20, land: 3 },
+];
+
+// ---------- Garten-Gestaltung ----------
+// Gartenfläche: halbe Seitenlänge des eingezäunten Quadrats je Ausbaustufe
+export const LAND = [
+  { half: 10.2 },
+  { half: 12.8, cost: 1200, level: 5 },
+  { half: 15.4, cost: 3500, level: 9 },
+  { half: 18.0, cost: 8000, level: 14 },
+];
+export const BED_SIZE = [2.4, 2.4];
+export const GH_SIZE = [4.4, 3.8];
+export const SNAP = 0.25;
+// Startaufstellung [x, z, Drehung 0–3]
+const BX = (c) => 0.4 + (c - 1) * 3.1, BZ = (r) => 1.0 + (r - 1) * 3.1;
+export const DEFAULT_BEDS = [
+  [BX(0), BZ(0)], [BX(1), BZ(0)], [BX(2), BZ(0)], [BX(0), BZ(1)], [BX(1), BZ(1)], [BX(2), BZ(1)], [BX(0), BZ(2)], [BX(1), BZ(2)], [BX(2), BZ(2)],
+  [BX(-1), BZ(0)], [BX(-1), BZ(1)], [BX(-1), BZ(2)], [BX(3), BZ(0)], [BX(3), BZ(1)], [BX(3), BZ(2)],
+  [10.0, BZ(0)], [10.0, BZ(1)], [10.0, BZ(2)],
+  [-5.8, 12.6], [-2.7, 12.6], [3.5, 12.6],
+  [-5.8, 15.3], [-2.7, 15.3], [3.5, 15.3],
+].map(([x, z]) => [Math.round(x * 100) / 100, Math.round(z * 100) / 100, 0]);
+export const DEFAULT_GH = [0, -7.35, 0];
+// Feste Hindernisse (Haus, Teich, Bäume, Zierbeete): [x0, z0, x1, z1]
+export const OBSTACLES = [
+  [-8.6, -8.8, -3.4, -4.3],   // Haus
+  [3.65, -9.8, 9.55, -5.2],   // Teich
+  [-9.2, 7.5, -7.4, 9.3],     // Apfelbaum
+  [-10.1, -9.7, -8.5, -8.1],  // Baum hinten links
+  [-4.45, 6.95, -1.55, 9.85], // Zierbeet links
+  [5.95, 6.75, 8.45, 9.25],   // Zierbeet rechts
+  [-6.5, 6.9, -5.5, 7.7],     // Gießkanne
 ];
 export const BED_LEVELS = [
   { name: 'Holzbeet', mult: 1, shiny: 0 },
@@ -89,19 +125,40 @@ export const DAILY_TASKS = [
 ];
 export const DAILY_GIFT = 50;
 
-// Kosmetische Dekoration – erscheint im Garten. Kein Spielvorteil.
+// Kosmetische Dekoration – frei im Garten aufstellbar, mehrfach kaufbar. Kein Spielvorteil.
+// size = Grundfläche [Breite, Tiefe] für die Platzprüfung
 export const DECO = {
-  lantern:     { name: 'Gartenlaterne', price: 80,  desc: 'Leuchtet nachts warm am Weg.' },
-  flowerpots:  { name: 'Blumentöpfe',   price: 60,  desc: 'Drei bunte Töpfe am Haus.' },
-  bench:       { name: 'Gartenbank',    price: 120, desc: 'Ein Platz zum Ausruhen am Teich.' },
-  birdbath:    { name: 'Vogeltränke',   price: 150, desc: 'Steinerne Tränke für Gartenbesucher.' },
-  wheelbarrow: { name: 'Schubkarre',    price: 200, desc: 'Voller Blumen, vorn im Garten.' },
-  pumpkins:    { name: 'Herbstkürbisse', price: 180, desc: 'Saison-Deko für den Herbst.', seasonal: 'autumn' },
-  pumpkinLantern: { name: 'Kürbislaterne', desc: 'Exklusiv vom Herbstfest. Leuchtet nachts.', event: 'autumn' },
-  leafPile:    { name: 'Laubhaufen', desc: 'Exklusiv vom Herbstfest.', event: 'autumn' },
+  pathStone:   { name: 'Trittsteine',   price: 15,  level: 1, size: [1.5, 1.1], desc: 'Zwei flache Steine für eigene Wege.' },
+  hedgeBlock:  { name: 'Heckenstück',   price: 40,  level: 1, size: [1.8, 0.8], desc: 'Grüne Hecke zum Abgrenzen und Gestalten.' },
+  flowerpots:  { name: 'Blumentöpfe',   price: 60,  level: 1, size: [1.2, 1.2], desc: 'Drei bunte Töpfe.' },
+  lantern:     { name: 'Gartenlaterne', price: 80,  level: 1, size: [0.5, 0.5], desc: 'Leuchtet nachts warm am Weg.' },
+  planter:     { name: 'Blumenkübel',   price: 90,  level: 2, size: [1.0, 1.0], desc: 'Großer Kübel voller Blüten.' },
+  birdhouse:   { name: 'Vogelhaus',     price: 110, level: 2, size: [0.7, 0.7], desc: 'Ein Zuhause für Gartenvögel.' },
+  bench:       { name: 'Gartenbank',    price: 120, level: 1, size: [1.9, 0.8], desc: 'Ein Platz zum Ausruhen.' },
+  birdbath:    { name: 'Vogeltränke',   price: 150, level: 2, size: [1.2, 1.2], desc: 'Steinerne Tränke für Gartenbesucher.' },
+  beehive:     { name: 'Bienenstock',   price: 160, level: 6, size: [1.0, 1.0], desc: 'Fleißige Bienen summen um die Blüten.' },
+  pumpkins:    { name: 'Herbstkürbisse', price: 180, level: 1, size: [1.5, 1.4], desc: 'Saison-Deko für den Herbst.', seasonal: 'autumn' },
+  wheelbarrow: { name: 'Schubkarre',    price: 200, level: 3, size: [1.9, 0.8], desc: 'Voller Blumen.' },
+  tableSet:    { name: 'Gartentisch',   price: 260, level: 4, size: [2.1, 2.1], desc: 'Tisch, zwei Stühle und ein Sonnenschirm.' },
+  arch:        { name: 'Rosenbogen',    price: 320, level: 5, size: [2.2, 0.7], desc: 'Weißer Bogen mit rankenden Rosen.' },
+  fountain:    { name: 'Springbrunnen', price: 600, level: 8, size: [2.0, 2.0], desc: 'Plätschernder Brunnen als Mittelpunkt.' },
+  pumpkinLantern: { name: 'Kürbislaterne', size: [1.1, 1.1], desc: 'Exklusiv vom Herbstfest. Leuchtet nachts.', event: 'autumn' },
+  leafPile:    { name: 'Laubhaufen', size: [1.6, 1.5], desc: 'Exklusiv vom Herbstfest.', event: 'autumn' },
 };
-export const DECO_ORDER = ['lantern', 'flowerpots', 'bench', 'birdbath', 'wheelbarrow', 'pumpkins'];
+export const DECO_ORDER = ['pathStone', 'hedgeBlock', 'flowerpots', 'lantern', 'planter', 'birdhouse', 'bench', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'tableSet', 'arch', 'fountain'];
 export const ALL_DECO = [...DECO_ORDER, 'pumpkinLantern', 'leafPile'];
+export const MAX_DECO = 80; // Deko-Teile insgesamt (Leistung auf dem Handy)
+// Bevorzugte Plätze (Übernahme alter Spielstände, erste Käufe)
+export const DECO_PLACE = {
+  lantern: [[1.9, 8.2, 0], [-2.9, -4.6, 0]],
+  flowerpots: [[-8.6, -3.7, 0]],
+  bench: [[6.6, -4.75, 2]],
+  birdbath: [[-8.6, 1.0, 0]],
+  wheelbarrow: [[4.6, 8.2, 0]],
+  pumpkins: [[-8.6, -2.0, 0]],
+  pumpkinLantern: [[-0.9, 8.0, 0]],
+  leafPile: [[3.6, 6.4, 0]],
+};
 
 // Tier-Skins – rein kosmetisch
 export const SKINS = {
@@ -131,6 +188,7 @@ export const STORY = [
     { text: 'Schalte ein weiteres Beet frei.', goal: { type: 'beds', n: 7 }, reward: { coins: 60, xp: 20 }, say: 'Mehr Platz für mehr Blumen!' },
     { text: 'Ernte 3 Sonnenblumen.', goal: { type: 'harvest', seed: 'sunflower', n: 3 }, reward: { coins: 80, xp: 25, items: { fert: 2 } } },
     { text: 'Stelle eine Deko in deinen Garten (Shop → Deko).', goal: { type: 'deco', n: 1 }, reward: { coins: 80, xp: 20 }, say: 'Hübsch! Der Fuchs schaut sich das schon neugierig an.' },
+    { text: 'Gestalte deinen Garten: Verschiebe ein Beet oder eine Deko (Knopf „Gestalten“).', goal: { type: 'move', n: 1 }, reward: { coins: 60, xp: 15 }, say: 'So gefällt mir das! Dein Garten, deine Ordnung.' },
   ] },
   { title: 'Wasser marsch!', intro: 'Blumen wachsen schneller, wenn sie immer genug Wasser haben. Eine automatische Bewässerung wäre jetzt genau richtig.', quests: [
     { text: 'Erreiche Level 3.', goal: { type: 'level', n: 3 }, reward: { coins: 50, xp: 10 } },

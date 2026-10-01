@@ -11,7 +11,10 @@ Mobiles 3D-Garten- und Sammel-Browsergame. Pflanze Blumen, züchte neue Sorten, 
 ## Funktionen
 
 - **Konto:** Registrieren, Anmelden (Spielername oder E-Mail), Abmelden, Konto löschen. Spielstand auf dem Server, Kopie auf dem Gerät, Abgleich zwischen Geräten.
-- **Garten:** 15 Hochbeete (6 frei, weitere mit Münzen + Level), Ausbau zum Steinbeet (×1,5) und Prachtbeet (×2, mehr Funkelblüten), automatische Bewässerung (Sprinkler, +30 % Tempo).
+- **Garten:** 24 Hochbeete (6 frei, weitere mit Münzen + Level, 9 davon auf neuem Land), Ausbau zum Steinbeet (×1,5) und Prachtbeet (×2, mehr Funkelblüten), automatische Bewässerung (Sprinkler, +30 % Tempo).
+- **Gestalten:** Beete, Gewächshaus und Deko frei verschieben (ziehen), drehen, einlagern und wieder aufstellen; grüner/roter Rahmen zeigt, ob Platz frei ist. Haus und Teich bleiben fest.
+- **Garten vergrößern:** 3 Erweiterungen – der Zaun wandert nach außen (20 m → 36 m Seitenlänge).
+- **Deko:** 16 Arten (u. a. Springbrunnen, Rosenbogen, Gartentisch mit Schirm, Bienenstock, Vogelhaus, Blumenkübel, Heckenstücke, Trittsteine), mehrfach kaufbar, Lager mit Verkaufen zum halben Preis.
 - **Blumen:** 6 Gartenblumen + 7 Züchtungen (Regenbogentulpe, Sonnentulpe, Goldene Rose, Mondorchidee, Nordlicht-Rose, Schwarze Rose – nur nachts –, legendäre Sternenrose). Funkelblüten (×3).
 - **Gewächshaus:** restaurieren und Blumen kreuzen (Zuchtbuch mit Rezepten).
 - **Gartenbedarf:** Dünger, Turbo-Dünger, Glücksdünger, Zuchtbeschleuniger (einzeln oder im Paket).

@@ -2,7 +2,7 @@
 // Alle Funktionen verändern den übergebenen Spielstand und geben ein Ergebnis-Objekt zurück.
 import * as C from './config.js';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export const ERR = {
   locked: 'Dieses Beet ist noch nicht freigeschaltet.',
@@ -20,6 +20,10 @@ export const ERR = {
   noRecipe: 'Diese Kreuzung ergibt keine neue Sorte. Probier eine andere Kombination!',
   noJob: 'Im Gewächshaus läuft gerade keine Züchtung.',
   maxLevel: 'Dieses Beet ist schon vollständig ausgebaut.',
+  noSpace: 'Hier ist kein Platz – da steht schon etwas.',
+  outside: 'Das liegt außerhalb deines Gartens.',
+  maxLand: 'Dein Garten hat schon die volle Größe.',
+  maxDeco: 'Dein Garten ist voll mit Deko. Lagere etwas ein oder verkaufe es, bevor du Neues aufstellst.',
 };
 
 export function dayKey(now) {
@@ -43,7 +47,10 @@ export function newState(now = Date.now()) {
     bred: [],
     selectedSeed: 'daisy',
     collection: {},
-    deco: [],
+    deco: [],            // Deko-Arten, die man besitzt (Sammlung)
+    decor: [],           // aufgestellte bzw. eingelagerte Deko-Teile: { id, x, z, r, stored }
+    land: 0,             // Gartenerweiterung 0–3
+    layout: { beds: C.DEFAULT_BEDS.map((p) => [...p]), gh: [...C.DEFAULT_GH] },
     skins: [],
     activeSkin: { fox: 'default', hedgehog: 'default' },
     items: { fert: 0, turbo: 0, lucky: 0, boost: 0 },
@@ -89,7 +96,7 @@ export function addItems(s, items = {}) {
 export function grant(s, r = {}) {
   if (r.coins) addCoins(s, r.coins);
   if (r.items) addItems(s, r.items);
-  if (r.deco && C.DECO[r.deco] && !s.deco.includes(r.deco)) s.deco.push(r.deco);
+  if (r.deco && C.DECO[r.deco] && !s.deco.includes(r.deco)) { s.deco.push(r.deco); addDecor(s, r.deco); }
   if (r.skin && C.SKINS[r.skin] && !s.skins.includes(r.skin)) s.skins.push(r.skin);
   return r.xp ? addXp(s, r.xp) : [];
 }
@@ -101,7 +108,9 @@ export function levelUnlocks(lvl) {
     if (d.level === lvl) u.push({ kind: 'seed', id: k, label: d.rare ? `${d.name} (im Shop freischaltbar)` : `${d.name} pflanzbar` });
   }
   for (const r of C.RECIPES) if (C.SEEDS[r.result].level === lvl) u.push({ kind: 'recipe', id: r.result, label: `Züchtung: ${C.SEEDS[r.result].name}` });
-  C.BED_UNLOCK.forEach((b, i) => { if (b && b.level === lvl && lvl > 1) u.push({ kind: 'bed', id: i, label: 'Neues Beet freischaltbar' }); });
+  C.BED_UNLOCK.forEach((b, i) => { if (b && b.level === lvl && lvl > 1) u.push({ kind: 'bed', id: i, label: b.land ? `Neues Beet (auf Erweiterung ${b.land})` : 'Neues Beet freischaltbar' }); });
+  C.LAND.forEach((l, i) => { if (l.level === lvl) u.push({ kind: 'land', id: i, label: `Gartenerweiterung ${i}` }); });
+  for (const k of C.DECO_ORDER) if (C.DECO[k].level === lvl && lvl > 1) u.push({ kind: 'deco', id: k, label: `Deko: ${C.DECO[k].name}` });
   for (const k of C.ITEM_ORDER) if (C.ITEMS[k].level === lvl && lvl > 1) u.push({ kind: 'item', id: k, label: `${C.ITEMS[k].name} im Shop` });
   if (C.SPRINKLER.level === lvl) u.push({ kind: 'feature', id: 'sprinkler', label: 'Automatische Bewässerung' });
   if (C.GREENHOUSE.level === lvl) u.push({ kind: 'feature', id: 'greenhouse', label: 'Gewächshaus restaurieren' });
@@ -219,6 +228,7 @@ export function bedInfo(s, i, now) {
   const b = s.beds[i];
   if (!b) return null;
   const base = { i, lvl: b.lvl, sprinkler: b.sprinkler };
+  if (!bedVisible(s, i)) return { ...base, locked: true, hidden: true, price: C.BED_UNLOCK[i].cost, needLevel: C.BED_UNLOCK[i].level, needLand: C.BED_UNLOCK[i].land };
   if (b.locked) { const u = C.BED_UNLOCK[i]; return { ...base, locked: true, price: u.cost, needLevel: s.level < u.level ? u.level : 0 }; }
   if (!b.seed) return { ...base, empty: true };
   const dur = b.dur || growTime(b, b.seed);
@@ -275,6 +285,7 @@ export function unlockBed(s, i) {
   if (!b) return err('invalid');
   if (!b.locked) return err('owned');
   const u = C.BED_UNLOCK[i];
+  if (!bedVisible(s, i)) return err('land', { message: 'Dieses Beet liegt auf neuem Land. Erweitere zuerst deinen Garten.' });
   if (s.level < u.level) return needLevel(u.level, 'Dieses Beet');
   if (!spend(s, u.cost)) return noCoins(s, u.cost, 'dieses Beet');
   b.locked = false;
@@ -422,6 +433,7 @@ function questProgress(s, goal) {
     case 'level': return [Math.min(goal.n, s.level), goal.n];
     case 'beds': return [Math.min(goal.n, s.beds.filter((b) => !b.locked).length), goal.n];
     case 'deco': return [Math.min(goal.n, s.deco.length), goal.n];
+    case 'move': return [Math.min(goal.n, s.story.count), goal.n];
     case 'greenhouse': return [s.greenhouse.unlocked ? 1 : 0, 1];
     case 'breed': return [s.bred.includes(goal.seed) ? 1 : 0, 1];
     case 'rare': return [s.rareUnlocked.includes(goal.seed) ? 1 : 0, 1];
@@ -465,13 +477,130 @@ export function unlockRareSeed(s, id) {
   return { ok: true };
 }
 
-export function buyDeco(s, id) {
+export function buyDeco(s, id, near) {
   const d = C.DECO[id];
   if (!d || !d.price) return err('invalid');
-  if (s.deco.includes(id)) return err('owned');
+  if (s.level < (d.level || 1)) return needLevel(d.level, d.name);
+  if (s.decor.length >= C.MAX_DECO) return err('maxDeco');
   if (!spend(s, d.price)) return noCoins(s, d.price, d.name);
-  s.deco.push(id);
+  if (!s.deco.includes(id)) s.deco.push(id);
+  const k = addDecor(s, id, near);
+  return { ok: true, k, stored: s.decor[k].stored };
+}
+
+// ---------- Garten gestalten ----------
+export const landHalf = (s) => C.LAND[s.land].half;
+// Bereich, in dem Dinge stehen dürfen (Rand für Zaun, Hecke und Blumenrabatte)
+export function gardenBounds(s) { const G = landHalf(s); return [-G + 0.8, -G + 0.8, G - 1.5, G - 1.5]; }
+export const bedVisible = (s, i) => { const u = C.BED_UNLOCK[i]; return !u || !u.land || s.land >= u.land; };
+const RECT = (x, z, [w, d]) => [x - w / 2, z - d / 2, x + w / 2, z + d / 2];
+const EPS = 1e-6;
+const hits = (a, b) => a[0] < b[2] - EPS && b[0] < a[2] - EPS && a[1] < b[3] - EPS && b[1] < a[3] - EPS;
+
+export function footprint(s, ref, r) {
+  const [w, d] = ref.type === 'bed' ? C.BED_SIZE : ref.type === 'gh' ? C.GH_SIZE : C.DECO[ref.id ?? s.decor[ref.k]?.id]?.size || [1, 1];
+  return r % 2 ? [d, w] : [w, d];
+}
+export function objectPos(s, ref) {
+  if (ref.type === 'bed') return s.layout.beds[ref.i];
+  if (ref.type === 'gh') return s.layout.gh;
+  const d = s.decor[ref.k];
+  return d ? [d.x, d.z, d.r] : null;
+}
+const same = (a, b) => a && b && a.type === b.type && (a.type === 'gh' || (a.type === 'bed' ? a.i === b.i : a.k === b.k));
+
+// Alle belegten Flächen (außer dem Objekt „skip“)
+export function occupied(s, skip) {
+  const out = C.OBSTACLES.map((r) => ({ r, what: 'fixed' }));
+  s.layout.beds.forEach((p, i) => { if (bedVisible(s, i) && !same(skip, { type: 'bed', i })) out.push({ r: RECT(p[0], p[1], footprint(s, { type: 'bed' }, p[2])), what: 'bed' }); });
+  if (!same(skip, { type: 'gh' })) { const g = s.layout.gh; out.push({ r: RECT(g[0], g[1], footprint(s, { type: 'gh' }, g[2])), what: 'gh' }); }
+  s.decor.forEach((d, k) => { if (!d.stored && !same(skip, { type: 'deco', k })) out.push({ r: RECT(d.x, d.z, footprint(s, { type: 'deco', id: d.id }, d.r)), what: 'deco' }); });
+  return out;
+}
+
+export function canPlace(s, ref, x, z, r = 0) {
+  if (![x, z].every(Number.isFinite) || ![0, 1, 2, 3].includes(r)) return err('invalid');
+  const rect = RECT(x, z, footprint(s, ref, r));
+  const b = gardenBounds(s);
+  if (rect[0] < b[0] - EPS || rect[1] < b[1] - EPS || rect[2] > b[2] + EPS || rect[3] > b[3] + EPS) return err('outside');
+  if (occupied(s, ref).some((o) => hits(rect, o.r))) return err('noSpace');
   return { ok: true };
+}
+
+export function moveObject(s, ref, x, z, r = 0) {
+  if (ref.type === 'bed' && (!s.layout.beds[ref.i] || !bedVisible(s, ref.i))) return err('invalid');
+  if (ref.type === 'deco' && (!s.decor[ref.k] || s.decor[ref.k].stored)) return err('invalid');
+  const c = canPlace(s, ref, x, z, r);
+  if (!c.ok) return c;
+  const old = objectPos(s, ref);
+  const moved = old[0] !== x || old[1] !== z || old[2] !== r;
+  if (ref.type === 'deco') Object.assign(s.decor[ref.k], { x, z, r });
+  else if (ref.type === 'gh') s.layout.gh = [x, z, r];
+  else s.layout.beds[ref.i] = [x, z, r];
+  if (moved) track(s, 'move');
+  return { ok: true, moved };
+}
+
+// Freien Platz suchen: spiralförmig um „near“, im Raster SNAP
+export function findSpot(s, ref, near = [0.4, 1], r = 0) {
+  const step = 0.5, b = gardenBounds(s), maxR = Math.ceil((b[2] - b[0]) / step);
+  const snap = (v) => Math.round(v / C.SNAP) * C.SNAP;
+  const cx = snap(near[0]), cz = snap(near[1]);
+  for (let ring = 0; ring <= maxR; ring++) {
+    for (let dx = -ring; dx <= ring; dx++) for (let dz = -ring; dz <= ring; dz++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
+      const x = cx + dx * step, z = cz + dz * step;
+      if (canPlace(s, ref, x, z, r).ok) return [x, z, r];
+    }
+  }
+  return null;
+}
+
+// Neues Deko-Teil: bevorzugter Platz, sonst nächster freier, sonst ins Lager
+export function addDecor(s, id, near) {
+  const k = s.decor.length;
+  s.decor.push({ id, x: 0, z: 0, r: 0, stored: true });
+  const ref = { type: 'deco', k };
+  const prefs = (C.DECO_PLACE[id] || []).filter((p) => canPlace(s, ref, p[0], p[1], p[2]).ok);
+  const spot = (!near && prefs[0]) || findSpot(s, ref, near || (C.DECO_PLACE[id]?.[0]) || [0.4, 6.5], 0);
+  if (spot) Object.assign(s.decor[k], { x: spot[0], z: spot[1], r: spot[2], stored: false });
+  return k;
+}
+
+export function storeDeco(s, k) {
+  const d = s.decor[k];
+  if (!d) return err('invalid');
+  d.stored = true;
+  return { ok: true };
+}
+
+export function placeDeco(s, k, near) {
+  const d = s.decor[k];
+  if (!d || !d.stored) return err('invalid');
+  const spot = findSpot(s, { type: 'deco', k }, near || [0.4, 6.5], 0);
+  if (!spot) return err('noSpace', { message: 'Im Garten ist gerade kein Platz frei. Verschiebe oder lagere zuerst etwas ein – oder erweitere deinen Garten.' });
+  Object.assign(d, { x: spot[0], z: spot[1], r: spot[2], stored: false });
+  return { ok: true, pos: spot };
+}
+
+// Eingelagerte Deko zurückgeben: halber Preis zurück
+export function sellDeco(s, k) {
+  const d = s.decor[k];
+  if (!d) return err('invalid');
+  const price = C.DECO[d.id]?.price || 0;
+  const back = Math.floor(price / 2);
+  s.decor.splice(k, 1);
+  if (back) addCoins(s, back);
+  return { ok: true, coins: back };
+}
+
+export function expandLand(s) {
+  const next = C.LAND[s.land + 1];
+  if (!next) return err('maxLand');
+  if (s.level < next.level) return needLevel(next.level, 'Die nächste Gartenerweiterung');
+  if (!spend(s, next.cost)) return noCoins(s, next.cost, 'die Gartenerweiterung');
+  s.land++;
+  return { ok: true, land: s.land, half: next.half };
 }
 
 export function buySkin(s, id) {
@@ -563,6 +692,7 @@ export function migrate(raw, now = Date.now()) {
   if (raw.v === 1) {
     // Prototyp-Spielstand übernehmen
     const s = base;
+    s.decor = undefined; // wird in repair aus den Deko-Arten aufgebaut
     s.coins = Math.max(0, Math.floor(Number(raw.coins) || 0)) || base.coins;
     if (raw.col && typeof raw.col === 'object') for (const [k, n] of Object.entries(raw.col)) {
       const id = k === 'sun' ? 'sunflower' : k === 'lotus' ? 'orchid' : k;
@@ -588,10 +718,16 @@ export function migrate(raw, now = Date.now()) {
     s.activeSkin = { ...base.activeSkin, ...(raw.activeSkin || {}) };
     // Fortschritt in der Story grob übernehmen: erfahrene Spieler starten nicht bei null
     s.story = { ...base.story };
+    s.decor = undefined; s.layout = undefined; s.land = 0;
     s.v = SAVE_VERSION;
     return { state: repair(s, now), migrated: true };
   }
-  if (raw.v === SAVE_VERSION) return { state: repair({ ...base, ...raw, settings: { ...base.settings, ...(raw.settings || {}) }, stats: { ...base.stats, ...(raw.stats || {}) }, activeSkin: { ...base.activeSkin, ...(raw.activeSkin || {}) } }, now), migrated: false };
+  if (raw.v === 3 || raw.v === SAVE_VERSION) {
+    const s = { ...base, ...raw, settings: { ...base.settings, ...(raw.settings || {}) }, stats: { ...base.stats, ...(raw.stats || {}) }, activeSkin: { ...base.activeSkin, ...(raw.activeSkin || {}) } };
+    // Version 3 -> 4: frei verschiebbarer Garten, Deko als einzelne Teile
+    if (raw.v === 3) { s.decor = undefined; s.layout = undefined; s.land = 0; }
+    return { state: repair(s, now), migrated: raw.v === 3 };
+  }
   return { state: base, migrated: false, discarded: true };
 }
 
@@ -625,6 +761,19 @@ export function repair(s, now) {
   s.rareUnlocked = [...new Set(s.rareUnlocked.filter((k) => C.SEEDS[k]?.rare))];
   s.bred = [...new Set(s.bred.filter((k) => C.SEEDS[k]?.bred))];
   s.deco = [...new Set(s.deco.filter((k) => C.DECO[k]))];
+  // Garten-Layout
+  s.land = Math.min(C.LAND.length - 1, num(s.land, 0));
+  const lay = obj(s.layout) ? s.layout : {};
+  const pos = (p, d) => (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]) ? [p[0], p[1], [0, 1, 2, 3].includes(p[2]) ? p[2] : 0] : [...d]);
+  s.layout = { beds: C.DEFAULT_BEDS.map((d, i) => pos(Array.isArray(lay.beds) ? lay.beds[i] : null, d)), gh: pos(lay.gh, C.DEFAULT_GH) };
+  if (!Array.isArray(s.decor)) {
+    // Übernahme: jede Deko-Art an ihre bisherigen Plätze
+    s.decor = [];
+    for (const id of s.deco) for (let n = 0; n < Math.max(1, (C.DECO_PLACE[id] || []).length); n++) addDecor(s, id);
+  } else {
+    s.decor = s.decor.filter((d) => obj(d) && C.DECO[d.id]).slice(0, C.MAX_DECO).map((d) => ({ id: d.id, x: Number.isFinite(d.x) ? d.x : 0, z: Number.isFinite(d.z) ? d.z : 0, r: [0, 1, 2, 3].includes(d.r) ? d.r : 0, stored: !!d.stored || !Number.isFinite(d.x) || !Number.isFinite(d.z) }));
+  }
+  for (const d of s.decor) if (!s.deco.includes(d.id)) s.deco.push(d.id);
   s.skins = [...new Set(s.skins.filter((k) => C.SKINS[k]))];
   s.seenAnimals = [...new Set(s.seenAnimals.filter((k) => C.ANIMALS[k]))];
   const col = obj(s.collection) ? s.collection : {};

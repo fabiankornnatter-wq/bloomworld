@@ -48,6 +48,8 @@ export class UI {
     $('coinIcon').innerHTML = I.coin();
     $('gearBtn').innerHTML = I.gear;
     $('breedBtn').insertAdjacentHTML('afterbegin', I.greenhouse);
+    $('editBtn').insertAdjacentHTML('afterbegin', I.brush);
+    $('editBtn').onclick = () => this.api.act.toggleEdit();
     $('centerBtn').insertAdjacentHTML('afterbegin', I.target);
     $('nav').innerHTML = NAV_ITEMS.map(([id, label]) => `<button data-nav="${id}" class="${id === 'garden' ? 'on' : ''}" aria-label="${label}">${I.NAV[id]}<span>${label}</span><i class="badge" id="badge-${id}" hidden></i></button>`).join('');
     $('bubbles').innerHTML = Array.from({ length: C.BED_COUNT + 1 }, (_, i) => `<div class="bub" id="bub${i}" hidden></div>`).join('');
@@ -61,7 +63,7 @@ export class UI {
     $('centerBtn').onclick = () => { this.api.sound.play('tap'); this.api.world.resetView(); };
     $('harvestAll').onclick = () => this.api.act.harvestAll();
     $('quest').onclick = () => this.api.act.questTracker();
-    for (const el of [$('panel'), $('sheet'), $('modal'), $('toast'), $('modeBar')]) el.addEventListener('click', (e) => this.onAct(e));
+    for (const el of [$('panel'), $('sheet'), $('modal'), $('toast'), $('modeBar'), $('editBar')]) el.addEventListener('click', (e) => this.onAct(e));
     $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') this.closeModal(); });
     $('panel').addEventListener('input', (e) => this.onInput(e));
     for (const id of ['hud', 'side', 'nav']) $(id).hidden = false;
@@ -71,39 +73,33 @@ export class UI {
   }
 
   // ---------- Zurück-Taste (Android) und Escape ----------
-  // Mehrere Änderungen im selben Moment werden gebündelt, und solange ein eigenes history.back()
-  // unterwegs ist, wird nichts Neues eingetragen – sonst könnte die Zurück-Taste das Spiel verlassen.
+  // Zurück-Taste (Android): Solange etwas offen ist, liegt ein „Wächter“-Eintrag im Verlauf.
+  // Er wird beim Schließen über die Oberfläche NICHT wieder entfernt (kein history.back()),
+  // so gibt es keine Wettläufe mit verspäteten popstate-Ereignissen. Ist nichts mehr offen,
+  // verbraucht ein Druck auf Zurück nur den Wächter – der nächste verlässt die Seite.
+  get anyOpen() { return this.modalOpen || this.sheetBed >= 0 || !!this.sheetKind || !!this.panel || !!this.mode || !!this.edit; }
   syncHistory() {
-    if (this._hs) return;
-    this._hs = setTimeout(() => { this._hs = null; this.doSyncHistory(); }, 0);
-  }
-  doSyncHistory() {
-    if (this.ignorePop) {
-      if (performance.now() - this.popSince < 1500) { this._hs = setTimeout(() => { this._hs = null; this.doSyncHistory(); }, 60); return; }
-      this.ignorePop = false; // Rückmeldung blieb aus (z.B. eingebettete Ansicht)
+    if (this.anyOpen && !this.guard) {
+      try { history.pushState({ bloomworld: 1 }, ''); this.guard = true; } catch { /* z.B. in eingebetteten Ansichten */ }
     }
-    const open = this.modalOpen || this.sheetBed >= 0 || !!this.panel || !!this.mode;
-    try {
-      if (open && !this.guard) { history.pushState({ bloomworld: 1 }, ''); this.guard = true; }
-      else if (!open && this.guard) { this.guard = false; this.ignorePop = true; this.popSince = performance.now(); history.back(); }
-    } catch { /* z.B. in eingebetteten Ansichten */ }
   }
   onPopState() {
-    if (this.ignorePop) { this.ignorePop = false; this.syncHistory(); return; }
+    if (this.ignorePop) return;
     this.guard = false;
-    this.back();
+    if (this.anyOpen) this.back();
   }
   back() {
     if (this.modalOpen) this.closeModal();
-    else if (this.sheetBed >= 0) this.closeSheet();
+    else if (this.sheetBed >= 0 || this.sheetKind) this.closeSheet();
     else if (this.panel) this.nav('garden');
     else if (this.mode) this.setMode(null);
+    else if (this.edit) { if (this.edit.sel) this.api.act.editDeselect(); else this.api.act.exitEdit(); }
     this.syncHistory();
   }
 
   // Liegt die Bildschirmposition auf einer Blase? (oberste zuerst)
   bubbleAt(x, y) {
-    if (this.panel) return null;
+    if (this.panel || this.edit) return null;
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
       const el = this.bubbles[i];
       if (el.hidden) continue;
@@ -122,6 +118,7 @@ export class UI {
     this.api.sound.play('open');
     this.closeSheet();
     if (this.mode) this.setMode(null, true);
+    if (this.edit) this.api.act.exitEdit(true);
     if (id === 'garden') { this.closePanel(); return; }
     if (tab) this.tab[id] = tab;
     if (!this.panel) this.panelSince = performance.now();
@@ -181,7 +178,57 @@ export class UI {
     this.renderQuest(st);
     if (this.mode) this.renderModeBar();
     if (this.panel) this.renderPanel(true);
-    if (this.sheetBed >= 0) this.renderSheet();
+    if (this.sheetBed >= 0 || this.sheetKind) this.renderSheet();
+    if (this.edit) this.renderEditBar();
+  }
+
+  // ---------- Gestalten ----------
+  renderEditBar() {
+    const e = this.edit, s = this.s, bar = $('editBar');
+    if (!e) { bar.hidden = true; return; }
+    const stored = s.decor.filter((d) => d.stored).length;
+    let html;
+    if (!e.sel) {
+      html = `<div class="eb-msg">${svg(I.hand, 30)}<span>Tippe ein Beet, das Gewächshaus oder eine Deko an und <b>ziehe</b> es an einen neuen Platz.</span></div>
+        <div class="eb-btns"><button class="ebtn" data-act="editStore">${I.crate}<span>Lager${stored ? ` (${stored})` : ''}</span></button><button class="ebtn" data-act="editShop">${I.NAV.shop}<span>Deko kaufen</span></button><button class="ebtn" data-act="editLand">${I.expand}<span>Vergrößern</span></button><button class="btn small pink" data-act="editDone">Fertig</button></div>`;
+    } else {
+      const name = this.objName(e.sel);
+      html = `<div class="eb-msg">${svg(e.valid ? I.hand : I.lock, 30)}<span><b>${esc(name)}</b><br>${e.valid ? 'Ziehen zum Verschieben' : 'Hier ist kein Platz'}</span></div>
+        <div class="eb-btns"><button class="ebtn" data-act="editRotate">${I.rotate}<span>Drehen</span></button>${e.sel.type === 'deco' ? `<button class="ebtn" data-act="editStoreSel">${I.crate}<span>Einlagern</span></button>` : ''}<button class="ebtn" data-act="editDeselect">✓<span>Ablegen</span></button><button class="btn small pink" data-act="editDone">Fertig</button></div>`;
+    }
+    if (bar.dataset.h !== html) { bar.innerHTML = html; bar.dataset.h = html; }
+    bar.hidden = false;
+  }
+
+  objName(ref) {
+    const s = this.s;
+    if (ref.type === 'gh') return 'Gewächshaus';
+    if (ref.type === 'bed') { const b = s.beds[ref.i]; return b.locked ? 'Verwildertes Beet' : `${C.BED_LEVELS[b.lvl - 1].name}${b.seed ? ' · ' + plain(C.SEEDS[b.seed].name) : ''}`; }
+    return C.DECO[s.decor[ref.k]?.id]?.name || 'Deko';
+  }
+
+  storeHtml() {
+    const s = this.s;
+    const groups = {};
+    s.decor.forEach((d, k) => { if (d.stored) (groups[d.id] ||= []).push(k); });
+    const ids = Object.keys(groups);
+    const body = ids.length ? `<div class="storelist">${ids.map((id) => {
+      const d = C.DECO[id], k = groups[id][0];
+      return `<div class="sitem"><img alt="" src="${this.icons.deco[id]}"><div class="grow"><b>${esc(d.name)}</b><small>${groups[id].length}× im Lager</small></div>
+        <div class="sbtns"><button class="btn small" data-act="storePlace" data-id="${k}">Aufstellen</button>${d.price ? `<button class="btn small ghost" data-act="storeSell" data-id="${k}">Verkaufen ${I.coin()} ${Math.floor(d.price / 2)}</button>` : ''}</div></div>`;
+    }).join('')}</div>` : `<p class="empty">Dein Lager ist leer. Wähle im Gestalten-Modus eine Deko aus und tippe auf „Einlagern“, um Platz zu schaffen.</p>`;
+    return `<div class="inner"><h3>Lager <button class="x" data-act="closeSheet" aria-label="Schließen">✕</button></h3>${body}
+      <div class="all"><button class="btn small blue wide" data-act="editShop">Neue Deko kaufen</button></div></div>`;
+  }
+
+  landDialog() {
+    const s = this.s, cur = C.LAND[s.land], next = C.LAND[s.land + 1];
+    const size = (l) => `${Math.round(l.half * 2)} × ${Math.round(l.half * 2)} m`;
+    if (!next) { this.modal({ title: 'Garten vergrößern', html: `${svg(I.expand, 90)}<p>Dein Garten hat schon die volle Größe (${size(cur)}). Wunderbar!</p>`, buttons: [['OK', 'closeModal', '']] }); return; }
+    const newBeds = C.BED_UNLOCK.filter((b) => b && b.land === s.land + 1).length;
+    const lvOk = s.level >= next.level, coinOk = s.coins >= next.cost;
+    this.modal({ title: 'Garten vergrößern', html: `${svg(I.expand, 90)}<p>Der Zaun wandert nach außen: <b>${size(cur)}</b> → <b>${size(next)}</b>.<br>Mehr Platz für Deko und ${newBeds} neue Beete.</p><div class="big-num">${I.coin()} ${num(next.cost)}</div>${lvOk ? (coinOk ? '' : `<p style="color:#b3123a">Dir fehlen noch ${num(next.cost - s.coins)} Münzen.</p>`) : `<p style="color:#b3123a">Ab Level ${next.level}.</p>`}`,
+      buttons: lvOk && coinOk ? [['Vergrößern', 'expandLand', '']] : [['OK', 'closeModal', 'ghost']] });
   }
 
   badge(id, n) { const b = $('badge-' + id); if (b) { b.textContent = n || ''; b.hidden = !n; } }
@@ -214,7 +261,7 @@ export class UI {
 
   // ---------- Blasen über Beeten und Gewächshaus (jedes Bild) ----------
   frame(infos, now) {
-    const hide = !!this.panel, s = this.s, m = this.mode;
+    const hide = !!this.panel || !!this.edit, s = this.s, m = this.mode;
     let ready = 0;
     // Gesperrte Beete: Preis nur bei den nächsten freischaltbaren zeigen
     const firstLevelLocked = infos.find((x) => x.locked && x.needLevel);
@@ -222,7 +269,8 @@ export class UI {
       const el = this.bubbles[i];
       if (info.ready) ready++;
       let key = null, html, cls;
-      if (m) {
+      if (info.hidden) { /* Beet auf noch nicht gekauftem Land */ }
+      else if (m) {
         if (!info.locked) {
           if (m.kind === 'sprinkler' && !info.sprinkler) { key = 'MS'; cls = 'mode'; html = `<div class="b">${I.drop}${C.SPRINKLER.cost}</div>`; }
           else if (m.kind === 'upgrade' && info.lvl < C.BED_LEVELS.length) { const nx = C.BED_LEVELS[info.lvl]; key = 'MU' + info.lvl; cls = 'mode'; html = `<div class="b">${I.upgrade}${s.level < nx.level ? `Lv ${nx.level}` : num(nx.cost)}</div>`; }
@@ -290,14 +338,14 @@ export class UI {
   openSeedSheet(bed) { this.openSheet(bed, 'seed'); }
 
   closeSheet() {
-    const was = this.sheetBed >= 0;
+    const was = this.sheetBed >= 0 || !!this.sheetKind;
     this.sheetBed = -1; this.sheetKind = null;
     $('sheet').classList.remove('open'); $('sheet').inert = true;
     if (was) this.syncHistory();
   }
 
   renderSheet() {
-    const html = this.sheetKind === 'care' ? this.careHtml(this.sheetBed) : this.seedHtml();
+    const html = this.sheetKind === 'care' ? this.careHtml(this.sheetBed) : this.sheetKind === 'store' ? this.storeHtml() : this.seedHtml();
     if (html === null) { this.closeSheet(); return; }
     $('sheet').innerHTML = html;
   }
@@ -433,7 +481,7 @@ export class UI {
 
   // "Los"-Knopf, der direkt zum passenden Ort führt
   questGo(goal) {
-    const map = { deco: ['shop', 'deco'], rare: ['shop', 'flowers'], greenhouse: ['breed'], breed: ['breed'], sprinkler: ['mode', 'sprinkler'], bedLevel: ['mode', 'upgrade'], beds: ['bed'], useItem: ['shop', 'supplies'] };
+    const map = { deco: ['shop', 'deco'], rare: ['shop', 'flowers'], greenhouse: ['breed'], breed: ['breed'], sprinkler: ['mode', 'sprinkler'], bedLevel: ['mode', 'upgrade'], beds: ['bed'], useItem: ['shop', 'supplies'], move: ['edit'] };
     const t = map[goal.type];
     if (!t) return '';
     return `<button class="btn small blue" data-act="go" data-id="${t.join(':')}">Los</button>`;
@@ -471,6 +519,8 @@ export class UI {
     if (u.kind === 'seed' || u.kind === 'recipe') return `<img alt="" src="${ic.flower[u.id]}">`;
     if (u.kind === 'bed') return `<img alt="" src="${ic.bed}">`;
     if (u.kind === 'item') return I.ITEM[u.id];
+    if (u.kind === 'deco') return `<img alt="" src="${ic.deco[u.id]}">`;
+    if (u.kind === 'land') return I.expand;
     if (u.id === 'sprinkler') return `<img alt="" src="${ic.sprinkler}">`;
     if (u.id === 'greenhouse') return `<img alt="" src="${ic.greenhouse}">`;
     if (u.id === 'bed2' || u.id === 'bed3') return `<img alt="" src="${ic.bedLvl[u.id === 'bed2' ? 2 : 3]}">`;
@@ -538,9 +588,10 @@ export class UI {
         return `<div class="card row"><img class="ic" alt="" src="${this.icons.animal[k]}" style="${seen ? '' : 'filter:brightness(0) opacity(.25)'}"><div class="grow"><h4>${esc(d.name)} ${seen ? '✓' : ''}</h4><p>${esc(d.desc)} ${seen ? '' : hint}</p>${skinBtns}</div></div>`;
       }).join('');
     } else {
-      const own = C.ALL_DECO.filter((k) => s.deco.includes(k));
-      h += own.length ? `<div class="grid3">${own.map((k) => `<div class="tile"><img alt="" src="${this.icons.deco[k]}"><b>${esc(C.DECO[k].name)}</b>${C.DECO[k].event ? '<small>Event-Deko</small>' : ''}</div>`).join('')}</div>` : `<div class="card"><h4>Noch keine Deko</h4><p>Im Shop findest du Laternen, Bänke, Kürbisse und mehr für deinen Garten.</p></div>`;
-      h += `<button class="btn wide" style="margin-top:12px" data-act="tab" data-panel="shop" data-id="deco">Zum Deko-Shop</button>`;
+      const count = (k) => s.decor.filter((d) => d.id === k).length;
+      h += `<div class="card"><h4>${s.deco.length} von ${C.ALL_DECO.length} Deko-Arten gesammelt</h4><p>${s.decor.filter((d) => !d.stored).length} Teile im Garten · ${s.decor.filter((d) => d.stored).length} im Lager</p><div class="prog"><i style="width:${(s.deco.length / C.ALL_DECO.length) * 100}%"></i></div></div>`;
+      h += `<div class="grid3">${C.ALL_DECO.map((k) => { const n = count(k), own = s.deco.includes(k); return `<div class="tile ${own ? '' : 'unknown'}"><img alt="" src="${this.icons.deco[k]}"><b>${esc(C.DECO[k].name)}</b><small>${own ? `${n}× im Besitz` : C.DECO[k].event ? 'Event-Deko' : 'Noch nicht gekauft'}</small></div>`; }).join('')}</div>`;
+      h += `<div class="btnrow center"><button class="btn" data-act="tab" data-panel="shop" data-id="deco">Zum Deko-Shop</button><button class="btn blue" data-act="editStart">${svg(I.brush, 24)} Gestalten</button></div>`;
     }
     return h;
   }
@@ -626,8 +677,10 @@ export class UI {
           <div class="btnrow"><button class="btn small blue" data-act="sprinklerMode" ${sprOk && spr < unlocked ? '' : 'disabled'}>${sprOk ? `Installieren · ${I.coin()} ${C.SPRINKLER.cost} pro Beet` : `ab Level ${C.SPRINKLER.level}`}</button></div></div>
         <div class="card itemcard"><div class="row"><img class="ic" alt="" src="${this.icons.bedLvl[2]}"><div class="grow"><h4>Beete ausbauen</h4><p>${C.BED_LEVELS.slice(1).map((b) => `<b>${b.name}</b>: ×${String(b.mult).replace('.', ',')} Münzen${b.shiny ? ', mehr Funkelblüten' : ''} (ab Level ${b.level}, ${num(b.cost)} Münzen)`).join('<br>')}</p></div></div>
           <div class="btnrow"><button class="btn small blue" data-act="upgradeMode" ${s.level >= C.BED_LEVELS[1].level ? '' : 'disabled'}>${s.level >= C.BED_LEVELS[1].level ? 'Beet auswählen' : `ab Level ${C.BED_LEVELS[1].level}`}</button></div></div>
-        <div class="card itemcard"><div class="row"><img class="ic" alt="" src="${this.icons.bed}"><div class="grow"><h4>Neue Beete <span class="have">${unlocked}/${C.BED_COUNT}</span></h4><p>Mehr Beete bedeuten mehr Blumen gleichzeitig. Neue Plätze werden mit steigendem Level freigeschaltet.</p></div></div>
-          <div class="btnrow"><button class="btn small blue" data-act="showNextBed" ${unlocked < C.BED_COUNT ? '' : 'disabled'}>${unlocked < C.BED_COUNT ? 'Nächstes Beet zeigen' : 'Alle Beete frei'}</button></div></div>`;
+        <div class="card itemcard"><div class="row"><img class="ic" alt="" src="${this.icons.bed}"><div class="grow"><h4>Neue Beete <span class="have">${unlocked}/${C.BED_COUNT}</span></h4><p>Mehr Beete bedeuten mehr Blumen gleichzeitig. Neue Plätze gibt es mit steigendem Level und auf neuem Land.</p></div></div>
+          <div class="btnrow"><button class="btn small blue" data-act="showNextBed" ${s.beds.some((b, i) => b.locked && G.bedVisible(s, i)) ? '' : 'disabled'}>${s.beds.some((b, i) => b.locked && G.bedVisible(s, i)) ? 'Nächstes Beet zeigen' : unlocked < C.BED_COUNT ? 'Erst Garten vergrößern' : 'Alle Beete frei'}</button></div></div>
+        <div class="card itemcard"><div class="row">${svg(I.expand, 60)}<div class="grow"><h4>Garten vergrößern <span class="have">Stufe ${s.land}/${C.LAND.length - 1}</span></h4><p>Der Zaun wandert nach außen: mehr Platz für Deko und neue Beete.</p></div></div>
+          <div class="btnrow"><button class="btn small blue" data-act="editLand" ${C.LAND[s.land + 1] ? '' : 'disabled'}>${C.LAND[s.land + 1] ? `Vergrößern · ${I.coin()} ${num(C.LAND[s.land + 1].cost)}` : 'Volle Größe'}</button></div></div>`;
       if (!s.greenhouse.unlocked) h += `<div class="card itemcard"><div class="row"><img class="ic" alt="" src="${this.icons.greenhouse}"><div class="grow"><h4>Gewächshaus</h4><p>Restaurieren, um neue Sorten zu züchten. Ab Level ${C.GREENHOUSE.level}.</p></div></div><div class="btnrow"><button class="btn small blue" data-act="openBreed">Ansehen</button></div></div>`;
     } else if (cur === 'flowers') {
       h += `<div class="sec" style="margin-top:4px">Seltene Blumen</div>` + C.BASE_SEEDS.filter((k) => C.SEEDS[k].rare).map((k) => {
@@ -638,10 +691,11 @@ export class UI {
         return `<div class="card row"><img class="ic" alt="" src="${this.icons.flower[k]}"><div class="grow"><h4>${esc(d.name)}</h4><p>${ok ? 'Verfügbar' : `Ab Level ${d.level}`} · ${d.cost} Münzen Saatgut</p></div>${ok ? '<span style="font-size:22px">✓</span>' : I.lock.replace('class="lock"', 'style="width:28px;height:28px"')}</div>`;
       }).join('') + `<div class="sec">Züchtungen</div><div class="card row">${svg(I.greenhouse, 56)}<div class="grow"><h4>${s.bred.length} von ${C.BRED_SEEDS.length} gezüchtet</h4><p>Regenbogentulpe, Goldene Rose, Nordlicht-Rose, Schwarze Rose, Sternenrose und mehr gibt es nicht zu kaufen – du züchtest sie selbst im Gewächshaus.</p></div><button class="btn small blue" data-act="openBreed">Öffnen</button></div>`;
     } else if (cur === 'deco') {
+      h += `<div class="card row">${svg(I.brush, 48)}<div class="grow"><h4>Gestalte deinen Garten</h4><p>Deko kannst du mehrfach kaufen und im Gestalten-Modus frei verschieben, drehen und einlagern.</p></div><button class="btn small blue" data-act="editStart">Gestalten</button></div>`;
       h += `<div class="grid2">` + C.DECO_ORDER.map((k) => {
-        const d = C.DECO[k], own = s.deco.includes(k);
-        return `<div class="tile"><img alt="" src="${this.icons.deco[k]}"><b>${esc(d.name)}${d.seasonal ? ' 🍂' : ''}</b><small>${esc(d.desc)}</small>${own ? '<button class="btn small off" disabled>✓ Im Garten</button>' : `<button class="btn small" data-act="buyDeco" data-id="${k}">${I.coin()} ${d.price}</button>`}</div>`;
-      }).join('') + `</div><p class="note">Deko erscheint sofort in deinem Garten. Exklusive Deko gibt es bei Events.</p>`;
+        const d = C.DECO[k], n = s.decor.filter((x) => x.id === k).length, lvOk = s.level >= (d.level || 1);
+        return `<div class="tile">${n ? `<span class="owned">${n}×</span>` : ''}<img alt="" src="${this.icons.deco[k]}"><b>${esc(d.name)}${d.seasonal ? ' 🍂' : ''}</b><small>${esc(d.desc)}</small>${lvOk ? `<button class="btn small" data-act="buyDeco" data-id="${k}">${I.coin()} ${d.price}</button>` : `<button class="btn small" disabled>${I.lock.replace('class="lock"', 'style="width:16px;height:16px"')} Level ${d.level}</button>`}</div>`;
+      }).join('') + `</div><p class="note">Neue Deko wird automatisch auf einen freien Platz gestellt. Exklusive Deko gibt es bei Events.</p>`;
     } else {
       h += `<div class="grid2">` + Object.entries(C.SKINS).map(([k, d]) => {
         const own = s.skins.includes(k);
@@ -724,6 +778,17 @@ export class UI {
       case 'upgradeMode': this.setMode({ kind: 'upgrade' }); break;
       case 'endMode': this.setMode(null); break;
       case 'showNextBed': A.showNextBed(); break;
+      case 'editStart': A.toggleEdit(true); break;
+      case 'editDone': A.exitEdit(); break;
+      case 'editDeselect': A.editDeselect(); break;
+      case 'editRotate': A.editRotate(); break;
+      case 'editStoreSel': A.editStoreSel(); break;
+      case 'editStore': this.openSheet(-1, 'store'); break;
+      case 'editShop': this.closeSheet(); this.nav('shop', 'deco'); break;
+      case 'editLand': this.landDialog(); break;
+      case 'expandLand': this.closeModal(); A.expandLand(); break;
+      case 'storePlace': A.storePlace(+id); break;
+      case 'storeSell': A.storeSell(+id); break;
       case 'restoreGH': A.restoreGreenhouse(); break;
       case 'breed': A.breed(+id); break;
       case 'collectBreed': A.collectBreed(); break;

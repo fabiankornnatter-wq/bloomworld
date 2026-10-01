@@ -5,12 +5,26 @@
 // niemals im Code und niemals im Browser.
 // Lokale Tests: In-Memory-Speicher, nur wenn BW_DEV_MEMORY_DB=1 gesetzt ist.
 
-const env = (a, b) => process.env[a] || process.env[b] || '';
-const restUrl = () => env('KV_REST_API_URL', 'UPSTASH_REDIS_REST_URL').replace(/\/+$/, '');
-const restToken = () => env('KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_TOKEN');
+// Vercel kann den Namen der Variablen mit einem frei wählbaren Präfix versehen (z. B. STORAGE_KV_REST_API_URL).
+// Deshalb werden alle passenden Namen gesucht – die Werte bleiben auf dem Server.
+const URL_RE = /(^|_)(KV_REST_API_URL|REDIS_REST_URL|REST_API_URL)$/;
+function findRest() {
+  const env = process.env;
+  const names = Object.keys(env).filter((k) => URL_RE.test(k) && /^https:\/\//.test(env[k] || '')).sort((a, b) => a.length - b.length);
+  for (const n of names) {
+    const tokenName = n.replace(/_URL$/, '_TOKEN');
+    if (env[tokenName]) return { url: env[n].replace(/\/+$/, ''), token: env[tokenName], source: n };
+  }
+  return null;
+}
+const restUrl = () => findRest()?.url || '';
+const restToken = () => findRest()?.token || '';
 const memoryMode = () => process.env.BW_DEV_MEMORY_DB === '1';
 
-export const kvConfigured = () => memoryMode() || !!(restUrl() && restToken());
+export const kvConfigured = () => memoryMode() || !!findRest();
+// Nur die NAMEN der Speicher-Variablen (nie die Werte) – zur Fehlersuche
+export const kvVarNames = () => Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH|STORAGE/.test(k)).sort();
+export const kvSource = () => (memoryMode() ? 'memory' : findRest()?.source || null);
 
 // Spielstand nur speichern, wenn das Konto noch existiert, die Revision passt (Schutz vor Überschreiben
 // von einem anderen Gerät) und der Spielstand nicht von einer älteren Spielversion stammt.
@@ -69,6 +83,7 @@ class MemoryKV {
     const k = a[0] !== undefined ? String(a[0]) : '';
     const has = this.alive(k);
     switch (n) {
+      case 'PING': return 'PONG';
       case 'GET': return has ? this.m.get(k) : null;
       case 'SET': {
         const opts = a.slice(2).map((x) => String(x).toUpperCase());

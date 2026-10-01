@@ -93,6 +93,9 @@ with sync_playwright() as p:
     pg.evaluate("BW.state.level = 5; BW.ui.setMode({kind: 'sprinkler'})"); pg.wait_for_timeout(300)
     pg.go_back(); pg.wait_for_timeout(500)
     check('Zurück-Taste beendet Platzier-Modus', pg.evaluate('BW.ui.mode') is None and pg.locator('#modeBar').is_hidden())
+    pg.evaluate("BW.actions.toggleEdit(true)"); pg.wait_for_timeout(300)
+    pg.go_back(); pg.wait_for_timeout(500)
+    check('Zurück-Taste beendet Gestalten-Modus', pg.evaluate('BW.ui.edit') is None and pg.locator('#editBar').is_hidden())
     # Tippen auf ein Beet darf nicht durch die sich öffnende Leiste hindurch pflanzen
     pg.evaluate('BW.state.level = 1; BW.state.tutorial = 2; BW.ui.refresh()')
     for i in (4, 1):

@@ -1,35 +1,28 @@
 // Die Gartenwelt: baut die Szene auf, animiert Tiere/Effekte, steuert Kamera und Antippen.
 import { Renderer } from '../engine/gl.js';
-import { Geo, T, sphere, petal } from '../engine/geo.js';
+import { Geo, T, sphere, petal, box } from '../engine/geo.js';
 import { m4, v3, rng, clamp, lerp } from '../engine/math.js';
 import * as M from './models.js';
 import { environment } from './sky.js';
-import { SEEDS, BED_COUNT } from '../config.js';
+import * as C from '../config.js';
+import { bedVisible } from '../game.js';
 
+const { SEEDS, BED_COUNT } = C;
 const PI = Math.PI;
 export const BED_SPACING = 3.1;
 const OX = 0.4, OZ = 1.0;
-// 15 Beete: 0–8 Mitte (3×3), 9–11 Westflügel, 12–14 Ostflügel
-const COLS = [0, 1, 2, 0, 1, 2, 0, 1, 2, -1, -1, -1, 3, 3, 3], ROWS = [0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 1, 2, 0, 1, 2];
-export const BED_POS = COLS.slice(0, BED_COUNT).map((c, i) => [OX + (c - 1) * BED_SPACING, OZ + (ROWS[i] - 1) * BED_SPACING]);
-export const GREENHOUSE_POS = [0.0, -7.6];
 const BED_TOP = 0.56;
-const GARDEN = 10.2;
-
-const DECO_PLACE = {
-  lantern: [[1.9, 8.2, 0], [-3.3, -4.75, 0]],
-  flowerpots: [[-5.3, -4.75, 0.3]],
-  bench: [[6.6, -4.75, PI]],
-  birdbath: [[-9.1, 1.2, 0]],
-  wheelbarrow: [[4.6, 8.5, -0.4]],
-  pumpkins: [[-8.9, -4.6, 0.4]],
-  pumpkinLantern: [[-1.2, 9.4, 0.3]],
-  leafPile: [[8.9, 5.2, 0.6]],
-};
 
 // Laufwege
 const FOX_PATH = [[-7.45, -3.75], [8.25, -3.75], [8.25, 5.75], [-7.45, 5.75]];
 const HOG_PATH = [[-4.25, -0.55], [5.05, -0.55], [5.05, 2.55], [-4.25, 2.55]];
+
+// Geometrie um den Mittelpunkt (x/z) zentrieren – dann lässt sie sich sauber drehen und platzieren
+function centered(geo) {
+  const b = geo.bounds();
+  const cx = (b.min[0] + b.max[0]) / 2, cz = (b.min[2] + b.max[2]) / 2;
+  return { geo: new Geo().add(geo, T(-cx, 0, -cz)), h: b.max[1] };
+}
 
 export class World {
   constructor(canvas, quality) {
@@ -40,8 +33,12 @@ export class World {
     this.particles = [];
     this.cam = { yaw: PI / 4, pitch: 0.62, zoom: 1, target: [0.4, 0, 0.4], fovy: 0.9 };
     this.camAnim = null;
-    this.deco = {};
     this.meshCache = new Map();
+    this.decoObjs = [];
+    this.decoInfo = {};
+    this.landObjs = [];
+    this.G = 0;
+    this.ghPos = [...C.DEFAULT_GH];
     this.build();
   }
 
@@ -54,99 +51,46 @@ export class World {
 
   build() {
     const R = rng(42);
-    // Gelände und Rasen
+    // Gelände
     const gr = M.ground();
+    this.ground = gr;
     this.add(gr.geo, null, { shadow: false });
-    this.add(M.lawn(GARDEN * 2), T(0, 0.005, 0), { shadow: false });
     this.add(M.plaza(BED_SPACING * 5 + 1.2, BED_SPACING * 3 + 1.2), T(OX, 0.0, OZ), { shadow: false });
-    const stones = [];
-    for (let z = 7.0; z < 10.4; z += 0.9) stones.push([OX + (Math.round(z) % 2 ? 0.12 : -0.12), z]);
-    stones.push([GREENHOUSE_POS[0] + 0.1, -4.95], [GREENHOUSE_POS[0] - 0.1, -5.75]);
-    this.add(M.steppingStones(stones), null, { shadow: false });
 
-    // Haus, Teich
+    // Haus, Teich (fest)
     this.housePos = [-6.0, -6.6];
     this.add(M.house(), T(this.housePos[0], 0, this.housePos[1]));
     this.pond = { x: 6.6, z: -7.5, rx: 2.4, rz: 1.65 };
     this.add(M.pondRim(this.pond.rx, this.pond.rz), T(this.pond.x, 0, this.pond.z));
     this.add(diskGeo(this.pond.rx, this.pond.rz), T(this.pond.x, 0.06, this.pond.z), { mode: 1, shadow: false });
 
-    // Zaun & Hecke
-    this.add(M.picketFence(GARDEN * 2, 0), T(GARDEN, 0, 0, PI / 2));
-    this.add(M.picketFence(GARDEN * 2, 2.0, OX), T(0, 0, GARDEN));
-    this.add(M.hedge(GARDEN * 2 + 1.1, 3), T(-GARDEN - 0.3, 0, 0, PI / 2));
-    this.add(M.hedge(GARDEN * 2 + 1.1, 5), T(0, 0, -GARDEN - 0.3));
-
-    // Bäume und Büsche im Garten
+    // Feste Gartenstücke (siehe C.OBSTACLES)
     this.add(M.tree(3, 'apple'), T(-8.3, 0, 8.4, 0, 0, 0, 0.85));
     this.add(M.tree(5, 'round'), T(-9.3, 0, -8.9, 1.2, 0, 0, 0.7));
-    // Gewächshaus (verwittert, bis es restauriert wird)
-    this.ghRestored = this.add(M.greenhouse(true), T(GREENHOUSE_POS[0], 0, GREENHOUSE_POS[1]), { visible: false });
-    this.ghBroken = this.add(M.greenhouse(false), T(GREENHOUSE_POS[0], 0, GREENHOUSE_POS[1]));
-    const bushes = [[-3.4, -9.6, '#ffffff'], [-9.2, -3.8, null], [2.9, -9.7, '#ff8fc0'], [-2.7, -9.7, null], [-9.4, 9.6, '#b9a3ff'], [9.6, -3.6, '#ffd84a']];
-    bushes.forEach(([x, z, f], i) => this.add(M.bush(i + 3, f), T(x, 0, z, R() * 6, 0, 0, 0.9 + R() * 0.3)));
-    for (const [x, z, s] of [[-9.6, 6.0, 0.5], [3.6, -9.9, 0.32], [9.6, -9.8, 0.45]]) this.add(M.rock(Math.round(x), s), T(x, s * 0.3, z, R() * 6));
+    this.add(M.roundFlowerBed(1.25, 31, ['#ff6f9a', '#ffd23f', '#ffffff']), T(-3.0, 0, 8.4));
+    this.add(M.roundFlowerBed(1.05, 32, ['#9a7be8', '#ffffff', '#ff8fc0']), T(7.2, 0, 8.0));
+    this.add(M.DECO_MODELS.wateringcan(), T(-6.0, 0, 7.3, 0.7));
 
-    // Außenwelt: Bäume, Büsche, Hügel
+    // Gewächshaus (verwittert, bis es restauriert wird) – zentriert, damit es sich verschieben lässt
+    this.ghMeshes = [M.greenhouse(true), M.greenhouse(false)].map((g) => this.r.mesh(centered(g).geo));
+    this.ghRestored = this.r.addObject(this.ghMeshes[0], m4.identity(), { visible: false });
+    this.ghBroken = this.r.addObject(this.ghMeshes[1], m4.identity());
+
+    // Außenwelt: Bäume und Büsche jenseits der größten Gartenerweiterung
     const outside = new Geo();
-    for (let i = 0; i < 52; i++) {
-      const a = R() * PI * 2, d = 15 + R() * 30;
+    for (let i = 0; i < 60; i++) {
+      const a = R() * PI * 2, d = 27 + R() * 26;
       const x = Math.cos(a) * d, z = Math.sin(a) * d;
-      if (x > 6 && z > 6 && d < 26) continue; // Blick frei halten
+      if (x > 8 && z > 8 && d < 34) continue; // Blick frei halten
       const kind = R() < 0.35 ? 'pine' : R() < 0.2 ? 'apple' : 'round';
       outside.add(M.tree(i + 10, kind, 1), T(x, gr.height(x, z), z, R() * 6, 0, 0, 0.9 + R() * 0.7));
     }
-    for (let i = 0; i < 30; i++) {
-      const a = R() * PI * 2, d = 13 + R() * 14, x = Math.cos(a) * d, z = Math.sin(a) * d;
-      if (x > 4 && z > 4 && d < 18) continue;
+    for (let i = 0; i < 34; i++) {
+      const a = R() * PI * 2, d = 23 + R() * 12, x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (x > 6 && z > 6 && d < 28) continue;
       outside.add(M.bush(i + 50, R() < 0.3 ? ['#ffffff', '#ff8fc0', '#ffd84a'][i % 3] : null), T(x, gr.height(x, z), z, R() * 6, 0, 0, 1 + R()));
     }
     this.add(outside);
-
-    // Gras und Wildblumen
-    const inGarden = (x, z) => Math.abs(x) < GARDEN && Math.abs(z) < GARDEN;
-    const blocked = (x, z) =>
-      (Math.abs(x - OX) < 8.5 && Math.abs(z - OZ) < 5.4) ||
-      (x < -3.4 && z < -4.4 && x > -9.0) ||
-      (Math.abs(x - GREENHOUSE_POS[0]) < 2.6 && Math.abs(z - GREENHOUSE_POS[1]) < 2.0) ||
-      Math.hypot((x - this.pond.x) / (this.pond.rx + 0.8), (z - this.pond.z) / (this.pond.rz + 0.8)) < 1 ||
-      (Math.abs(x - OX) < 1 && z > 5.8) || Math.hypot(x + 3.0, z - 8.4) < 1.6 || Math.hypot(x - 7.2, z - 8.0) < 1.4;
-    const tufts = new Geo(), tR = rng(9);
-    const tuft = M.grassTuft(tR, 0.32);
-    for (let i = 0; i < 260; i++) {
-      const x = (tR() - 0.5) * 60, z = (tR() - 0.5) * 60;
-      if (blocked(x, z)) continue;
-      if (inGarden(x, z) && Math.abs(x) < 9.4 && Math.abs(z) < 9.4 && tR() < 0.6) continue;
-      tufts.add(tuft, T(x, inGarden(x, z) ? 0 : gr.height(x, z), z, tR() * 6, 0, 0, 0.8 + tR() * 0.6));
-    }
-    // Gras entlang Zaun und Hecke
-    for (let t = -GARDEN; t < GARDEN; t += 0.7) {
-      tufts.add(tuft, T(GARDEN - 0.35, 0, t + tR() * 0.3, tR() * 6));
-      if (Math.abs(t - OX) > 1.4) tufts.add(tuft, T(t + tR() * 0.3, 0, GARDEN - 0.35, tR() * 6));
-    }
-    this.add(tufts, null, { shadow: false });
-    this.add(M.wildflowers(rng(17), 140, 20, (x, z) => blocked(x, z) || (Math.abs(x) < 8.2 && Math.abs(z) < 8.2 && Math.hypot(x + 8, z - 6) > 3.5 && Math.hypot(x - 9, z + 1) > 3)), null, { shadow: false });
-    // Blumenrabatten entlang des vorderen Zauns
-    this.add(M.flowerBorder(GARDEN * 2 - 1.2, 1.1, 21, [[OX - 1.5, OX + 1.5]]), T(0, 0, GARDEN - 0.85), { shadow: false });
-    this.add(M.flowerBorder(GARDEN * 2 - 1.2, 1.1, 22, [[-GARDEN, -3.2]]), T(GARDEN - 0.85, 0, 0, PI / 2), { shadow: false });
-    this.add(M.wildflowers(rng(18), 170, 70, (x, z) => inGarden(x, z) || Math.hypot(x, z) > 32), null, { shadow: false });
-
-    // Runde Zierbeete im Vordergrund
-    this.add(M.roundFlowerBed(1.25, 31, ['#ff6f9a', '#ffd23f', '#ffffff']), T(-3.0, 0, 8.4));
-    this.add(M.roundFlowerBed(1.05, 32, ['#9a7be8', '#ffffff', '#ff8fc0']), T(7.2, 0, 8.0));
-    for (const [x, z, s] of [[-5.4, 9.5, 0.3], [5.9, 9.6, 0.32], [9.3, 7.0, 0.28]]) this.add(M.rock(Math.round(x * 3), s), T(x, s * 0.25, z, R() * 6));
-    // Büsche und Blumen außen vor dem Zaun
-    const front = new Geo(), fR = rng(23);
-    for (let k = 0; k < 16; k++) {
-      const t = -9 + k * 1.3 + fR() * 0.6, off = GARDEN + 1.2 + fR() * 1.8;
-      if (k % 2) front.add(M.bush(80 + k, fR() < 0.5 ? ['#ff8fc0', '#ffffff', '#ffd84a'][k % 3] : null), T(t, 0, off, fR() * 6, 0, 0, 0.8 + fR() * 0.4));
-      else front.add(M.bush(90 + k, null), T(off, 0, t, fR() * 6, 0, 0, 0.8 + fR() * 0.4));
-    }
-    this.add(front);
-
-    // Feste Requisiten
-    this.add(M.DECO_MODELS.mailbox(), T(OX + 1.8, 0, GARDEN + 0.6, -PI / 2));
-    this.add(M.DECO_MODELS.wateringcan(), T(-6.0, 0, 7.3, 0.7));
 
     // Wolken
     this.clouds = [];
@@ -157,28 +101,159 @@ export class World {
       this.clouds.push({ o, a, d, y: 22 + cR() * 14, s: 1 + cR() * 0.8 });
     }
 
-    // Beete
+    // Beete (Position kommt aus dem Spielstand, siehe syncLayout)
     this.bedMeshes = [1, 2, 3].map((l) => this.mesh('bed' + l, () => M.raisedBed(false, l)));
     const sprBody = this.mesh('spr', () => M.sprinkler()), sprHead = this.mesh('sprHead', () => M.sprinklerHead());
     for (let i = 0; i < BED_COUNT; i++) {
-      const [x, z] = BED_POS[i];
-      const frame = this.r.addObject(this.bedMeshes[0], T(x, 0, z));
-      const wild = this.r.addObject(this.mesh('bedLocked', () => M.raisedBed(true)), T(x, 0, z), { visible: false });
-      const plants = this.r.addObject({ buf: this.r.gl.createBuffer(), count: 0 }, T(x, BED_TOP, z));
-      const sx = x - 1.02, sz = z + 1.02; // Sprinkler an der vorderen linken Ecke
-      const spr = this.r.addObject(sprBody, T(sx, 0.12, sz), { visible: false });
-      const head = this.r.addObject(sprHead, T(sx, 0.95, sz), { visible: false, shadow: false });
-      this.beds.push({ frame, wild, plants, spr, head, sp: [sx, sz], key: '', lvl: 1, sparkles: [] });
+      const frame = this.r.addObject(this.bedMeshes[0], m4.identity());
+      const wild = this.r.addObject(this.mesh('bedLocked', () => M.raisedBed(true)), m4.identity(), { visible: false });
+      const plants = this.r.addObject({ buf: this.r.gl.createBuffer(), count: 0 }, m4.identity());
+      const spr = this.r.addObject(sprBody, m4.identity(), { visible: false });
+      const head = this.r.addObject(sprHead, m4.identity(), { visible: false, shadow: false });
+      this.beds.push({ frame, wild, plants, spr, head, sp: [0, 0], pos: [0, 0, 0], shown: true, key: '', lvl: 1, sparkles: [] });
+      this.placeBed(i, C.DEFAULT_BEDS[i]);
     }
+    this.placeGreenhouse(C.DEFAULT_GH);
 
-    // Deko (unsichtbar bis gekauft)
-    for (const [id, places] of Object.entries(DECO_PLACE)) {
-      const mesh = this.r.mesh(M.DECO_MODELS[id]());
-      this.deco[id] = places.map(([x, z, ry]) => this.r.addObject(mesh, T(x, 0, z, ry), { visible: false }));
-    }
+    // Markierung beim Verschieben
+    this.marker = this.r.addObject({ buf: this.r.gl.createBuffer(), count: 0 }, m4.identity(), { visible: false, mode: 2, shadow: false });
 
+    this.buildLand(C.LAND[0].half);
     this.buildAnimals();
     this.buildEffects();
+  }
+
+  // Alles, was am Zaun hängt – wird bei einer Gartenerweiterung neu gebaut
+  buildLand(G) {
+    for (const o of this.landObjs) { this.r.removeObject(o); this.r.freeMesh(o.mesh); }
+    this.landObjs = [];
+    this.G = G;
+    const add = (geo, model, opts) => { const o = this.add(geo, model, opts); this.landObjs.push(o); return o; };
+    const sh = (v) => (Math.abs(v) >= 9 ? v + Math.sign(v) * (G - 10.2) : v); // am Rand bleiben
+    const gr = this.ground, R = rng(42 + Math.round(G));
+    add(M.lawn(G * 2), T(0, 0.005, 0), { shadow: false });
+    const stones = [];
+    for (let z = 6.9; z < G + 0.2; z += 0.9) stones.push([OX + (Math.round(z) % 2 ? 0.12 : -0.12), z]);
+    add(M.steppingStones(stones), null, { shadow: false });
+    // Zaun & Hecke
+    add(M.picketFence(G * 2, 0), T(G, 0, 0, PI / 2));
+    add(M.picketFence(G * 2, 2.0, OX), T(0, 0, G));
+    add(M.hedge(G * 2 + 1.1, 3), T(-G - 0.3, 0, 0, PI / 2));
+    add(M.hedge(G * 2 + 1.1, 5), T(0, 0, -G - 0.3));
+    // Büsche und Steine am Rand
+    const bushes = [[-3.4, -9.6, '#ffffff'], [-9.2, -3.8, null], [2.9, -9.7, '#ff8fc0'], [-2.7, -9.7, null], [-9.4, 9.6, '#b9a3ff'], [9.6, -3.6, '#ffd84a']];
+    bushes.forEach(([x, z, f], i) => add(M.bush(i + 3, f), T(sh(x), 0, sh(z), R() * 6, 0, 0, 0.9 + R() * 0.3)));
+    for (const [x, z, s] of [[-9.6, 6.0, 0.5], [3.6, -9.9, 0.32], [9.6, -9.8, 0.45], [-5.4, 9.5, 0.3], [5.9, 9.6, 0.32], [9.3, 7.0, 0.28]]) add(M.rock(Math.round(x * 3), s), T(sh(x), s * 0.27, sh(z), R() * 6));
+    // Gras und Wildblumen: nur am Rand im Garten (Platz zum Gestalten bleibt frei) und draußen auf der Wiese
+    const inGarden = (x, z) => Math.abs(x) < G && Math.abs(z) < G;
+    const inside = (x, z) => x > -G + 0.6 && x < G - 1.4 && z > -G + 0.6 && z < G - 1.4;
+    const tufts = new Geo(), tR = rng(9);
+    const tuft = M.grassTuft(tR, 0.32);
+    for (let i = 0; i < 300; i++) {
+      const x = (tR() - 0.5) * 70, z = (tR() - 0.5) * 70;
+      if (inGarden(x, z) || Math.hypot(x, z) > 34) continue;
+      tufts.add(tuft, T(x, gr.height(x, z), z, tR() * 6, 0, 0, 0.8 + tR() * 0.6));
+    }
+    for (let t = -G; t < G; t += 0.7) {
+      tufts.add(tuft, T(G - 0.35, 0, t + tR() * 0.3, tR() * 6));
+      if (Math.abs(t - OX) > 1.4) tufts.add(tuft, T(t + tR() * 0.3, 0, G - 0.35, tR() * 6));
+      tufts.add(tuft, T(-G + 0.35, 0, t + tR() * 0.3, tR() * 6));
+      tufts.add(tuft, T(t + tR() * 0.3, 0, -G + 0.35, tR() * 6));
+    }
+    add(tufts, null, { shadow: false });
+    add(M.wildflowers(rng(17), Math.round(G * 6), G * 2, (x, z) => inside(x, z) || !inGarden(x, z) || (Math.abs(x - OX) < 1 && z > G - 2)), null, { shadow: false });
+    add(M.flowerBorder(G * 2 - 1.2, 1.1, 21, [[OX - 1.5, OX + 1.5]]), T(0, 0, G - 0.85), { shadow: false });
+    add(M.flowerBorder(G * 2 - 1.2, 1.1, 22, [[-G, -G + 6.9]]), T(G - 0.85, 0, 0, PI / 2), { shadow: false });
+    add(M.wildflowers(rng(18), 200, 70, (x, z) => Math.abs(x) < G + 0.8 && Math.abs(z) < G + 0.8 || Math.hypot(x, z) > 34), null, { shadow: false });
+    // Büsche und Blumen vor dem Zaun, Briefkasten am Tor
+    const front = new Geo(), fR = rng(23);
+    for (let k = 0; k < Math.round(G * 1.6); k++) {
+      const t = -G + 1.2 + k * 1.3 + fR() * 0.6, off = G + 1.2 + fR() * 1.8;
+      if (Math.abs(t - OX) < 1.6) continue;
+      if (k % 2) front.add(M.bush(80 + k, fR() < 0.5 ? ['#ff8fc0', '#ffffff', '#ffd84a'][k % 3] : null), T(t, 0, off, fR() * 6, 0, 0, 0.8 + fR() * 0.4));
+      else front.add(M.bush(90 + k, null), T(off, 0, t, fR() * 6, 0, 0, 0.8 + fR() * 0.4));
+    }
+    add(front);
+    add(M.DECO_MODELS.mailbox(), T(OX + 1.8, 0, G + 0.6, -PI / 2));
+    if (this.owl) this.owl.pos[2] = G;
+    this.clampTarget?.();
+  }
+
+  // ---------- Positionen aus dem Spielstand ----------
+  syncLayout(s) {
+    const G = C.LAND[s.land].half;
+    if (G !== this.G) this.buildLand(G);
+    s.layout.beds.forEach((p, i) => { this.beds[i].shown = bedVisible(s, i); this.placeBed(i, p); });
+    this.placeGreenhouse(s.layout.gh);
+    this.syncDecor(s.decor);
+  }
+
+  placeBed(i, [x, z, r], lift = 0) {
+    const b = this.beds[i], ry = (r || 0) * PI / 2;
+    b.pos = [x, z, r || 0];
+    const m = T(x, lift, z, ry);
+    b.frame.model = m; b.wild.model = m;
+    b.plants.model = T(x, BED_TOP + lift, z, ry);
+    const c = m4.point(m, [-1.02, 0, 1.02]); // Sprinkler an der vorderen linken Ecke
+    b.sp = [c[0], c[2]];
+    b.spr.model = T(c[0], 0.12 + lift, c[2]);
+    b.head.model = T(c[0], 0.95 + lift, c[2]);
+  }
+
+  placeGreenhouse([x, z, r], lift = 0) {
+    this.ghPos = [x, z, r || 0];
+    const m = T(x, lift, z, (r || 0) * PI / 2);
+    this.ghRestored.model = m; this.ghBroken.model = m;
+  }
+
+  decoMesh(id) {
+    if (!this.decoInfo[id]) {
+      const c = centered(M.DECO_MODELS[id]());
+      this.decoInfo[id] = { mesh: this.r.mesh(c.geo), h: c.h };
+    }
+    return this.decoInfo[id];
+  }
+
+  syncDecor(list) {
+    list.forEach((d, k) => {
+      let o = this.decoObjs[k];
+      if (!o || o.id !== d.id) {
+        if (o) this.r.removeObject(o.obj);
+        o = { id: d.id, obj: this.r.addObject(this.decoMesh(d.id).mesh, m4.identity()) };
+        this.decoObjs[k] = o;
+      }
+      o.obj.visible = !d.stored;
+      o.obj.model = T(d.x, 0, d.z, d.r * PI / 2);
+    });
+    while (this.decoObjs.length > list.length) this.r.removeObject(this.decoObjs.pop().obj);
+  }
+
+  // Objekt während des Ziehens bewegen (ohne den Spielstand zu ändern)
+  preview(ref, x, z, r, lift = 0) {
+    if (ref.type === 'bed') this.placeBed(ref.i, [x, z, r], lift);
+    else if (ref.type === 'gh') this.placeGreenhouse([x, z, r], lift);
+    else { const o = this.decoObjs[ref.k]; if (o) o.obj.model = T(x, lift, z, r * PI / 2); }
+  }
+
+  // Rahmen am Boden, grün = Platz frei, rot = belegt
+  showMarker(x, z, w, d, ok) {
+    const key = `${w}|${d}|${ok}`;
+    if (this.marker.key !== key) {
+      // etwas größer als das Objekt, damit der Rahmen sichtbar bleibt
+      const g = new Geo(), c = ok ? '#4be36a' : '#ff4d5e', t = 0.14, W = w + 0.3, D = d + 0.3, hw = W / 2, hd = D / 2;
+      for (const [px, pz, sx, sz] of [[0, -hd, W, t], [0, hd, W, t], [-hw, 0, t, D], [hw, 0, t, D]]) g.add(box(sx, 0.06, sz, c), T(px, 0, pz));
+      for (const [px, pz] of [[-hw, -hd], [hw, -hd], [-hw, hd], [hw, hd]]) g.add(box(0.32, 0.08, 0.32, c), T(px, 0, pz));
+      this.r.updateMesh(this.marker.mesh, g);
+      this.marker.key = key;
+    }
+    this.marker.model = T(x, 0.04, z);
+    this.marker.visible = true;
+  }
+  hideMarker() { this.marker.visible = false; }
+
+  syncGreenhouse(unlocked) {
+    this.ghRestored.visible = !!unlocked;
+    this.ghBroken.visible = !unlocked;
   }
 
   buildAnimals() {
@@ -201,7 +276,7 @@ export class World {
 
     const ow = M.owl();
     this.owlRig = ow;
-    this.owl = { parts: { body: part(ow.body), head: part(ow.head), lid: part(ow.lid, { shadow: false }) }, pos: [OX - 1.0, 1.4, GARDEN], vis: 0, look: 0, blink: 0, hop: 0 };
+    this.owl = { parts: { body: part(ow.body), head: part(ow.head), lid: part(ow.lid, { shadow: false }) }, pos: [OX - 1.0, 1.4, this.G], vis: 0, look: 0, blink: 0, hop: 0 };
 
     const cols = [['#5ab4ff', '#ffd23f'], ['#ff9a3c', '#ffe7a0'], ['#ff7ac8', '#ffffff']];
     this.butterflies = cols.map(([a, b], i) => {
@@ -233,9 +308,10 @@ export class World {
     infos.forEach((info, i) => {
       const bed = this.beds[i];
       bed.frame.visible = !info.locked;
-      bed.wild.visible = !!info.locked;
+      bed.wild.visible = !!info.locked && !info.hidden;
       if (bed.lvl !== info.lvl) { bed.lvl = info.lvl; bed.frame.mesh = this.bedMeshes[(info.lvl || 1) - 1]; }
       bed.spr.visible = bed.head.visible = !info.locked && !!info.sprinkler;
+      bed.plants.visible = !info.locked;
       let key = 'empty';
       if (info.seed) key = `${info.seed}|${info.stage}|${info.shiny ? 1 : 0}|${info.var}`;
       if (key === bed.key) return;
@@ -256,8 +332,8 @@ export class World {
       for (const s of bed.sparkles) this.r.removeObject(s.o);
       bed.sparkles = [];
       if ((info.shiny || info.seed === 'starRose') && info.stage === 3) {
-        const [x, z] = BED_POS[i];
-        for (let k = 0; k < 4; k++) bed.sparkles.push({ o: this.r.addObject(this.goldSpark, m4.identity(), { mode: 2, shadow: false }), p: [x + (k % 2 ? 0.6 : -0.6), BED_TOP + 0.6 + k * 0.12, z + (k > 1 ? 0.5 : -0.5)], s: k * 1.7 });
+        // Position relativ zum Beet – so wandern die Funken beim Verschieben mit
+        for (let k = 0; k < 4; k++) bed.sparkles.push({ o: this.r.addObject(this.goldSpark, m4.identity(), { mode: 2, shadow: false }), rel: [k % 2 ? 0.6 : -0.6, BED_TOP + 0.6 + k * 0.12, k > 1 ? 0.5 : -0.5], s: k * 1.7 });
       }
     });
   }
@@ -269,15 +345,6 @@ export class World {
     return this._plantGeo.get(key);
   }
 
-  syncGreenhouse(unlocked) {
-    this.ghRestored.visible = !!unlocked;
-    this.ghBroken.visible = !unlocked;
-  }
-
-  syncDeco(owned) {
-    for (const [id, objs] of Object.entries(this.deco)) for (const o of objs) o.visible = owned.includes(id);
-  }
-
   syncSkins(active) {
     const fs = this.foxSkins[active.fox] || this.foxSkins.default;
     const p = this.fox.parts;
@@ -287,8 +354,18 @@ export class World {
   }
 
   // ---------- Effekte ----------
+  // Staubwölkchen beim Absetzen eines Objekts
+  burstAt(x, z) {
+    const mesh = this.mesh('dust', () => sphere(0.09, '#e8dcc4', 6, 4));
+    const R = Math.random;
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * PI * 2;
+      this.particles.push({ o: this.r.addObject(mesh, m4.identity(), { shadow: false }), p: [x + Math.cos(a) * 0.9, 0.12, z + Math.sin(a) * 0.9], v: [Math.cos(a) * 1.2, 0.8 + R() * 0.6, Math.sin(a) * 1.2], rot: 0, spin: 0, life: 0.6, max: 0.6, g: 2 });
+    }
+  }
+
   burst(i, kind, seed) {
-    const [x, z] = BED_POS[i];
+    const [x, z] = this.beds[i].pos;
     const look = seed ? M.FLOWER_LOOK[seed] : null;
     const color = kind === 'plant' ? '#7a4b2b' : kind === 'water' ? '#5ab4ff' : kind === 'magic' ? '#ffe36b' : (look?.petal || look?.petals?.[0] || '#ffffff');
     const key = 'p' + color;
@@ -407,7 +484,7 @@ export class World {
     // Funkeln (Funkelblüten, Sternenrose)
     for (const bed of this.beds) for (const s of bed.sparkles) {
       const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 2.5 + s.s));
-      s.o.model = T(s.p[0], s.p[1] + Math.sin(t * 1.5 + s.s) * 0.08, s.p[2], t * 0.8 + s.s, 0.5, 0, tw);
+      s.o.model = T(bed.pos[0] + s.rel[0], s.rel[1] + Math.sin(t * 1.5 + s.s) * 0.08, bed.pos[1] + s.rel[2], t * 0.8 + s.s, 0.5, 0, tw);
     }
     // Partikel
     for (let k = this.particles.length - 1; k >= 0; k--) {
@@ -490,16 +567,16 @@ export class World {
     this.camAnim = null;
   }
 
-  zoomBy(f) { this.cam.zoom = clamp(this.cam.zoom * f, 0.5, 1.45); this.camAnim = null; }
+  zoomBy(f) { this.cam.zoom = clamp(this.cam.zoom * f, 0.5, 1.45 * Math.max(1, this.G / 10.2)); this.camAnim = null; }
 
   clampTarget() {
-    const t = this.cam.target, lim = 8.5;
+    const t = this.cam.target, lim = this.G - 1.7;
     t[0] = clamp(t[0], -lim, lim); t[2] = clamp(t[2], -lim, lim);
   }
 
   focus(x, z, zoom) { this.camAnim = { to: [x, 0, z], zoom: zoom ?? this.cam.zoom }; }
   resetView() { this.focus(0.4, 0.4, 1); }
-  focusBed(i) { const [x, z] = BED_POS[i]; this.focus(x, z, 0.8); }
+  focusBed(i) { const [x, z] = this.beds[i].pos; this.focus(x, z, 0.8); }
 
   updateCamera(dt) {
     if (!this.camAnim) return;
@@ -518,7 +595,8 @@ export class World {
     const ts = d[1] < 0 ? (BED_TOP - o[1]) / d[1] : -1;
     const hp = v3.add(o, v3.scale(d, ts));
     this.beds.forEach((b, i) => {
-      const [x, z] = BED_POS[i];
+      if (!b.shown) return;
+      const [x, z] = b.pos;
       if (ts > 0 && Math.abs(hp[0] - x) < 1.2 && Math.abs(hp[2] - z) < 1.2) consider(ts, { type: 'bed', index: i });
       const tf = rayBox(o, d, [x - 1.2, 0, z - 1.2], [x + 1.2, BED_TOP, z + 1.2]);
       if (tf !== null) consider(tf, { type: 'bed', index: i });
@@ -528,8 +606,8 @@ export class World {
       }
     });
     {
-      const [gx, gz] = GREENHOUSE_POS;
-      const tg = rayBox(o, d, [gx - 2.1, 0, gz - 1.5], [gx + 2.1, 3.2, gz + 1.5]);
+      const [gx, gz, gr] = this.ghPos, [w, dd] = gr % 2 ? [C.GH_SIZE[1], C.GH_SIZE[0]] : C.GH_SIZE;
+      const tg = rayBox(o, d, [gx - w / 2, 0, gz - dd / 2], [gx + w / 2, 3.2, gz + dd / 2]);
       if (tg !== null) consider(tg, { type: 'greenhouse' });
     }
     for (const id of ['fox', 'hedgehog', 'owl']) {
@@ -543,9 +621,39 @@ export class World {
   }
 
   screenOf(p) { return this.r.project(p); }
-  bedScreen(i, ready) { const [x, z] = BED_POS[i]; return this.r.project([x + 0.5, BED_TOP + (ready ? 0.55 : 0.35), z + 0.5]); }
-  bedCenterScreen(i) { const [x, z] = BED_POS[i]; return this.r.project([x + 0.3, BED_TOP, z + 0.3]); }
-  greenhouseScreen() { return this.r.project([GREENHOUSE_POS[0], 3.4, GREENHOUSE_POS[1] + 0.4]); }
+  bedScreen(i, ready) { const [x, z] = this.beds[i].pos; return this.r.project([x + 0.5, BED_TOP + (ready ? 0.55 : 0.35), z + 0.5]); }
+  bedCenterScreen(i) { const [x, z] = this.beds[i].pos; return this.r.project([x + 0.3, BED_TOP, z + 0.3]); }
+  // Blase über der vorderen linken Ecke des Gewächshauses (weg von den Knöpfen am rechten Rand)
+  greenhouseScreen() { return this.r.project(m4.point(T(this.ghPos[0], 0, this.ghPos[1], (this.ghPos[2] || 0) * PI / 2), [-1.1, 3.1, 0.9])); }
+  objectScreen(ref, y = 1.2) {
+    const p = ref.type === 'bed' ? this.beds[ref.i].pos : ref.type === 'gh' ? this.ghPos : this.decoObjs[ref.k] ? [this.decoObjs[ref.k].obj.model[12], this.decoObjs[ref.k].obj.model[14]] : null;
+    return p ? this.r.project([p[0], y, p[1]]) : null;
+  }
+
+  // Schnittpunkt mit dem Boden (für das Verschieben)
+  groundAt(px, py) {
+    const { o, d } = this.r.ray(px, py);
+    if (d[1] >= -1e-4) return null;
+    const t = -o[1] / d[1];
+    return [o[0] + d[0] * t, o[2] + d[2] * t];
+  }
+
+  // Was lässt sich an dieser Stelle verschieben? (Beete, Gewächshaus, Deko)
+  pickEditable(px, py, s) {
+    const { o, d } = this.r.ray(px, py);
+    let best = null;
+    const consider = (t, ref) => { if (t !== null && t > 0 && (!best || t < best.t)) best = { t, ref }; };
+    const boxAt = (x, z, w, dd, h) => rayBox(o, d, [x - w / 2, 0, z - dd / 2], [x + w / 2, h, z + dd / 2]);
+    this.beds.forEach((b, i) => { if (b.shown) consider(boxAt(b.pos[0], b.pos[1], 2.4, 2.4, BED_TOP + Math.max(0.3, b.h || 0)), { type: 'bed', i }); });
+    { const [gx, gz, gr] = this.ghPos, [w, dd] = gr % 2 ? [C.GH_SIZE[1], C.GH_SIZE[0]] : C.GH_SIZE; consider(boxAt(gx, gz, w, dd, 3.2), { type: 'gh' }); }
+    s.decor.forEach((dc, k) => {
+      if (dc.stored) return;
+      const [w, dd] = dc.r % 2 ? [C.DECO[dc.id].size[1], C.DECO[dc.id].size[0]] : C.DECO[dc.id].size;
+      // kleine Deko etwas großzügiger treffen
+      consider(boxAt(dc.x, dc.z, Math.max(w, 0.9), Math.max(dd, 0.9), Math.max(0.6, this.decoMesh(dc.id).h)), { type: 'deco', k });
+    });
+    return best ? best.ref : null;
+  }
 
   render(env) {
     const cam = this.cameraState();
