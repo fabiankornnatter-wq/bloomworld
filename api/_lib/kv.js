@@ -193,6 +193,7 @@ class MemoryKV {
       case 'DEL': { let c = 0; for (const x of a) { if (this.alive(String(x))) c++; this.m.delete(String(x)); this.exp.delete(String(x)); } return c; }
       case 'INCR': { const v = (has ? Number(this.m.get(k)) : 0) + 1; this.m.set(k, String(v)); return v; }
       case 'EXPIRE': if (!has) return 0; this.exp.set(k, Date.now() + Number(a[1]) * 1000); return 1;
+      case 'TTL': if (!has) return -2; return this.exp.has(k) ? Math.ceil((this.exp.get(k) - Date.now()) / 1000) : -1;
       case 'HSET': { const h = has ? this.m.get(k) : new Map(); for (let i = 1; i < a.length; i += 2) h.set(String(a[i]), String(a[i + 1])); this.m.set(k, h); return 1; }
       case 'HGET': return has ? (this.m.get(k).get(String(a[1])) ?? null) : null;
       case 'HGETALL': return has ? [...this.m.get(k)].flat() : [];

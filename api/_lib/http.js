@@ -61,10 +61,11 @@ export function clientIp(req) {
 export const SESSION_COOKIE = 'bw_session';
 export const SESSION_DAYS = 60;
 
-export function sessionCookie(req, token) {
+// persist = false: Cookie gilt nur bis zum Schließen des Browsers („Angemeldet bleiben“ aus)
+export function sessionCookie(req, token, persist = true) {
   const secure = isLocal(req) ? '' : '; Secure';
   if (!token) return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure}`;
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax${persist ? `; Max-Age=${SESSION_DAYS * 86400}` : ''}${secure}`;
 }
 
 export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');

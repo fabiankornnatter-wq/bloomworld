@@ -39,8 +39,8 @@ async function call(path, { method = 'GET', body, keepalive = false, timeout = 1
 
 export const api = {
   me: () => call('/auth', { timeout: 9000 }),
-  register: (d) => call('/auth', { method: 'POST', body: { action: 'register', name: d.name, email: d.email, password: d.password } }),
-  login: (d) => call('/auth', { method: 'POST', body: { action: 'login', login: d.login, password: d.password } }),
+  register: (d) => call('/auth', { method: 'POST', body: { action: 'register', name: d.name, email: d.email, password: d.password, remember: d.remember !== false } }),
+  login: (d) => call('/auth', { method: 'POST', body: { action: 'login', login: d.login, password: d.password, remember: d.remember !== false } }),
   logout: () => call('/auth', { method: 'POST', body: { action: 'logout' } }),
   remove: (password) => call('/auth', { method: 'POST', body: { action: 'delete', password } }),
   load: () => call('/save'),

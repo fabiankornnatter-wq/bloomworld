@@ -101,7 +101,7 @@ test('Dünger, Turbo-Dünger, Glücksdünger', () => {
   assert.equal(G.useItem(s, 'fert', 0, T0).code, 'noItem');
   assert.ok(G.buyItem(s, 'fert', true).ok);
   assert.equal(s.items.fert, 5);
-  G.plant(s, 0, 'lavender', T0, never);
+  G.plant(s, 0, 'cornflower', T0, never);
   assert.ok(G.useItem(s, 'fert', 0, T0).ok);
   assert.ok(Math.abs(G.bedInfo(s, 0, T0).progress - 0.5) < 0.01);
   G.buyItem(s, 'turbo'); G.buyItem(s, 'lucky');
@@ -131,7 +131,51 @@ test('Zucht: Gewächshaus, Rezept, Eltern nötig, Nacht-Bedingung', () => {
   assert.equal(r.seed, 'rainbowTulip');
   assert.ok(G.plant(s, 0, 'rainbowTulip', T0, never).ok);
   assert.equal(G.breedCheck(s, 'tulip', 'daisy', false).code, 'owned');
-  assert.ok(G.startBreeding(s, 'orchid', 'rose', T0, true).ok);
+  // Schwarze Rose ist „Schwer“: jede Eltern-Blume muss 4× geerntet sein
+  assert.equal(G.startBreeding(s, 'orchid', 'rose', T0, true).code, 'harvests');
+  s.collection.rose.count = 4; s.collection.orchid.count = 4;
+  assert.ok(G.startBreeding(s, 'orchid', 'rose', T0, true, { rand: always }).ok);
+});
+
+test('Zucht-Schwierigkeit: Chance, Fehlversuch, Erstattung, Erfahrung, Pollen, Bienen', () => {
+  const s = G.newState(T0);
+  s.coins = 20000; s.level = 12; s.greenhouse.unlocked = true;
+  discover(s, 'rose', 'orchid', 'lavender');
+  for (const k of ['rose', 'orchid', 'lavender']) s.collection[k].count = 6;
+  const black = C.RECIPES.find((r) => r.result === 'blackRose');
+  const easy = C.RECIPES.find((r) => r.result === 'rainbowTulip');
+  assert.equal(G.breedChance(s, easy).chance, 1);
+  assert.equal(G.breedChance(s, black).chance, 0.6);
+  assert.equal(G.breedChance(s, black).name, 'Schwer');
+  // misslingt (Zufall 0.99 > 0.6)
+  const coins0 = s.coins;
+  assert.ok(G.startBreeding(s, 'rose', 'orchid', T0, true, { rand: () => 0.99 }).ok);
+  assert.equal(s.coins, coins0 - black.cost);
+  const r = G.collectBreeding(s, T0 + black.ms);
+  assert.ok(r.ok && r.failed);
+  assert.equal(r.refund, Math.round(black.cost * C.BREED_REFUND));
+  assert.ok(!s.bred.includes('blackRose'));
+  assert.equal(s.breedFails.blackRose, 1);
+  assert.equal(s.stats.breedFailed, 1);
+  assert.ok(Math.abs(r.next - 0.75) < 1e-9);
+  // Bienenstock aufstellen (+10 %), Zauberpollen (+25 %) → sicher
+  s.decor.push({ id: 'beehive', x: 5, z: 5, r: 0, stored: false });
+  assert.ok(Math.abs(G.breedChance(s, black).chance - 0.85) < 1e-9);
+  assert.equal(G.startBreeding(s, 'rose', 'orchid', T0, true, { pollen: true }).code, 'noItem');
+  s.items.pollen = 1;
+  assert.equal(G.breedChance(s, black, { pollen: true }).chance, 1);
+  assert.ok(G.startBreeding(s, 'rose', 'orchid', T0, true, { pollen: true, rand: () => 0.999 }).ok);
+  assert.equal(s.items.pollen, 0);
+  const ok = G.collectBreeding(s, T0 + black.ms);
+  assert.ok(ok.ok && !ok.failed && s.bred.includes('blackRose'));
+  // Pollen lässt sich nicht im Beet benutzen; Speicherstand übersteht Reparatur
+  s.items.pollen = 1;
+  assert.equal(G.useItem(s, 'pollen', 0, T0).ok, false);
+  const back = G.migrate(JSON.parse(JSON.stringify(s)), T0).state;
+  assert.equal(back.breedFails.blackRose, 1);
+  assert.equal(back.items.pollen, 1);
+  // alle Rezepte haben einen gültigen Schwierigkeitsgrad
+  for (const rc of C.RECIPES) assert.ok(C.BREED_DIFF[rc.diff], rc.result);
 });
 
 test('Story: Aufgaben zählen, Abholen, nächstes Kapitel', () => {
@@ -149,7 +193,7 @@ test('Story: Aufgaben zählen, Abholen, nächstes Kapitel', () => {
   assert.equal(s.items.fert, 1);
   assert.equal(G.storyStatus(s).quest.goal.type, 'useItem');
   // Kapitel überspringen bis zum Ende
-  s.story.ch = C.STORY.length - 1; s.story.q = C.STORY.at(-1).quests.length - 1; s.story.count = 3;
+  s.story.ch = C.STORY.length - 1; s.story.q = C.STORY.at(-1).quests.length - 1; s.bred.push('crystalRose');
   assert.ok(G.claimQuest(s).chapterDone);
   assert.equal(G.storyStatus(s).finished, true);
 });
@@ -248,7 +292,7 @@ test('kaputter Spielstand wird repariert statt abzustürzen', () => {
   assert.equal(state.coins, 50);
   assert.equal(state.beds.length, 24);
   assert.equal(state.level, 30);
-  assert.deepEqual(state.items, { fert: 0, turbo: 0, lucky: 0, boost: 0 });
+  assert.deepEqual(state.items, { fert: 0, turbo: 0, lucky: 0, boost: 0, rain: 0, compost: 0, pollen: 0 });
   assert.equal(state.greenhouse.job, null);
   assert.equal(G.storyStatus(state).finished, true);
   assert.deepEqual(state.collection, { daisy: { count: 3, shiny: 0 } });
@@ -336,8 +380,60 @@ test('Spielstand v3 wird auf frei verschiebbare Deko umgestellt', () => {
   delete v3.decor; delete v3.layout; delete v3.land;
   const { state, migrated } = G.migrate(v3, T0);
   assert.ok(migrated);
-  assert.equal(state.v, 4);
+  assert.equal(state.v, G.SAVE_VERSION);
   assert.deepEqual(state.decor.map((d) => d.id).sort(), ['bench', 'lantern', 'lantern', 'leafPile']);
   assert.ok(state.decor.every((d) => !d.stored));
   assert.deepEqual(allValid(state), []);
+});
+
+// ---------- Gießen, Kompost, Regenwolke ----------
+test('Durstige Blumen wachsen erst nach dem Gießen weiter, Sprinkler gießt selbst', () => {
+  const s = G.newState(T0);
+  s.coins = 9999; s.level = 10;
+  G.plant(s, 0, 'lavender', T0, never);           // muss einmal gegossen werden (bei 45 %)
+  const dur = C.SEEDS.lavender.growMs;
+  let info = G.bedInfo(s, 0, T0 + dur * 0.8);
+  assert.equal(info.thirsty, true);
+  assert.ok(Math.abs(info.progress - 0.45) < 1e-9, 'bleibt bei 45 % stehen');
+  assert.equal(G.bedInfo(s, 0, T0 + dur * 5).ready, false, 'auch nach langer Zeit nicht reif');
+  assert.equal(G.harvest(s, 0, T0 + dur * 5).code, 'thirsty');
+  assert.equal(G.useItem(s, 'fert', 0, T0).code, 'noItem');
+  const t1 = T0 + dur * 5;
+  assert.ok(G.water(s, 0, t1).ok);
+  assert.equal(s.stats.watered, 1);
+  assert.equal(s.tasks.progress.water, 1);
+  assert.equal(G.water(s, 0, t1).code, 'notThirsty');
+  assert.equal(G.bedInfo(s, 0, t1 + dur * 0.5).ready, false);
+  assert.equal(G.bedInfo(s, 0, t1 + dur * 0.56).ready, true, 'restliche 55 % wachsen nach dem Gießen');
+  // Sprinkler: nie Durst
+  s.beds[1].sprinkler = true;
+  G.plant(s, 1, 'orchid', T0, never);
+  s.rareUnlocked.push('orchid'); G.plant(s, 1, 'orchid', T0, never);
+  assert.equal(G.bedInfo(s, 1, T0 + 1e9).ready, true);
+  // Sprinkler nachrüsten: durstige Blume wächst sofort weiter
+  G.plant(s, 2, 'sunflower', T0, never);
+  const sd = C.SEEDS.sunflower.growMs;
+  assert.equal(G.bedInfo(s, 2, T0 + sd).thirsty, true);
+  assert.ok(G.buySprinkler(s, 2, T0 + sd).ok);
+  assert.equal(G.bedInfo(s, 2, T0 + sd).thirsty, false);
+});
+
+test('Regenwolke gießt alle, Kompost bringt +50 %, Turbo überspringt Durst', () => {
+  const s = G.newState(T0);
+  s.coins = 9999; s.level = 10;
+  G.plant(s, 0, 'sunflower', T0, never); G.plant(s, 1, 'lavender', T0, never);
+  const late = T0 + 10 * 60_000;
+  assert.equal(G.thirstyBeds(s, late).length, 2);
+  G.buyItem(s, 'rain');
+  assert.ok(G.useItem(s, 'rain', -1, late).ok);
+  assert.equal(G.thirstyBeds(s, late).length, 0);
+  assert.equal(G.useItem(s, 'rain', -1, late).code, 'noItem');
+  G.buyItem(s, 'compost'); G.buyItem(s, 'turbo');
+  assert.ok(G.useItem(s, 'compost', 0, late).ok);
+  assert.equal(G.bedInfo(s, 0, late).compost, true);
+  const r = G.harvest(s, 0, late + 10 * 60_000);
+  assert.equal(r.reward, Math.round(C.SEEDS.sunflower.reward * 1.5));
+  G.plant(s, 0, 'orchid', T0, never); s.rareUnlocked.push('orchid'); G.plant(s, 0, 'orchid', late, never);
+  assert.ok(G.useItem(s, 'turbo', 0, late).ok);
+  assert.equal(G.bedInfo(s, 0, late).ready, true);
 });

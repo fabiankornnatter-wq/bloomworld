@@ -4,37 +4,74 @@
 const S = 1000, M = 60_000;
 
 // model = Grundform im 3D-Garten, look = Farben (siehe world/models.js)
+// water = wie oft die Blume beim Wachsen gegossen werden muss (Beete mit Sprinkler gießen sich selbst)
 export const SEEDS = {
-  daisy:     { name: 'Gänse­blümchen', cost: 5,   growMs: 20 * S,  reward: 12,   xp: 2,   level: 1, model: 'daisy' },
-  tulip:     { name: 'Tulpe',              cost: 10,  growMs: 45 * S,  reward: 25,   xp: 4,   level: 1, model: 'tulip' },
-  sunflower: { name: 'Sonnen­blume',  cost: 20,  growMs: 2 * M,   reward: 55,   xp: 8,   level: 2, model: 'sunflower' },
-  lavender:  { name: 'Lavendel',           cost: 35,  growMs: 4 * M,   reward: 95,   xp: 14,  level: 3, model: 'lavender' },
-  rose:      { name: 'Rose',               cost: 50,  growMs: 6 * M,   reward: 150,  xp: 20,  level: 4, model: 'rose', rare: true, unlockCoins: 150 },
-  orchid:    { name: 'Orchidee',           cost: 80,  growMs: 10 * M,  reward: 260,  xp: 32,  level: 6, model: 'orchid', rare: true, unlockCoins: 300 },
+  daisy:      { name: 'Gänse­blümchen', cost: 5,   growMs: 20 * S,  reward: 12,  xp: 2,  level: 1,  model: 'daisy', water: 0 },
+  tulip:      { name: 'Tulpe',               cost: 10,  growMs: 45 * S,  reward: 25,  xp: 4,  level: 1,  model: 'tulip', water: 0 },
+  cornflower: { name: 'Korn­blume',     cost: 15,  growMs: 75 * S,  reward: 40,  xp: 6,  level: 2,  model: 'cornflower', water: 0 },
+  sunflower:  { name: 'Sonnen­blume',   cost: 20,  growMs: 2 * M,   reward: 55,  xp: 8,  level: 2,  model: 'sunflower', water: 1 },
+  lavender:   { name: 'Lavendel',            cost: 35,  growMs: 4 * M,   reward: 95,  xp: 14, level: 3,  model: 'lavender', water: 1 },
+  rose:       { name: 'Rose',                cost: 50,  growMs: 6 * M,   reward: 150, xp: 20, level: 4,  model: 'rose', rare: true, unlockCoins: 150, water: 1 },
+  poppy:      { name: 'Mohn­blume',     cost: 40,  growMs: 5 * M,   reward: 120, xp: 17, level: 5,  model: 'poppy', water: 1 },
+  orchid:     { name: 'Orchidee',            cost: 80,  growMs: 10 * M,  reward: 260, xp: 32, level: 6,  model: 'orchid', rare: true, unlockCoins: 300, water: 2 },
+  lily:       { name: 'Lilie',               cost: 65,  growMs: 8 * M,   reward: 210, xp: 26, level: 8,  model: 'lily', water: 1 },
+  hydrangea:  { name: 'Hor­tensie',     cost: 100, growMs: 14 * M,  reward: 360, xp: 40, level: 10, model: 'hydrangea', rare: true, unlockCoins: 600, water: 2 },
   // Züchtungen (im Gewächshaus)
-  rainbowTulip: { name: 'Regenbogen­tulpe', cost: 25,  growMs: 90 * S, reward: 70,   xp: 10,  level: 3,  model: 'tulip', bred: true, tier: 'selten' },
-  sunTulip:     { name: 'Sonnen­tulpe',     cost: 30,  growMs: 150 * S, reward: 90,  xp: 12,  level: 4,  model: 'tulip', bred: true, tier: 'selten' },
-  goldRose:     { name: 'Goldene Rose',          cost: 70,  growMs: 8 * M,  reward: 260,  xp: 30,  level: 5,  model: 'rose', bred: true, tier: 'episch' },
-  moonOrchid:   { name: 'Mond­orchidee',    cost: 100, growMs: 12 * M, reward: 380,  xp: 40,  level: 6,  model: 'orchid', bred: true, tier: 'episch' },
-  northRose:    { name: 'Nordlicht-Rose',        cost: 110, growMs: 12 * M, reward: 400,  xp: 42,  level: 7,  model: 'rose', bred: true, tier: 'episch' },
-  blackRose:    { name: 'Schwarze Rose',         cost: 120, growMs: 15 * M, reward: 480,  xp: 50,  level: 8,  model: 'rose', bred: true, tier: 'episch' },
-  starRose:     { name: 'Sternen­rose',     cost: 250, growMs: 25 * M, reward: 1100, xp: 120, level: 12, model: 'rose', bred: true, tier: 'legendär' },
+  rainbowTulip:     { name: 'Regenbogen­tulpe',     cost: 25,  growMs: 90 * S,  reward: 70,   xp: 10,  level: 3,  model: 'tulip', bred: true, tier: 'selten', water: 0 },
+  sunTulip:         { name: 'Sonnen­tulpe',         cost: 30,  growMs: 150 * S, reward: 90,   xp: 12,  level: 4,  model: 'tulip', bred: true, tier: 'selten', water: 1 },
+  skyCornflower:    { name: 'Himmels­kornblume',    cost: 30,  growMs: 150 * S, reward: 95,   xp: 14,  level: 4,  model: 'cornflower', bred: true, tier: 'selten', water: 0 },
+  goldRose:         { name: 'Goldene Rose',              cost: 70,  growMs: 8 * M,   reward: 260,  xp: 30,  level: 5,  model: 'rose', bred: true, tier: 'episch', water: 1 },
+  firePoppy:        { name: 'Feuer­mohn',           cost: 60,  growMs: 7 * M,   reward: 230,  xp: 28,  level: 6,  model: 'poppy', bred: true, tier: 'episch', water: 1 },
+  moonOrchid:       { name: 'Mond­orchidee',        cost: 100, growMs: 12 * M,  reward: 380,  xp: 40,  level: 6,  model: 'orchid', bred: true, tier: 'episch', water: 2 },
+  northRose:        { name: 'Nordlicht-Rose',            cost: 110, growMs: 12 * M,  reward: 400,  xp: 42,  level: 7,  model: 'rose', bred: true, tier: 'episch', water: 2 },
+  blackRose:        { name: 'Schwarze Rose',             cost: 120, growMs: 15 * M,  reward: 480,  xp: 50,  level: 8,  model: 'rose', bred: true, tier: 'episch', water: 2 },
+  iceLily:          { name: 'Eis­lilie',            cost: 110, growMs: 12 * M,  reward: 430,  xp: 46,  level: 10, model: 'lily', bred: true, tier: 'episch', water: 2 },
+  rainbowHydrangea: { name: 'Regenbogen­hortensie', cost: 140, growMs: 16 * M,  reward: 520,  xp: 55,  level: 11, model: 'hydrangea', bred: true, tier: 'episch', water: 2 },
+  starRose:         { name: 'Sternen­rose',         cost: 250, growMs: 25 * M,  reward: 1100, xp: 120, level: 12, model: 'rose', bred: true, tier: 'legendär', water: 2 },
+  dragonLily:       { name: 'Drachen­lilie',        cost: 160, growMs: 18 * M,  reward: 640,  xp: 70,  level: 13, model: 'lily', bred: true, tier: 'legendär', water: 2 },
+  crystalRose:      { name: 'Kristall­rose',        cost: 320, growMs: 30 * M,  reward: 1500, xp: 160, level: 16, model: 'rose', bred: true, tier: 'legendär', water: 2 },
 };
-export const SEED_ORDER = ['daisy', 'tulip', 'sunflower', 'lavender', 'rose', 'orchid', 'rainbowTulip', 'sunTulip', 'goldRose', 'moonOrchid', 'northRose', 'blackRose', 'starRose'];
+export const SEED_ORDER = ['daisy', 'tulip', 'cornflower', 'sunflower', 'lavender', 'rose', 'poppy', 'orchid', 'lily', 'hydrangea',
+  'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'crystalRose'];
+// Wann eine Blume Durst bekommt (Anteil der Wachstumszeit)
+export const WATER_AT = { 1: [0.45], 2: [0.33, 0.66] };
 export const BASE_SEEDS = SEED_ORDER.filter((k) => !SEEDS[k].bred);
 export const BRED_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].bred);
 
 // Kreuzungen im Gewächshaus. Eltern müssen schon einmal geerntet worden sein.
 export const RECIPES = [
-  { a: 'tulip', b: 'daisy', result: 'rainbowTulip', cost: 60, ms: 3 * M, hint: 'Zwei Frühlingsblumen ergeben ein buntes Farbenspiel.' },
-  { a: 'tulip', b: 'sunflower', result: 'sunTulip', cost: 80, ms: 4 * M, hint: 'Etwas Sonne macht Tulpen feurig.' },
-  { a: 'rose', b: 'sunflower', result: 'goldRose', cost: 150, ms: 8 * M, hint: 'Die Rose liebt das Licht der Sonnenblume.' },
-  { a: 'orchid', b: 'lavender', result: 'moonOrchid', cost: 200, ms: 10 * M, hint: 'Ein Duft wie eine sternklare Nacht.' },
-  { a: 'rose', b: 'lavender', result: 'northRose', cost: 220, ms: 10 * M, hint: 'Violett und Rot tanzen wie Polarlichter.' },
-  { a: 'rose', b: 'orchid', result: 'blackRose', cost: 250, ms: 12 * M, night: true, hint: 'Gelingt nur, wenn es Nacht ist.' },
-  { a: 'northRose', b: 'blackRose', result: 'starRose', cost: 600, ms: 30 * M, hint: 'Die seltenste Rose von allen.' },
+  { a: 'tulip', b: 'daisy', result: 'rainbowTulip', diff: 1, cost: 60, ms: 3 * M, hint: 'Zwei Frühlingsblumen ergeben ein buntes Farbenspiel.' },
+  { a: 'tulip', b: 'sunflower', result: 'sunTulip', diff: 1, cost: 80, ms: 4 * M, hint: 'Etwas Sonne macht Tulpen feurig.' },
+  { a: 'rose', b: 'sunflower', result: 'goldRose', diff: 2, cost: 150, ms: 8 * M, hint: 'Die Rose liebt das Licht der Sonnenblume.' },
+  { a: 'orchid', b: 'lavender', result: 'moonOrchid', diff: 2, cost: 200, ms: 10 * M, hint: 'Ein Duft wie eine sternklare Nacht.' },
+  { a: 'rose', b: 'lavender', result: 'northRose', diff: 2, cost: 220, ms: 10 * M, hint: 'Violett und Rot tanzen wie Polarlichter.' },
+  { a: 'rose', b: 'orchid', result: 'blackRose', diff: 3, cost: 250, ms: 12 * M, night: true, hint: 'Gelingt nur, wenn es Nacht ist.' },
+  { a: 'northRose', b: 'blackRose', result: 'starRose', diff: 4, cost: 600, ms: 30 * M, hint: 'Die seltenste Rose von allen.' },
+  { a: 'cornflower', b: 'lavender', result: 'skyCornflower', diff: 1, cost: 90, ms: 4 * M, hint: 'Blau wie ein wolkenloser Sommerhimmel.' },
+  { a: 'poppy', b: 'sunflower', result: 'firePoppy', diff: 2, cost: 180, ms: 8 * M, hint: 'Glüht wie ein Lagerfeuer am Abend.' },
+  { a: 'lily', b: 'moonOrchid', result: 'iceLily', diff: 3, cost: 300, ms: 12 * M, hint: 'Kühl schimmernd wie Raureif im Mondlicht.' },
+  { a: 'hydrangea', b: 'rainbowTulip', result: 'rainbowHydrangea', diff: 3, cost: 350, ms: 14 * M, hint: 'Hunderte kleine Blüten in allen Farben.' },
+  { a: 'lily', b: 'blackRose', result: 'dragonLily', diff: 4, cost: 450, ms: 16 * M, night: true, hint: 'Gelingt nur nachts – feurig und geheimnisvoll.' },
+  { a: 'starRose', b: 'iceLily', result: 'crystalRose', diff: 5, cost: 900, ms: 35 * M, hint: 'Die Krönung jeder Gärtnerin, jedes Gärtners.' },
 ];
 export const GREENHOUSE = { cost: 400, level: 4 };
+
+// Schwierigkeitsgrad der Züchtungen: Grund-Erfolgschance und wie oft jede Eltern-Blume
+// schon geerntet sein muss. Misslingt eine Kreuzung, gibt es einen Teil der Kosten zurück
+// und der nächste Versuch wird leichter (Erfahrung).
+export const BREED_DIFF = [
+  null,
+  { name: 'Leicht', adj: 'leichte', chance: 1, harvests: 1 },
+  { name: 'Mittel', adj: 'mittelschwere', chance: 0.8, harvests: 2 },
+  { name: 'Schwer', adj: 'schwere', chance: 0.6, harvests: 4 },
+  { name: 'Meisterhaft', adj: 'meisterhafte', chance: 0.4, harvests: 6 },
+  { name: 'Legendär', adj: 'legendäre', chance: 0.25, harvests: 10 },
+];
+export const BREED_PITY = 0.15;      // +15 % je Fehlversuch derselben Kreuzung
+export const BREED_REFUND = 0.4;     // 40 % der Kosten zurück, wenn es misslingt
+export const BREED_POLLEN = 0.25;    // Zauberpollen: +25 %
+// Aufgestellte Deko lockt Bestäuber an und hilft bei jeder Züchtung
+export const BREED_HELPERS = { beehive: 0.1, insectHotel: 0.05 };
 
 // Funkelblüten: seltene glitzernde Blüten mit dreifacher Belohnung
 export const SHINY_CHANCE = 0.06;
@@ -98,8 +135,12 @@ export const ITEMS = {
   turbo: { name: 'Turbo-Dünger', desc: 'Die Blume ist sofort erntereif.', price: 90, pack: [5, 380], level: 3 },
   lucky: { name: 'Glücksdünger', desc: 'Die Blume blüht garantiert als Funkelblüte (×3).', price: 150, level: 5 },
   boost: { name: 'Zuchtbeschleuniger', desc: 'Beendet eine laufende Züchtung sofort.', price: 120, level: 5 },
+  rain:  { name: 'Regenwolke', desc: 'Gießt sofort alle durstigen Blumen im Garten.', price: 60, pack: [5, 250], level: 3 },
+  compost: { name: 'Kompost', desc: 'Die nächste Ernte dieses Beetes bringt 50 % mehr Münzen.', price: 70, pack: [5, 300], level: 4 },
+  pollen: { name: 'Zauberpollen', desc: 'Erhöht die Erfolgschance einer Züchtung um 25 %.', price: 110, pack: [3, 280], level: 6 },
 };
-export const ITEM_ORDER = ['fert', 'turbo', 'lucky', 'boost'];
+export const ITEM_ORDER = ['fert', 'turbo', 'lucky', 'boost', 'rain', 'compost', 'pollen'];
+export const COMPOST_BONUS = 1.5;
 
 export const START_COINS = 50;
 
@@ -122,6 +163,7 @@ export const DAILY_TASKS = [
   { id: 'plant', label: 'Pflanze 5 Blumen', goal: 5, reward: 25, xp: 5 },
   { id: 'harvest', label: 'Ernte 5 Blumen', goal: 5, reward: 40, xp: 8 },
   { id: 'earn', label: 'Verdiene 150 Münzen', goal: 150, reward: 60, xp: 10 },
+  { id: 'water', label: 'Gieße 5 Blumen', goal: 5, reward: 30, xp: 6 },
 ];
 export const DAILY_GIFT = 50;
 
@@ -136,16 +178,22 @@ export const DECO = {
   birdhouse:   { name: 'Vogelhaus',     price: 110, level: 2, size: [0.7, 0.7], desc: 'Ein Zuhause für Gartenvögel.' },
   bench:       { name: 'Gartenbank',    price: 120, level: 1, size: [1.9, 0.8], desc: 'Ein Platz zum Ausruhen.' },
   birdbath:    { name: 'Vogeltränke',   price: 150, level: 2, size: [1.2, 1.2], desc: 'Steinerne Tränke für Gartenbesucher.' },
-  beehive:     { name: 'Bienenstock',   price: 160, level: 6, size: [1.0, 1.0], desc: 'Fleißige Bienen summen um die Blüten.' },
+  beehive:     { name: 'Bienenstock',   price: 160, level: 6, size: [1.0, 1.0], desc: 'Fleißige Bienen bestäuben: +10 % Zuchterfolg.' },
   pumpkins:    { name: 'Herbstkürbisse', price: 180, level: 1, size: [1.5, 1.4], desc: 'Saison-Deko für den Herbst.', seasonal: 'autumn' },
   wheelbarrow: { name: 'Schubkarre',    price: 200, level: 3, size: [1.9, 0.8], desc: 'Voller Blumen.' },
   tableSet:    { name: 'Gartentisch',   price: 260, level: 4, size: [2.1, 2.1], desc: 'Tisch, zwei Stühle und ein Sonnenschirm.' },
   arch:        { name: 'Rosenbogen',    price: 320, level: 5, size: [2.2, 0.7], desc: 'Weißer Bogen mit rankenden Rosen.' },
   fountain:    { name: 'Springbrunnen', price: 600, level: 8, size: [2.0, 2.0], desc: 'Plätschernder Brunnen als Mittelpunkt.' },
+  pinwheel:    { name: 'Windspiel',     price: 45,  level: 1, size: [0.5, 0.5], desc: 'Buntes Windrad, das sich im Wind dreht.' },
+  hoseReel:    { name: 'Schlauchwagen', price: 70,  level: 2, size: [0.9, 0.7], desc: 'Gartenschlauch auf der Trommel.' },
+  rainBarrel:  { name: 'Regentonne',    price: 90,  level: 3, size: [0.9, 0.9], desc: 'Sammelt Regenwasser zum Gießen.' },
+  compostBin:  { name: 'Kompostkiste',  price: 100, level: 4, size: [1.2, 1.2], desc: 'Aus Gartenabfällen wird gute Erde.' },
+  insectHotel: { name: 'Insektenhotel', price: 130, level: 4, size: [0.9, 0.6], desc: 'Wildbienen helfen mit: +5 % Zuchterfolg.' },
+  stringLights: { name: 'Lichterkette', price: 220, level: 6, size: [2.4, 0.5], desc: 'Warme Lichter für gemütliche Abende.' },
   pumpkinLantern: { name: 'Kürbislaterne', size: [1.1, 1.1], desc: 'Exklusiv vom Herbstfest. Leuchtet nachts.', event: 'autumn' },
   leafPile:    { name: 'Laubhaufen', size: [1.6, 1.5], desc: 'Exklusiv vom Herbstfest.', event: 'autumn' },
 };
-export const DECO_ORDER = ['pathStone', 'hedgeBlock', 'flowerpots', 'lantern', 'planter', 'birdhouse', 'bench', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'tableSet', 'arch', 'fountain'];
+export const DECO_ORDER = ['pathStone', 'pinwheel', 'hedgeBlock', 'flowerpots', 'hoseReel', 'lantern', 'planter', 'rainBarrel', 'compostBin', 'birdhouse', 'bench', 'insectHotel', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'stringLights', 'tableSet', 'arch', 'fountain'];
 export const ALL_DECO = [...DECO_ORDER, 'pumpkinLantern', 'leafPile'];
 export const MAX_DECO = 80; // Deko-Teile insgesamt (Leistung auf dem Handy)
 // Bevorzugte Plätze (Übernahme alter Spielstände, erste Käufe)
@@ -195,6 +243,7 @@ export const STORY = [
     { text: 'Installiere eine automatische Bewässerung (Beet antippen).', goal: { type: 'sprinkler', n: 1 }, reward: { coins: 100, xp: 30 }, say: 'Hörst du das leise Plätschern? Dieses Beet wächst jetzt 30 % schneller.' },
     { text: 'Ernte 3 Lavendel.', goal: { type: 'harvest', seed: 'lavender', n: 3 }, reward: { coins: 120, xp: 30, items: { turbo: 1 } } },
     { text: 'Verdiene 500 Münzen.', goal: { type: 'earn', n: 500 }, reward: { coins: 150, xp: 40 } },
+    { text: 'Gieße 3 durstige Blumen (Tropfen über dem Beet antippen).', goal: { type: 'water', n: 3 }, reward: { coins: 60, xp: 20, items: { rain: 1 } }, say: 'Durstige Blumen wachsen erst weiter, wenn sie Wasser bekommen. Beete mit Sprinkler gießen sich ganz von selbst!' },
   ] },
   { title: 'Das alte Gewächshaus', intro: 'Hinter dem Haus steht ein altes Gewächshaus. Dort habe ich früher neue Blumensorten gezüchtet. Bringen wir es wieder in Schuss?', quests: [
     { text: 'Erreiche Level 4.', goal: { type: 'level', n: 4 }, reward: { coins: 80, xp: 10 } },
@@ -218,7 +267,13 @@ export const STORY = [
     { text: 'Ernte eine Funkelblüte.', goal: { type: 'shiny', n: 1 }, reward: { coins: 200, xp: 60 } },
     { text: 'Erreiche Level 12.', goal: { type: 'level', n: 12 }, reward: { coins: 300, xp: 0 } },
     { text: 'Züchte die Sternenrose (Nordlicht-Rose + Schwarze Rose).', goal: { type: 'breed', seed: 'starRose' }, reward: { coins: 800, xp: 200 }, say: 'Ich habe so lange auf diesen Moment gewartet …' },
-    { text: 'Ernte 3 Sternenrosen.', goal: { type: 'harvest', seed: 'starRose', n: 3 }, reward: { coins: 1500, xp: 300, items: { turbo: 3, lucky: 2 } }, say: 'Der schönste Garten im ganzen Tal – dank dir! Neue Kapitel folgen bald.' },
+    { text: 'Ernte 3 Sternenrosen.', goal: { type: 'harvest', seed: 'starRose', n: 3 }, reward: { coins: 1500, xp: 300, items: { turbo: 3, lucky: 2 } }, say: 'Der schönste Garten im ganzen Tal – dank dir!' },
+  ] },
+  { title: 'Wunder der Zucht', intro: 'In meinem alten Notizbuch stehen noch Kreuzungen, die niemand geschafft hat: Feuermohn, Eislilie … und die sagenhafte Kristallrose.', quests: [
+    { text: 'Ernte 3 Lilien.', goal: { type: 'harvest', seed: 'lily', n: 3 }, reward: { coins: 300, xp: 60, items: { compost: 2 } } },
+    { text: 'Züchte den Feuermohn (Mohnblume + Sonnenblume).', goal: { type: 'breed', seed: 'firePoppy' }, reward: { coins: 400, xp: 90 } },
+    { text: 'Züchte die Eislilie (Lilie + Mondorchidee).', goal: { type: 'breed', seed: 'iceLily' }, reward: { coins: 600, xp: 120, items: { rain: 3 } }, say: 'Sie glitzert wie Raureif – fast zu schön, um wahr zu sein.' },
+    { text: 'Züchte die Kristallrose (Sternenrose + Eislilie).', goal: { type: 'breed', seed: 'crystalRose' }, reward: { coins: 2500, xp: 400, items: { lucky: 3, turbo: 3 } }, say: 'Die Kristallrose! Ich habe sie mein ganzes Leben gesucht. Danke! Neue Kapitel folgen bald.' },
   ] },
 ];
 

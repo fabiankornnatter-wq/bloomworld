@@ -61,7 +61,7 @@ export class UI {
     $('lvl').onclick = () => this.nav('quests', 'levels');
     $('breedBtn').onclick = () => this.api.act.tapGreenhouse();
     $('centerBtn').onclick = () => { this.api.sound.play('tap'); this.api.world.resetView(); };
-    $('harvestAll').onclick = () => this.api.act.harvestAll();
+    $('harvestAll').onclick = () => (this.haRain ? this.api.act.useRain() : this.api.act.harvestAll());
     $('quest').onclick = () => this.api.act.questTracker();
     for (const el of [$('panel'), $('sheet'), $('modal'), $('toast'), $('modeBar'), $('editBar')]) el.addEventListener('click', (e) => this.onAct(e));
     $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') this.closeModal(); });
@@ -262,7 +262,7 @@ export class UI {
   // ---------- Blasen über Beeten und Gewächshaus (jedes Bild) ----------
   frame(infos, now) {
     const hide = !!this.panel || !!this.edit, s = this.s, m = this.mode;
-    let ready = 0;
+    let ready = 0, thirsty = 0;
     // Gesperrte Beete: Preis nur bei den nächsten freischaltbaren zeigen
     const firstLevelLocked = infos.find((x) => x.locked && x.needLevel);
     infos.forEach((info, i) => {
@@ -274,12 +274,13 @@ export class UI {
         if (!info.locked) {
           if (m.kind === 'sprinkler' && !info.sprinkler) { key = 'MS'; cls = 'mode'; html = `<div class="b">${I.drop}${C.SPRINKLER.cost}</div>`; }
           else if (m.kind === 'upgrade' && info.lvl < C.BED_LEVELS.length) { const nx = C.BED_LEVELS[info.lvl]; key = 'MU' + info.lvl; cls = 'mode'; html = `<div class="b">${I.upgrade}${s.level < nx.level ? `Lv ${nx.level}` : num(nx.cost)}</div>`; }
-          else if (m.kind === 'item' && info.seed && !info.ready && !(m.id === 'lucky' && info.shinyHidden)) { key = 'MI' + m.id; cls = 'mode'; html = `<div class="b">${I.ITEM[m.id]}</div>`; }
+          else if (m.kind === 'item' && info.seed && (m.id === 'compost' ? !info.compost : !info.ready && !(m.id === 'lucky' && info.shinyHidden) && !(m.id === 'fert' && info.thirsty))) { key = 'MI' + m.id; cls = 'mode'; html = `<div class="b">${I.ITEM[m.id]}</div>`; }
         }
       } else if (info.locked) {
         if (!info.needLevel || info === firstLevelLocked) { key = 'L' + info.price + '|' + info.needLevel; cls = 'locked'; html = `<div class="b">${I.lock}${info.needLevel ? `Lv ${info.needLevel}` : num(info.price)}</div>`; }
       } else if (info.empty) { key = 'E'; cls = 'empty'; html = '<div class="b">+</div>'; }
       else if (info.ready) { key = 'R' + info.seed + info.shiny; cls = 'ready' + (info.shiny ? ' gold' : ''); html = `<div class="b"><img alt="${esc(plain(C.SEEDS[info.seed].name))} ernten" src="${info.shiny ? this.icons.shiny[info.seed] : this.icons.flower[info.seed]}"></div>`; }
+      else if (info.thirsty) { thirsty++; key = 'T'; cls = 'thirsty'; html = `<div class="b">${I.drop}Gießen</div>`; }
       else { const sec = Math.ceil(info.remaining / 1000); key = 'G' + sec + '|' + Math.round(info.progress * 40); cls = 'grow'; html = `<div class="b">${I.ring(info.progress)}${fmtTime(info.remaining)}</div>`; }
       this.placeBubble(el, i, key, cls, html, hide ? null : key && this.api.world.bedScreen(i, info.ready));
     });
@@ -288,9 +289,14 @@ export class UI {
     this.placeBubble(this.bubbles[GH], GH, gh?.key, gh?.cls, gh?.html, gh && this.api.world.greenhouseScreen());
 
     const ha = $('harvestAll');
-    const showAll = ready >= 2 && !hide && this.sheetBed < 0 && !m;
-    if (showAll) { const t = `${I.coin()} Alle ernten (${ready})`; if (ha.dataset.t !== t) { ha.innerHTML = t; ha.dataset.t = t; } }
-    ha.hidden = !showAll;
+    const free = !hide && this.sheetBed < 0 && !m;
+    const showAll = free && ready >= 2, showRain = free && !showAll && thirsty >= 2 && s.items.rain > 0;
+    if (showAll || showRain) {
+      const t = showAll ? `${I.coin()} Alle ernten (${ready})` : `${svg(I.ITEM.rain, 30)} Regenwolke (${thirsty} durstig)`;
+      if (ha.dataset.t !== t) { ha.innerHTML = t; ha.dataset.t = t; ha.classList.toggle('blue', showRain); ha.classList.toggle('gold', !showRain); }
+    }
+    ha.hidden = !(showAll || showRain);
+    this.haRain = showRain;
     this.updateHint(infos, hide);
     if (this.sheetKind === 'care' && this.sheetBed >= 0) this.tickCare(infos[this.sheetBed]);
   }
@@ -317,6 +323,7 @@ export class UI {
     const s = this.s, h = $('hint');
     let text = '';
     if (s.tutorial === 0) text = 'Tippe auf ein Beet mit <b>+</b>, um Blumen zu pflanzen.';
+    else if (!s.stats.watered && infos.some((x) => x.thirsty)) text = 'Eine Blume hat <b>Durst</b>! Tippe auf den Tropfen über dem Beet, um sie zu gießen. Mit Sprinkler gießt sich ein Beet von selbst.';
     else if (s.tutorial === 1) text = infos.some((x) => x.ready) ? 'Deine Blumen blühen! Tippe auf die Blüte über dem Beet, um zu ernten.' : 'Super! Die Blumen wachsen jetzt – auch wenn du das Spiel schließt. Tippe auf ein wachsendes Beet für Dünger.';
     const show = !!text && !hide && this.sheetBed < 0 && $('harvestAll').hidden && !this.mode;
     if (h.dataset.t !== text) { h.innerHTML = text; h.dataset.t = text; }
@@ -359,7 +366,7 @@ export class UI {
       const act = st.available ? 'plant' : st.shop ? 'gotoShop' : st.breed ? 'gotoBreed' : 'seedLocked';
       return `<button class="seed ${st.available ? '' : 'lock'} ${d.rare || d.bred ? 'rare' : ''}" data-act="${act}" data-id="${id}" aria-label="${esc(plain(d.name))}">
         ${tierTag(d)}<img alt="" src="${this.icons.flower[id]}"><b>${esc(d.name)}</b>
-        <span class="meta"><span>⏱ ${growLabel(G.growTime(s.beds[i] || {}, id))}</span><span>${I.coin()}${Math.round(d.reward * C.BED_LEVELS[(s.beds[i]?.lvl || 1) - 1].mult)}</span></span>
+        <span class="meta"><span>⏱ ${growLabel(G.growTime(s.beds[i] || {}, id))}</span><span>${I.coin()}${Math.round(d.reward * C.BED_LEVELS[(s.beds[i]?.lvl || 1) - 1].mult)}</span>${d.water && !s.beds[i]?.sprinkler ? `<span class="wneed" title="Muss ${d.water}× gegossen werden">${I.drop}${d.water}</span>` : ''}</span>
         <span class="price ${st.available && !afford ? 'poor' : ''}">${label}</span></button>`;
     }).join('');
     const empty = s.beds.filter((b) => !b.locked && !b.seed).length;
@@ -394,30 +401,32 @@ export class UI {
     const s = this.s, info = G.bedInfo(s, i, this.api.now());
     if (!info || !info.seed) return null;
     const d = C.SEEDS[info.seed];
-    this._careReady = info.ready;
-    const items = ['fert', 'turbo', 'lucky'].map((k) => {
+    this._careReady = info.ready; this._careThirsty = info.thirsty;
+    const items = ['fert', 'turbo', 'lucky', 'compost'].map((k) => {
       const it = C.ITEMS[k], have = s.items[k];
       let dis = '', sub;
       if (s.level < it.level) { dis = 'disabled'; sub = `ab Level ${it.level}`; }
       else if (k === 'lucky' && info.shinyHidden) { dis = 'disabled'; sub = 'funkelt schon'; }
-      else if (k !== 'lucky' && info.ready) { dis = 'disabled'; sub = 'schon reif'; }
+      else if (k === 'compost' && info.compost) { dis = 'disabled'; sub = 'ist drin'; }
+      else if ((k === 'fert' || k === 'turbo') && info.ready) { dis = 'disabled'; sub = 'schon reif'; }
+      else if (k === 'fert' && info.thirsty) { dis = 'disabled'; sub = 'erst gießen'; }
       else sub = have ? 'Benutzen' : `Kaufen ${I.coin()} ${it.price}`;
       return `<button class="itembtn ${have ? '' : 'buy'}" data-act="${have ? 'useItem' : 'buyUse'}" data-id="${k}" data-bed="${i}" ${dis}>${I.ITEM[k]}<b>${esc(it.name)}</b><small>${sub}</small>${have ? `<span class="cnt">×${have}</span>` : ''}</button>`;
     }).join('');
-    const extra = [info.shinyHidden ? `${svg(I.sparkle, 16)} wird eine Funkelblüte!` : '', info.sprinkler ? `${svg(I.drop, 16)} Bewässerung aktiv` : ''].filter(Boolean).join(' · ');
+    const extra = [info.shinyHidden ? `${svg(I.sparkle, 16)} wird eine Funkelblüte!` : '', info.sprinkler ? `${svg(I.drop, 16)} Sprinkler gießt automatisch` : info.waterLeft > 0 && !info.thirsty ? `${svg(I.drop, 16)} braucht noch ${info.waterLeft}× Wasser` : '', info.compost ? `${svg(I.ITEM.compost, 16)} Kompost: +50 %` : ''].filter(Boolean).join(' · ');
     return `<div class="inner care"><h3>${esc(d.name)} ${tierTag(d)}<button class="x" data-act="closeSheet" aria-label="Schließen">✕</button></h3>
       <div class="carehead"><img alt="" src="${info.shinyHidden && info.ready ? this.icons.shiny[info.seed] : this.icons.flower[info.seed]}"><div class="grow">
-        <b id="careTime">${info.ready ? 'Erntereif!' : `Noch ${fmtTime(info.remaining)}`}</b><div class="prog"><i id="careBar" style="width:${(info.progress * 100).toFixed(1)}%"></i></div>
+        <b id="careTime">${info.ready ? 'Erntereif!' : info.thirsty ? 'Durst!' : `Noch ${fmtTime(info.remaining)}`}</b><div class="prog"><i id="careBar" style="width:${(info.progress * 100).toFixed(1)}%"></i></div>
         <small>${extra || `Bringt ${num(Math.round(d.reward * C.BED_LEVELS[info.lvl - 1].mult))} Münzen`}</small></div>
-        ${info.ready ? `<button class="btn" data-act="harvestBed" data-bed="${i}">Ernten</button>` : ''}</div>
+        ${info.ready ? `<button class="btn" data-act="harvestBed" data-bed="${i}">Ernten</button>` : info.thirsty ? `<button class="btn blue" data-act="waterBed" data-bed="${i}">${svg(I.drop, 22)} Gießen</button>` : ''}</div>
       <div class="itemrow">${items}</div>${this.bedTools(i)}</div>`;
   }
 
   tickCare(info) {
     if (!info) return;
-    if (!info.seed || info.ready !== this._careReady) { this.renderSheet(); return; }
+    if (!info.seed || info.ready !== this._careReady || info.thirsty !== this._careThirsty) { this.renderSheet(); return; }
     const t = $('careTime'), b = $('careBar');
-    if (t && !info.ready) { const txt = `Noch ${fmtTime(info.remaining)}`; if (t.textContent !== txt) t.textContent = txt; }
+    if (t && !info.ready && !info.thirsty) { const txt = `Noch ${fmtTime(info.remaining)}`; if (t.textContent !== txt) t.textContent = txt; }
     if (b) b.style.width = (info.progress * 100).toFixed(1) + '%';
   }
 
@@ -607,33 +616,57 @@ export class UI {
     const job = G.breedingInfo(s, now);
     let h = '';
     if (job) {
-      const d = C.SEEDS[job.result];
-      h += `<div class="card jobcard"><img alt="" src="${this.icons.flower[job.result]}" class="${job.ready ? '' : 'growing'}"><div class="grow"><small>${job.ready ? 'Fertig gezüchtet!' : 'Wird gezüchtet …'}</small><h4>${esc(d.name)} ${tierTag(d)}</h4>
-        <div class="prog"><i style="width:${job.progress * 100}%"></i></div><p>${job.ready ? 'Hol deine neue Sorte ab – danach kannst du sie in jedes Beet pflanzen.' : `Noch ${fmtTime(job.remaining)}`}</p></div></div>
-        <div class="btnrow center">${job.ready ? '<button class="btn big" data-act="collectBreed">Abholen</button>' : `<button class="btn ${s.items.boost ? 'gold' : 'ghost'}" data-act="boostBreed" ${s.level >= C.ITEMS.boost.level ? '' : 'disabled'}>${svg(I.ITEM.boost, 28)} ${s.items.boost ? `Beschleuniger benutzen (${s.items.boost})` : s.level >= C.ITEMS.boost.level ? `Beschleuniger ${I.coin()} ${C.ITEMS.boost.price}` : `Beschleuniger ab Lv ${C.ITEMS.boost.level}`}</button>`}</div>`;
+      const d = C.SEEDS[job.result], sure = job.chance >= 1, pct = Math.round(job.chance * 100);
+      h += `<div class="card jobcard"><img alt="" src="${this.icons.flower[job.result]}" class="${job.ready ? '' : 'growing'}"><div class="grow"><small>${job.ready ? (sure ? 'Fertig gezüchtet!' : 'Fertig – ob es geklappt hat?') : 'Wird gezüchtet …'}</small><h4>${esc(d.name)} ${tierTag(d)}</h4>
+        <div class="prog"><i style="width:${job.progress * 100}%"></i></div><p>${job.ready ? (sure ? 'Hol deine neue Sorte ab – danach kannst du sie in jedes Beet pflanzen.' : `Erfolgschance ${pct} %. Schau nach, ob die Kreuzung gelungen ist!`) : `Noch ${fmtTime(job.remaining)}${sure ? '' : ` · Erfolgschance ${pct} %`}`}</p></div></div>
+        <div class="btnrow center">${job.ready ? `<button class="btn big" data-act="collectBreed">${sure ? 'Abholen' : 'Nachsehen'}</button>` : `<button class="btn ${s.items.boost ? 'gold' : 'ghost'}" data-act="boostBreed" ${s.level >= C.ITEMS.boost.level ? '' : 'disabled'}>${svg(I.ITEM.boost, 28)} ${s.items.boost ? `Beschleuniger benutzen (${s.items.boost})` : s.level >= C.ITEMS.boost.level ? `Beschleuniger ${I.coin()} ${C.ITEMS.boost.price}` : `Beschleuniger ab Lv ${C.ITEMS.boost.level}`}</button>`}</div>`;
     } else {
-      h += `<div class="card row">${svg(night ? I.moonSmall : I.greenhouse, 50)}<div class="grow"><h4>Zuchtbuch</h4><p>Wähle eine Kreuzung. Beide Eltern-Blumen musst du schon einmal geerntet haben. ${night ? '<b>Es ist Nacht – jetzt gelingen auch Nachtzüchtungen.</b>' : ''}</p></div></div>`;
+      h += `<div class="card row">${svg(night ? I.moonSmall : I.greenhouse, 50)}<div class="grow"><h4>Zuchtbuch</h4><p>Wähle eine Kreuzung. Schwere Züchtungen können misslingen – dann gibt es 40 % zurück und der nächste Versuch wird leichter. ${night ? '<b>Es ist Nacht – jetzt gelingen auch Nachtzüchtungen.</b>' : ''}</p></div></div>`;
+      h += this.breedHelpers();
     }
     return h + this.recipeList(true, night, !!job);
   }
 
+  // Zauberpollen-Schalter und Bestäuber-Boni im Gewächshaus
+  breedHelpers() {
+    const s = this.s, it = C.ITEMS.pollen;
+    if (s.items.pollen <= 0) this.pollenOn = false;
+    const placed = Object.entries(C.BREED_HELPERS).filter(([id]) => s.decor.some((d) => d.id === id && !d.stored));
+    const helpers = placed.length
+      ? placed.map(([id, v]) => `<span class="chip"><img alt="" src="${this.icons.deco[id]}"> ${esc(C.DECO[id].name)} +${Math.round(v * 100)} %</span>`).join('')
+      : '<span class="tip">Tipp: Ein Bienenstock (+10 %) oder Insektenhotel (+5 %) im Garten hilft beim Bestäuben.</span>';
+    let pollen;
+    if (s.level < it.level) pollen = `<button class="btn small" disabled>${svg(I.ITEM.pollen, 22)} Zauberpollen ab Level ${it.level}</button>`;
+    else if (s.items.pollen > 0) pollen = `<button class="btn small ${this.pollenOn ? 'gold' : 'ghost'}" data-act="togglePollen" aria-pressed="${!!this.pollenOn}">${svg(I.ITEM.pollen, 22)} Zauberpollen ${this.pollenOn ? 'an' : 'aus'} · ${s.items.pollen}×</button>`;
+    else pollen = `<button class="btn small blue" data-act="buyItem" data-id="pollen">${svg(I.ITEM.pollen, 22)} Zauberpollen · ${I.coin()} ${it.price}</button>`;
+    return `<div class="card helpers"><div class="hrow">${pollen}<span class="small">+25 % Erfolgschance für die nächste Züchtung</span></div><div class="chips">${helpers}</div></div>`;
+  }
+
   recipeList(active, night, busy) {
     const s = this.s;
+    const pollen = !!this.pollenOn && s.items.pollen > 0;
     return `<div class="sec">Kreuzungen</div>` + C.RECIPES.map((r, idx) => {
       const d = C.SEEDS[r.result], bred = s.bred.includes(r.result);
-      const pa = G.discovered(s, r.a), pb = G.discovered(s, r.b);
+      const ch = G.breedChance(s, r, { pollen });
+      const need = ch.harvests;
+      const ca = G.harvestCount(s, r.a), cb = G.harvestCount(s, r.b);
       const reasons = [];
-      if (!pa) reasons.push(`Ernte zuerst: ${plain(C.SEEDS[r.a].name)}`);
-      if (!pb) reasons.push(`Ernte zuerst: ${plain(C.SEEDS[r.b].name)}`);
+      for (const [k, c] of [[r.a, ca], [r.b, cb]]) {
+        if (!c) reasons.push(`Ernte zuerst: ${plain(C.SEEDS[k].name)}`);
+        else if (c < need) reasons.push(`${plain(C.SEEDS[k].name)} ${c}/${need}× geerntet`);
+      }
       if (s.level < d.level) reasons.push(`ab Level ${d.level}`);
       if (r.night && !night) reasons.push('nur nachts');
-      const parent = (k, ok) => `<span class="par ${ok ? '' : 'miss'}"><img alt="" src="${this.icons.flower[k]}"><small>${esc(C.SEEDS[k].name)}</small></span>`;
+      const parent = (k, c) => `<span class="par ${c >= need ? '' : 'miss'}"><img alt="" src="${this.icons.flower[k]}"><small>${esc(C.SEEDS[k].name)}</small>${need > 1 && !bred ? `<i class="cnt ${c >= need ? 'ok' : ''}">${Math.min(c, need)}/${need}</i>` : ''}</span>`;
+      const pct = Math.round(ch.chance * 100);
+      const diff = `<span class="diff d${ch.diff}" title="Schwierigkeit">${'★'.repeat(ch.diff)}<b>${ch.name}</b></span>`;
+      const chance = bred ? '' : `<span class="chance ${pct >= 100 ? 'sure' : pct >= 60 ? 'ok' : 'low'}">${pct} %${ch.fails ? ` <small>(+${Math.round(ch.fails * C.BREED_PITY * 100)} % Erfahrung)</small>` : ''}</span>`;
       let btn;
       if (bred) btn = '<span class="okbadge">✓ Gezüchtet</span>';
       else if (!active) btn = '';
       else btn = `<button class="btn small" data-act="breed" data-id="${idx}" ${busy || reasons.length ? 'disabled' : ''}>Züchten · ${I.coin()} ${r.cost}</button>`;
-      return `<div class="card recipe ${bred ? 'bred' : ''}"><div class="rline">${parent(r.a, pa)}<span class="plus">+</span>${parent(r.b, pb)}<span class="arrow">➜</span><span class="par res ${bred ? '' : 'unknown'}"><img alt="" src="${this.icons.flower[r.result]}"><small>${esc(d.name)}</small></span></div>
-        <div class="rfoot">${tierTag(d)}<span class="meta">⏱ ${growLabel(r.ms)}${r.night ? ` · ${svg(I.moonSmall, 16)} nachts` : ''}</span>${reasons.length && !bred ? `<span class="why">${esc(reasons.join(' · '))}</span>` : `<span class="hint">${esc(r.hint)}</span>`}${btn}</div></div>`;
+      return `<div class="card recipe ${bred ? 'bred' : ''}"><div class="rline">${parent(r.a, ca)}<span class="plus">+</span>${parent(r.b, cb)}<span class="arrow">➜</span><span class="par res ${bred ? '' : 'unknown'}"><img alt="" src="${this.icons.flower[r.result]}"><small>${esc(d.name)}</small></span></div>
+        <div class="rfoot">${diff}${chance}${tierTag(d)}<span class="meta">⏱ ${growLabel(r.ms)}${r.night ? ` · ${svg(I.moonSmall, 16)} nachts` : ''}</span>${reasons.length && !bred ? `<span class="why">${esc(reasons.join(' · '))}</span>` : `<span class="hint">${esc(r.hint)}</span>`}${btn}</div></div>`;
     }).join('');
   }
 
@@ -668,7 +701,7 @@ export class UI {
       h += `<div class="sec" style="margin-top:4px">Dünger & Helfer</div>` + C.ITEM_ORDER.map((k) => {
         const it = C.ITEMS[k], lvOk = s.level >= it.level;
         return `<div class="card itemcard"><div class="row">${svg(I.ITEM[k], 60)}<div class="grow"><h4>${esc(it.name)} <span class="have">Du hast ${s.items[k]}</span></h4><p>${esc(it.desc)}</p></div></div>
-          <div class="btnrow">${lvOk ? `<button class="btn small" data-act="buyItem" data-id="${k}">1× · ${I.coin()} ${it.price}</button>${it.pack ? `<button class="btn small blue" data-act="buyPack" data-id="${k}">${it.pack[0]}× · ${I.coin()} ${it.pack[1]} <i class="save">-${Math.round((1 - it.pack[1] / (it.price * it.pack[0])) * 100)} %</i></button>` : ''}${s.items[k] && k !== 'boost' ? `<button class="btn small ghost" data-act="itemMode" data-id="${k}">Benutzen</button>` : ''}${s.items[k] && k === 'boost' ? '<button class="btn small ghost" data-act="openBreed">Zum Gewächshaus</button>' : ''}` : `<button class="btn small" disabled>${I.lock.replace('class="lock"', 'style="width:16px;height:16px"')} ab Level ${it.level}</button>`}</div></div>`;
+          <div class="btnrow">${lvOk ? `<button class="btn small" data-act="buyItem" data-id="${k}">1× · ${I.coin()} ${it.price}</button>${it.pack ? `<button class="btn small blue" data-act="buyPack" data-id="${k}">${it.pack[0]}× · ${I.coin()} ${it.pack[1]} <i class="save">-${Math.round((1 - it.pack[1] / (it.price * it.pack[0])) * 100)} %</i></button>` : ''}${s.items[k] && !['boost', 'rain', 'pollen'].includes(k) ? `<button class="btn small ghost" data-act="itemMode" data-id="${k}">Benutzen</button>` : ''}${s.items[k] && k === 'rain' ? '<button class="btn small ghost" data-act="useRain">Benutzen</button>' : ''}${s.items[k] && (k === 'boost' || k === 'pollen') ? '<button class="btn small ghost" data-act="openBreed">Zum Gewächshaus</button>' : ''}` : `<button class="btn small" disabled>${I.lock.replace('class="lock"', 'style="width:16px;height:16px"')} ab Level ${it.level}</button>`}</div></div>`;
       }).join('');
       const unlocked = s.beds.filter((b) => !b.locked).length, spr = s.beds.filter((b) => b.sprinkler).length;
       const sprOk = s.level >= C.SPRINKLER.level;
@@ -724,6 +757,7 @@ export class UI {
   // ----- Einstellungen -----
   pSettings() {
     const st = this.s.settings, acc = this.api.account();
+    let autoOn = true; try { autoOn = localStorage.getItem('bw_autostart') !== '0'; } catch { /* egal */ }
     const seg = (key, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${st[key] === v ? 'on' : ''}" data-act="set" data-key="${key}" data-val="${v}">${l}</button>`).join('')}</div>`;
     const LBL = { music: 'Musik', sound: 'Soundeffekte', musicVol: 'Musik-Lautstärke', soundVol: 'Effekt-Lautstärke', cycleMin: 'Länge eines Tages in Minuten' };
     const sw = (key) => `<button class="switch ${st[key] ? 'on' : ''}" role="switch" aria-checked="${!!st[key]}" data-act="toggle" data-key="${key}" aria-label="${LBL[key]}"></button>`;
@@ -733,6 +767,8 @@ export class UI {
     const account = acc.user
       ? `<div class="card set"><div class="lab">Konto</div><div class="row">${svg(I.user, 44)}<div class="grow"><h4>${esc(acc.user.name)}</h4><p>${esc(acc.user.email)}</p></div></div>
           <p class="sync">${svg(I.cloud, 22)} ${esc(syncTxt[acc.status] || syncTxt.saved)}</p>
+          <div class="lab" style="margin-top:4px">Direkt in den Garten starten <button class="switch ${autoOn ? 'on' : ''}" role="switch" aria-checked="${autoOn}" data-act="autostart" aria-label="Direkt in den Garten starten"></button></div>
+          <p>Du bleibst auf diesem Gerät angemeldet und landest beim Öffnen sofort in deinem Garten.</p>
           <div class="btnrow"><button class="btn small ghost" data-act="logout">Abmelden</button><button class="btn small red" data-act="deleteAccount">Konto löschen</button></div></div>`
       : `<div class="card set"><div class="lab">Konto</div><p>Du spielst offline. Dein Garten wird nur auf diesem Gerät gespeichert. Mit einem Konto ist er auf jedem Gerät verfügbar – dein bisheriger Fortschritt wird übernommen.</p><button class="btn small" style="align-self:flex-start" data-act="login">Anmelden oder registrieren</button></div>`;
     return `${account}
@@ -744,7 +780,7 @@ export class UI {
         <div class="lab" style="margin-top:6px">Soundeffekte ${sw('sound')}</div>${range('soundVol', 0, 1, 0.05, st.soundVol, !st.sound)}</div>
       <div class="card set"><div class="lab">Spielstand</div><p>Wird automatisch gespeichert${acc.user ? ' – in deinem Konto und auf diesem Gerät' : ' – auf diesem Gerät'}.</p><button class="btn red small" style="align-self:flex-start;margin-top:6px" data-act="reset">Garten neu beginnen</button></div>
       <div class="btnrow center"><button class="btn small ghost" data-act="privacy">Datenschutz</button></div>
-      <p class="note">BloomWorld · Version 3.0<br>Schrift: Poppins (SIL Open Font License)</p>`;
+      <p class="note">BloomWorld · Version 3.2<br>Schrift: Poppins (SIL Open Font License)</p>`;
   }
 
   // ---------- Klicks in Panels, Leisten, Dialogen ----------
@@ -768,6 +804,10 @@ export class UI {
       case 'gotoBreed': case 'openBreed': this.closeModal(); this.closeSheet(); this.nav('breed'); break;
       case 'harvestBed': this.closeSheet(); A.harvest(bed); break;
       case 'useItem': A.useItem(id, bed); break;
+      case 'waterBed': A.water(bed); break;
+      case 'autostart': { let on = true; try { on = localStorage.getItem('bw_autostart') === '0'; localStorage.setItem('bw_autostart', on ? '1' : '0'); } catch { /* egal */ } this.api.sound.play('tap'); this.toast(on ? 'Du startest ab jetzt direkt im Garten.' : 'Beim Öffnen siehst du wieder zuerst den Startbildschirm.'); this.renderPanel(true); break; }
+      case 'togglePollen': this.pollenOn = !this.pollenOn; this.api.sound.play('tap'); this.renderPanel(true); break;
+      case 'useRain': A.useRain(); break;
       case 'buyUse': A.buyAndUse(id, bed); break;
       case 'sprinkler': A.buySprinkler(bed); break;
       case 'upgradeBed': A.upgradeBed(bed); break;

@@ -152,6 +152,18 @@ Object.assign(FLOWER_LOOK, {
   northRose: { petal: '#1fcfa8', tip: '#8f7bff', center: '#7a4dff', glow: 0.6 },
   blackRose: { petal: '#2a0d18', tip: '#7a1634', center: '#14060b' },
   starRose: { petal: '#1f2fa8', tip: '#5b74f0', center: '#ffcf3a', glow: 0.7 },
+  // Neue Gartenblumen
+  cornflower: { petal: '#3d6fe0', tip: '#86b4ff', center: '#26308f' },
+  poppy: { petal: '#e3241c', tip: '#ff5a3c', center: '#1d1a22' },
+  lily: { petal: '#ffffff', tip: '#ff9cc8', center: '#ffcf3a' },
+  hydrangea: { petal: '#8fa8ff', tip: '#c9a6ff', center: '#e8e0ff' },
+  // Neue Züchtungen
+  skyCornflower: { petal: '#22b6ff', tip: '#c4f1ff', center: '#1660b8', glow: 0.25 },
+  firePoppy: { petal: '#ff5a0a', tip: '#ffd23f', center: '#3a1a10', glow: 0.45 },
+  iceLily: { petal: '#e6f8ff', tip: '#7fd3ff', center: '#c4f1ff', glow: 0.6 },
+  rainbowHydrangea: { petals: ['#ff6f9a', '#ffd23f', '#7be86a', '#5ab4ff', '#b48cff'], petal: '#ff6f9a', tip: '#ffffff', center: '#ffffff' },
+  dragonLily: { petal: '#6a0a24', tip: '#ffb81c', center: '#ffd23f', glow: 0.35 },
+  crystalRose: { petal: '#cfefff', tip: '#ffffff', center: '#8fd6ff', glow: 0.85 },
 });
 const brighten = (look) => {
   const b = (c) => { const v = col(c); return v.map((x) => Math.min(1, x * 1.12 + 0.04)); };
@@ -218,6 +230,37 @@ function headShape(type, look, s) {
       bloom.d[i + 3] = x / l; bloom.d[i + 4] = y / l; bloom.d[i + 5] = z / l;
     }
     g.add(bloom);
+  } else if (type === 'cornflower') {
+    // fein gefranste blaue Blütenkrone
+    for (let i = 0; i < 9; i++) g.add(petal(0.12 * s, 0.05 * s, pc(look, i), { cup: 0.2, curl: 0.1, tip: 0.05, colorTip: look.tip, fold: 0.15 }), T(0, 0.01, 0, (i / 9) * P * 2, -0.35));
+    for (let i = 0; i < 5; i++) g.add(petal(0.07 * s, 0.035 * s, look.tip, { cup: 0.3, curl: 0.2, tip: 0.1 }), T(0, 0.03, 0, (i / 5) * P * 2 + 0.3, -0.9));
+    g.add(sphere(0.035 * s, look.center, 8, 6), T(0, 0.03, 0));
+  } else if (type === 'poppy') {
+    // vier große, leicht gewölbte Blütenblätter mit dunkler Mitte
+    const cup = new Geo();
+    for (let i = 0; i < 4; i++) cup.add(petal(0.19 * s, 0.17 * s, pc(look, i), { cup: 0.55, curl: 0.1, tip: 0.05, colorTip: look.tip, under: 1 }), T(0, 0, 0, (i / 4) * P * 2 + (i % 2) * 0.2, -0.75 - (i % 2) * 0.12));
+    for (let i = 0; i < cup.d.length; i += 11) { const x = cup.d[i], y = cup.d[i + 1] + 0.05 * s, z = cup.d[i + 2], l = Math.hypot(x, y, z) || 1; cup.d[i + 3] = x / l; cup.d[i + 4] = y / l; cup.d[i + 5] = z / l; }
+    g.add(cup);
+    g.add(sphere(0.045 * s, look.center, 10, 8, 0.8), T(0, 0.04, 0));
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * P * 2; g.add(sphere(0.012 * s, '#2a2230', 4, 3), T(Math.cos(a) * 0.05 * s, 0.05, Math.sin(a) * 0.05 * s)); }
+  } else if (type === 'lily') {
+    // sechs lange, nach außen gebogene Blütenblätter und Staubgefäße
+    for (let i = 0; i < 6; i++) g.add(petal(0.24 * s, 0.07 * s, pc(look, i), { cup: 0.25, curl: 0.55, tip: 0.85, colorTip: look.tip, under: 0.95 }), T(0, 0, 0, (i / 6) * P * 2 + (i % 2) * 0.25, -0.75));
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * P * 2 + 0.25, st = new Geo().add(cylinder(0.005, 0.006, 0.14 * s, '#c9e07a', 4)).add(sphere(0.014 * s, '#e0701c', 5, 4, 1.6), T(0, 0.14 * s, 0));
+      g.add(st, T(0, 0.02, 0, a, -0.3));
+    }
+    g.add(sphere(0.03 * s, look.center, 8, 6), T(0, 0.02, 0));
+  } else if (type === 'hydrangea') {
+    // Ballen aus vielen kleinen Blüten
+    const R = rng(Math.round(s * 100) + 7), cols = look.petals || [look.petal, look.tip, look.petal];
+    g.add(icosphere(0.13 * s, look.petal, 1, false, 0.1, 3), T(0, 0.05 * s, 0));
+    for (let i = 0; i < 24; i++) {
+      const u = R() * 2 - 1, a = R() * P * 2, r = Math.sqrt(1 - u * u);
+      const n = [Math.cos(a) * r, Math.abs(u) * 0.9 + 0.1, Math.sin(a) * r];
+      const c = cols[i % cols.length];
+      g.add(icosphere(0.048 * s, c, 0, false, 0.15, i), T(n[0] * 0.15 * s, 0.05 * s + n[1] * 0.13 * s, n[2] * 0.15 * s, 0, 0, 0, 1, 0.7, 1));
+    }
   } else if (type === 'orchid') {
     for (let i = 0; i < 3; i++) g.add(petal(0.14 * s, 0.05 * s, look.petal, { cup: 0.1, curl: -0.05, tip: 0.6, colorTip: look.tip }), T(0, 0, 0, (i / 3) * P * 2 + P, -0.3, 0));
     for (let i = 0; i < 2; i++) g.add(petal(0.12 * s, 0.085 * s, look.tip, { cup: 0.15, curl: 0.05, tip: 0.1, colorTip: look.petal }), T(0, 0.005, 0, P * 0.35 + i * P * 1.3, -0.25));
@@ -245,17 +288,17 @@ export function plant(seedId, stage, shiny = false, seed = 1) {
     g.add(leaf(0.16, 0.08), T(0, 0.12, 0, 0.3 + P, -0.5));
     return g.windByHeight(0, 0.25, 0.4);
   }
-  const tall = { daisy: 0.32, tulip: 0.52, sunflower: 1.05, lavender: 0.5, rose: 0.46, orchid: 0.55 }[type];
+  const tall = { daisy: 0.32, tulip: 0.52, sunflower: 1.05, lavender: 0.5, rose: 0.46, orchid: 0.55, cornflower: 0.46, poppy: 0.5, lily: 0.6, hydrangea: 0.42 }[type];
   const grow = stage === 1 ? 0.5 : stage === 2 ? 0.78 : 1;
   const h = tall * grow;
-  const stems = type === 'daisy' ? 3 : type === 'lavender' ? 5 : type === 'rose' ? 3 : 1;
+  const stems = type === 'daisy' || type === 'cornflower' || type === 'rose' ? 3 : type === 'lavender' ? 5 : type === 'poppy' || type === 'hydrangea' ? 2 : 1;
   // Blätter am Boden
   const nl = type === 'sunflower' ? 4 : 3;
   for (let i = 0; i < nl; i++) {
     const big = type === 'sunflower' ? 0.24 : type === 'tulip' ? 0.3 : 0.15;
     g.add(leaf(big * (0.6 + grow * 0.4), (type === 'tulip' ? 0.06 : 0.07) * (type === 'sunflower' ? 1.8 : 1)), T(0, 0.02 + (type === 'sunflower' ? i * h * 0.18 : 0), 0, (i / nl) * P * 2 + R(), type === 'tulip' ? -1.0 : -0.35));
   }
-  if (type === 'rose') for (let i = 0; i < 7; i++) g.add(icosphere(0.09 + R() * 0.04, R() > 0.5 ? PAL.leaf2 : PAL.leaf1, 1, false, 0.2, i), T((R() - 0.5) * 0.22, 0.12 + R() * h * 0.5, (R() - 0.5) * 0.22));
+  if (type === 'rose' || type === 'hydrangea') for (let i = 0; i < 7; i++) g.add(icosphere(0.09 + R() * 0.04, R() > 0.5 ? PAL.leaf2 : PAL.leaf1, 1, false, 0.2, i), T((R() - 0.5) * 0.22, 0.12 + R() * h * 0.5, (R() - 0.5) * 0.22));
   for (let k = 0; k < stems; k++) {
     const a = (k / stems) * P * 2 + R(), off = stems > 1 ? 0.06 + R() * 0.05 : 0;
     const sh = h * (stems > 1 ? 0.75 + R() * 0.3 : 1), bend = (R() - 0.5) * 0.12;
@@ -272,10 +315,10 @@ export function plant(seedId, stage, shiny = false, seed = 1) {
     g.add(sm, T(Math.cos(a) * off, 0, Math.sin(a) * off, a));
   }
   g.windByHeight(0.05, tall * 1.1, 1);
-  const k = PLANT_SCALE[type] * (seedId === 'starRose' ? 1.12 : 1);
+  const k = PLANT_SCALE[type] * (['starRose', 'crystalRose', 'dragonLily'].includes(seedId) ? 1.12 : 1);
   return new Geo().add(g, T(0, 0, 0, 0, 0, 0, k));
 }
-export const PLANT_SCALE = { daisy: 2.3, tulip: 2.1, sunflower: 1.5, lavender: 1.9, rose: 2.15, orchid: 2.1 };
+export const PLANT_SCALE = { daisy: 2.3, tulip: 2.1, sunflower: 1.5, lavender: 1.9, rose: 2.15, orchid: 2.1, cornflower: 2.1, poppy: 2.0, lily: 1.9, hydrangea: 1.9 };
 
 // Funkelnder Stern (für goldene Blumen, Tau)
 export function sparkle(color = '#fffbe6', s = 0.06) {
@@ -867,5 +910,77 @@ DECO_MODELS.tableSet = () => {
   shade.paint((p, n, c) => (Math.floor(((Math.atan2(p[2], p[0]) + P) / (P * 2)) * 12) % 2 ? col('#ffffff') : c));
   g.add(shade, T(0, 2.3, 0));
   g.add(sphere(0.05, '#fbfbf7', 6, 5), T(0, 2.7, 0));
+  return g;
+};
+
+// ---------------- Zubehör ----------------
+DECO_MODELS.pinwheel = () => {
+  const g = new Geo();
+  g.add(cylinder(0.025, 0.03, 1.2, '#fbfbf7', 6));
+  const cols = ['#ff6f9a', '#ffd23f', '#5ab4ff', '#7be86a'];
+  for (let i = 0; i < 4; i++) {
+    const blade = new Geo().add(petal(0.22, 0.13, cols[i], { cup: 0.4, curl: -0.2, tip: 0.2, under: 0.9 }), T(0, 0, 0, 0, -P / 2)); // zeigt nach oben
+    g.add(blade, T(0, 1.22, 0.05, 0, 0, (i / 4) * P * 2 + 0.4));
+  }
+  g.add(sphere(0.035, '#fbfbf7', 6, 5), T(0, 1.22, 0.07));
+  return g;
+};
+DECO_MODELS.hoseReel = () => {
+  const g = new Geo();
+  for (const s of [-1, 1]) {
+    g.add(cylinder(0.33, 0.33, 0.05, '#3fbe2c', 18), T(s * 0.2, 0.42, 0, 0, 0, P / 2));
+    g.add(roundedBox(0.05, 0.5, 0.05, 0.02, '#2f7d1f', 1), T(s * 0.22, 0.25, -0.12, 0, 0.3));
+    g.add(roundedBox(0.05, 0.5, 0.05, 0.02, '#2f7d1f', 1), T(s * 0.22, 0.25, 0.12, 0, -0.3));
+  }
+  g.add(cylinder(0.24, 0.24, 0.36, '#2e8f3a', 16), T(0, 0.42, 0, 0, 0, P / 2));
+  for (let i = 0; i < 6; i++) g.add(cylinder(0.25, 0.25, 0.035, i % 2 ? '#56c23d' : '#3aa82e', 16), T(-0.16 + i * 0.064, 0.42, 0, 0, 0, P / 2));
+  g.add(cylinder(0.02, 0.02, 0.55, '#ffd23f', 6), T(0.32, 0.42, 0, 0, 0, P / 2 + 0.2));
+  return g;
+};
+DECO_MODELS.rainBarrel = () => {
+  const g = new Geo();
+  g.add(lathe([[0, 0], [0.34, 0], [0.4, 0.35], [0.36, 0.72], [0, 0.72]], '#6f9fd8', 18));
+  for (const y of [0.15, 0.55]) g.add(cylinder(0.385, 0.385, 0.04, '#40628f', 18), T(0, y, 0));
+  g.add(cylinder(0.33, 0.33, 0.02, '#5fc4ef', 18), T(0, 0.72, 0), { emissive: 0.1 });
+  g.add(cylinder(0.025, 0.025, 0.12, '#c8d0dc', 6), T(0.28, 0.12, 0.22, 0, P / 2 - 0.4));
+  g.add(cylinder(0.04, 0.05, 0.05, '#c8d0dc', 6), T(0.33, 0.12, 0.27));
+  return g;
+};
+DECO_MODELS.compostBin = () => {
+  const g = new Geo(), R = rng(3);
+  for (let k = 0; k < 4; k++) for (let h = 0; h < 4; h++) {
+    const side = k % 2 ? 0.55 : -0.55, along = k < 2;
+    g.add(roundedBox(along ? 1.15 : 0.08, 0.14, along ? 0.08 : 1.15, 0.03, h % 2 ? PAL.wood : PAL.woodDark, 1), T(along ? 0 : side, 0.1 + h * 0.17, along ? side : 0));
+  }
+  g.add(icosphere(0.45, '#5a3a20', 1, false, 0.25, 4), T(0, 0.45, 0, 0, 0, 0, 1.1, 0.5, 1.1));
+  for (let i = 0; i < 6; i++) g.add(petal(0.15, 0.08, ['#7bbf3a', '#e8641f', '#c9a13a'][i % 3], { cup: 0.1, curl: 0.2, tip: 0.6 }), T((R() - 0.5) * 0.6, 0.66, (R() - 0.5) * 0.6, R() * 6, -0.2));
+  return g;
+};
+DECO_MODELS.insectHotel = () => {
+  const g = new Geo(), R = rng(9);
+  for (const s of [-1, 1]) g.add(roundedBox(0.07, 0.95, 0.4, 0.02, PAL.woodDark, 1), T(s * 0.38, 0.6, 0));
+  g.add(extrude([[-0.5, 0], [0.5, 0], [0, 0.32]], 0.46, '#e2654a'), T(0, 1.06, 0));
+  g.add(roundedBox(0.76, 0.06, 0.4, 0.02, PAL.woodDark, 1), T(0, 0.13, 0));
+  g.add(roundedBox(0.76, 0.05, 0.38, 0.02, PAL.woodDark, 1), T(0, 0.55, 0));
+  for (const s of [-1, 1]) g.add(cylinder(0.04, 0.04, 0.15, PAL.woodDark, 6), T(s * 0.3, 0, 0));
+  // Fächer: Bambusröhrchen, Zapfen, Holzscheiben
+  for (let i = 0; i < 18; i++) g.add(cylinder(0.04, 0.04, 0.3, i % 3 ? '#d8b26a' : '#c48a46', 8), T(-0.28 + (i % 6) * 0.11, 0.21 + Math.floor(i / 6) * 0.1, 0.02, 0, P / 2));
+  for (let i = 0; i < 6; i++) g.add(icosphere(0.08, '#8a5a36', 1, true, 0.25, i), T(-0.25 + (i % 3) * 0.25, 0.68 + Math.floor(i / 3) * 0.17, 0.06));
+  g.add(sphere(0.03, '#e3241c', 6, 5), T(0.15, 0.95, 0.2));
+  void R;
+  return g;
+};
+DECO_MODELS.stringLights = () => {
+  const g = new Geo();
+  for (const s of [-1, 1]) {
+    g.add(cylinder(0.05, 0.06, 1.9, PAL.woodDark, 8), T(s * 1.1, 0, 0));
+    g.add(sphere(0.07, PAL.woodDark, 6, 5), T(s * 1.1, 1.92, 0));
+  }
+  const cols = ['#ffd27a', '#ff9fc6', '#bfe9ff', '#ffe9a0'];
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24, x = -1.1 + t * 2.2, y = 1.85 - Math.sin(t * P) * 0.35;
+    g.add(cylinder(0.006, 0.006, 0.1, '#3a3a3a', 3), T(x, y - 0.05, 0, 0, 0, P / 2));
+    if (i % 2 === 0 && i > 0 && i < 24) g.add(sphere(0.045, cols[(i / 2) % cols.length], 7, 5, 1.2), T(x, y - 0.07, 0), { emissive: 1 });
+  }
   return g;
 };

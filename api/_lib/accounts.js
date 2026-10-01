@@ -119,11 +119,14 @@ export async function login({ login: id, password }) {
   return { uid, user: u };
 }
 
-export async function createSession(uid) {
+// Kurze Sitzung, wenn „Angemeldet bleiben“ aus ist
+export const SHORT_SESSION = 12 * 3600;
+
+export async function createSession(uid, remember = true) {
   const token = randomToken();
   const h = sha256(token);
   await kv().pipe([
-    ['SET', K.sess(h), uid, 'EX', SESSION_DAYS * 86400],
+    ['SET', K.sess(h), uid, 'EX', remember ? SESSION_DAYS * 86400 : SHORT_SESSION],
     ['SADD', K.userSessions(uid), h],
   ]);
   return token;
@@ -135,6 +138,16 @@ export async function sessionUser(token) {
   if (!uid) return null;
   const u = await getUser(uid);
   return u ? { uid, user: u } : null;
+}
+
+// Wer regelmäßig spielt, bleibt angemeldet: lange Sitzungen werden nach einer Woche wieder
+// auf die volle Laufzeit verlängert (kurze Sitzungen nie).
+export async function renewSession(token) {
+  if (!token || token.length < 20 || token.length > 100) return false;
+  const key = K.sess(sha256(token));
+  const ttl = Number(await kv().cmd('TTL', key));
+  if (!(ttl > 2 * 86400 && ttl < (SESSION_DAYS - 7) * 86400)) return false;
+  return Number(await kv().cmd('EXPIRE', key, SESSION_DAYS * 86400)) === 1;
 }
 
 export async function endSession(token, uid) {

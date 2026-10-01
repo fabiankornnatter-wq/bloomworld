@@ -74,9 +74,12 @@ async function boot() {
   requestAnimationFrame(loop);
   progress(85, 'Konto wird geprüft …');
   const me = await mePromise;
-  if (me.ok && me.user) await enter(me.user, false);
+  // Gültige Sitzung: direkt in den Garten (abschaltbar in den Einstellungen)
+  if (me.ok && me.user) await enter(me.user, autoStart(), false, true);
   else askLogin(me);
 }
+
+function autoStart() { try { return localStorage.getItem('bw_autostart') !== '0'; } catch { return true; } }
 
 // Zuletzt angemeldeter Spieler (nur Name und Kennung) – für Offline-Spiel mit dem Konto-Stand dieses Geräts
 const LAST_USER_KEY = 'bw_last_user';
@@ -108,7 +111,7 @@ function reloadPage() {
 }
 
 // Spielstand für Konto (oder offline) laden und das Spiel vorbereiten
-async function enter(u, autoStart, isNew = false) {
+async function enter(u, autoStart, isNew = false, resumed = false) {
   if (entered) return;
   entered = true;
   user = u;
@@ -178,6 +181,7 @@ async function enter(u, autoStart, isNew = false) {
   if (u && !serverOk) notes.push(['Server gerade nicht erreichbar – du spielst mit dem Stand von diesem Gerät. Er wird später hochgeladen.', 'err']);
   if (!u && store.volatile) notes.push(['Dein Browser blockiert das Speichern. Der Fortschritt geht beim Schließen verloren.', 'err']);
   if (isNew) notes.unshift([`Willkommen, ${escapeHtml(u.name)}! Dein Konto ist bereit.`, 'good']);
+  else if (resumed && autoStart && u) notes.unshift([`Willkommen zurück, ${escapeHtml(u.name)}!`, 'good']);
   const showNotes = () => notes.forEach(([t, k], i) => setTimeout(() => ui.toast(t, k), 400 + i * 3000));
 
   if (autoStart) { start(); showNotes(); return; }
@@ -196,6 +200,8 @@ function start() {
   if (started) return;
   started = true;
   sound.unlock();
+  // Ohne Tipp (automatischer Start) gibt der Browser den Ton erst beim ersten Berühren frei
+  addEventListener('pointerdown', () => sound.unlock(), { once: true, capture: true });
   sound.play('open');
   $('loader').classList.add('done');
   setTimeout(() => { $('loader').hidden = true; }, 600);
@@ -501,7 +507,29 @@ const actions = {
     if (info.locked) { sound.play('tap'); ui.closeSheet(); ui.bedLockedDialog(i); }
     else if (info.empty) ui.openSheet(i, 'seed');
     else if (info.ready) actions.harvest(i);
+    else if (info.thirsty && ui.sheetBed !== i) actions.water(i);
     else ui.openSheet(i, 'care');
+  },
+
+  water(i) {
+    const first = !state.stats.watered;
+    const r = G.water(state, i, now());
+    if (!r.ok) return fail(r);
+    world.burst(i, 'water');
+    sound.play('water');
+    if (first) ui.toast('Gegossen! Die Blume wächst weiter. Ein Sprinkler gießt ein Beet automatisch.', 'good');
+    changed();
+  },
+
+  useRain() {
+    const list = G.thirstyBeds(state, now());
+    if (!state.items.rain) { const b = G.buyItem(state, 'rain'); if (!b.ok) return fail(b); }
+    const r = G.useItem(state, 'rain', -1, now());
+    if (!r.ok) { changed(); return fail(r); }
+    list.forEach((i, k) => later(() => world.burst(i, 'water'), k * 90));
+    sound.play('water');
+    ui.toast(`Regenwolke! ${list.length === 1 ? 'Eine Blume' : `${list.length} Blumen`} gegossen.`, 'good');
+    changed();
   },
 
   // Platzier-Modus: Bewässerung, Ausbau oder Gegenstand aufs angetippte Beet
@@ -617,13 +645,14 @@ const actions = {
     if (!r.ok) { fail(r); return false; }
     sound.play(id === 'lucky' ? 'magic' : 'plant');
     world.burst(i, id === 'lucky' ? 'magic' : 'plant');
-    const msg = { fert: 'Dünger wirkt – die Blume wächst ein gutes Stück!', turbo: 'Turbo! Die Blume ist sofort erntereif.', lucky: 'Glücksdünger – diese Blume wird funkeln!' }[id];
+    const msg = { fert: 'Dünger wirkt – die Blume wächst ein gutes Stück!', turbo: 'Turbo! Die Blume ist sofort erntereif.', lucky: 'Glücksdünger – diese Blume wird funkeln!', compost: 'Kompost eingearbeitet – die nächste Ernte bringt 50 % mehr Münzen!' }[id];
     ui.toast(msg, 'good');
     changed();
     return true;
   },
 
   buyAndUse(id, i) {
+    if (id === 'rain') return actions.useRain();
     const b = G.buyItem(state, id);
     if (!b.ok) return fail(b);
     if (id === 'boost') return actions.boostBreed();
@@ -657,10 +686,12 @@ const actions = {
   breed(idx) {
     const rc = C.RECIPES[idx];
     if (!rc) return;
-    const r = G.startBreeding(state, rc.a, rc.b, now(), isNight());
+    const pollen = !!ui.pollenOn && state.items.pollen > 0;
+    const r = G.startBreeding(state, rc.a, rc.b, now(), isNight(), { pollen });
     if (!r.ok) return fail(r);
+    if (pollen && !state.items.pollen) ui.pollenOn = false;
     sound.play('magic');
-    ui.toast(`Züchtung gestartet: ${plain(C.SEEDS[r.result].name)} – fertig in ${fmtTime(rc.ms)}.`, 'good');
+    ui.toast(`Züchtung gestartet: ${plain(C.SEEDS[r.result].name)} – fertig in ${fmtTime(rc.ms)}.${r.chance < 1 ? ` Erfolgschance ${Math.round(r.chance * 100)} %.` : ''}`, 'good');
     changed();
   },
 
@@ -677,6 +708,14 @@ const actions = {
     const r = G.collectBreeding(state, now());
     if (!r.ok) return fail(r);
     const d = C.SEEDS[r.seed];
+    if (r.failed) {
+      sound.play('error');
+      ui.modal({ queue: true, cls: 'failed', title: 'Nicht gelungen', html: `<img class="big fail" alt="" src="${icons.flower[r.seed]}"><p>Die Kreuzung hat diesmal nicht geklappt – <b>${d.name}</b> ist leider nicht entstanden. Du bekommst einen Teil der Kosten zurück.</p>${ui.chips({ coins: r.refund, xp: r.xp })}<p class="small">Aus Fehlern lernt man: Beim nächsten Versuch liegt die Chance bei <b>${Math.round(r.next * 100)} %</b>.</p>`, buttons: [['Nochmal versuchen', 'openBreed', ''], ['Okay', 'closeModal', 'ghost']] });
+      ui.bumpCoins();
+      changed();
+      afterLevelUps(r.levelUps);
+      return;
+    }
     sound.play('level');
     ui.modal({ queue: true, title: 'Neue Sorte!', html: `<img class="big" alt="" src="${icons.flower[r.seed]}"><p><b>${d.name}</b> ist gezüchtet! Du kannst sie ab jetzt in jedes Beet pflanzen.</p>${ui.chips({ xp: r.xp })}`, buttons: [['Jetzt pflanzen', 'closeModal', '']] });
     changed();

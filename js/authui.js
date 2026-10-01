@@ -6,6 +6,8 @@ import * as I from './icons.js';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+const rememberBox = '<label class="check remember"><input type="checkbox" name="remember" checked><span><b>Angemeldet bleiben</b> – du startest beim nächsten Mal direkt im Garten. Auf fremden Geräten ausschalten.</span></label>';
+
 const pwField = (name, label, auto) => `<label class="fld"><span>${label}</span><span class="pw"><input type="password" name="${name}" autocomplete="${auto}" required minlength="8" maxlength="128"><button type="button" class="eye" data-eye aria-label="Passwort anzeigen">${I.eye}</button></span></label>`;
 
 // Zeigt das Formular. onDone(user) nach erfolgreicher Anmeldung, onOffline() für Offline-Spiel.
@@ -24,12 +26,14 @@ export function showAuth({ onDone, onOffline, offline = false, reason = '', unlo
         <label class="fld"><span>E-Mail</span><input type="email" name="email" autocomplete="email" required maxlength="254" inputmode="email"></label>
         ${pwField('password', 'Passwort <small>(mind. 8 Zeichen)</small>', 'new-password')}
         <label class="check"><input type="checkbox" name="privacy" required><span>Ich habe die <button type="button" class="link" data-privacy>Datenschutzhinweise</button> gelesen.</span></label>
+        ${rememberBox}
         <p class="ferr" role="alert"></p>
         <button class="btn big wide" type="submit">Konto erstellen</button>
       </form>
       <form id="loginForm" novalidate hidden>
         <label class="fld"><span>Spielername oder E-Mail</span><input name="login" autocomplete="username" required maxlength="254"></label>
         ${pwField('password', 'Passwort', 'current-password')}
+        ${rememberBox}
         <p class="ferr" role="alert"></p>
         <button class="btn big wide" type="submit">Anmelden</button>
         <button type="button" class="link small" data-forgot>Passwort vergessen?</button>
@@ -64,6 +68,7 @@ export function showAuth({ onDone, onOffline, offline = false, reason = '', unlo
     const err = form.querySelector('.ferr');
     const btn = form.querySelector('button[type=submit]');
     const d = Object.fromEntries(new FormData(form));
+    d.remember = !!form.querySelector('[name=remember]')?.checked;
     err.textContent = '';
     // Prüfung im Browser (der Server prüft zusätzlich)
     if (kind === 'register') {
@@ -83,6 +88,7 @@ export function showAuth({ onDone, onOffline, offline = false, reason = '', unlo
       return;
     }
     localStorage_set('bw_has_account', '1');
+    localStorage_set('bw_autostart', d.remember ? '1' : '0');
     box.hidden = true; box.innerHTML = '';
     onDone(r.user, kind === 'register');
   };

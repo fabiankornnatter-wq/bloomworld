@@ -2,7 +2,7 @@
 // Alle Funktionen verändern den übergebenen Spielstand und geben ein Ergebnis-Objekt zurück.
 import * as C from './config.js';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export const ERR = {
   locked: 'Dieses Beet ist noch nicht freigeschaltet.',
@@ -23,6 +23,8 @@ export const ERR = {
   noSpace: 'Hier ist kein Platz – da steht schon etwas.',
   outside: 'Das liegt außerhalb deines Gartens.',
   maxLand: 'Dein Garten hat schon die volle Größe.',
+  notThirsty: 'Diese Blume hat gerade keinen Durst.',
+  thirsty: 'Diese Blume hat Durst – gieß sie zuerst.',
   maxDeco: 'Dein Garten ist voll mit Deko. Lagere etwas ein oder verkaufe es, bevor du Neues aufstellst.',
 };
 
@@ -31,7 +33,7 @@ export function dayKey(now) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const newBed = (i) => ({ locked: i >= C.STARTING_BEDS, seed: null, plantedAt: 0, dur: 0, shiny: false, var: 0, lvl: 1, sprinkler: false });
+const newBed = (i) => ({ locked: i >= C.STARTING_BEDS, seed: null, plantedAt: 0, dur: 0, shiny: false, var: 0, lvl: 1, sprinkler: false, drinks: 0, compost: false });
 
 export function newState(now = Date.now()) {
   return {
@@ -53,13 +55,14 @@ export function newState(now = Date.now()) {
     layout: { beds: C.DEFAULT_BEDS.map((p) => [...p]), gh: [...C.DEFAULT_GH] },
     skins: [],
     activeSkin: { fox: 'default', hedgehog: 'default' },
-    items: { fert: 0, turbo: 0, lucky: 0, boost: 0 },
+    items: Object.fromEntries(C.ITEM_ORDER.map((k) => [k, 0])),
     greenhouse: { unlocked: false, job: null },
     story: { ch: 0, q: 0, count: 0, intro: -1 },
     event: { id: null, year: 0, tokens: 0, total: 0, claimed: [] },
-    tasks: { date: dayKey(now), progress: { plant: 0, harvest: 0, earn: 0 }, claimed: [] },
+    tasks: { date: dayKey(now), progress: { plant: 0, harvest: 0, earn: 0, water: 0 }, claimed: [] },
     dailyGift: null,
-    stats: { planted: 0, harvested: 0, earned: 0, shiny: 0, bred: 0, itemsUsed: 0 },
+    stats: { planted: 0, harvested: 0, earned: 0, shiny: 0, bred: 0, itemsUsed: 0, watered: 0, breedFailed: 0 },
+    breedFails: {},      // Fehlversuche je Züchtung (machen den nächsten Versuch leichter)
     seenAnimals: [],
     tutorial: 0,
     settings: { cycle: 'auto', cycleMin: 8, cycleEpoch: now, quality: 'auto', music: true, musicVol: 0.5, sound: true, soundVol: 0.8 },
@@ -224,6 +227,38 @@ export function buyEventItem(s, id, now) {
 // ---------- Beete ----------
 export const growTime = (b, seedId) => Math.round(C.SEEDS[seedId].growMs * (b.sprinkler ? C.SPRINKLER.speed : 1));
 
+// ---------- Gießen ----------
+// Zeitpunkte (Anteil am Wachstum), an denen die Blume Durst bekommt. Sprinkler-Beete gießen sich selbst.
+export const thirstPoints = (b) => (b.sprinkler || !b.seed ? [] : C.WATER_AT[C.SEEDS[b.seed]?.water || 0] || []);
+// Wachstum unter Berücksichtigung von Durst: Eine durstige Blume bleibt stehen, bis sie gegossen wird
+export function growState(b, now) {
+  const dur = b.dur || growTime(b, b.seed);
+  const raw = (now - b.plantedAt) / dur;
+  const next = thirstPoints(b)[b.drinks || 0];
+  if (next !== undefined && raw >= next) return { p: next, thirsty: true, dur, remaining: Math.round(dur * (1 - next)) };
+  const p = Math.max(0, Math.min(1, raw));
+  return { p, thirsty: false, dur, remaining: Math.max(0, Math.round(dur - (now - b.plantedAt))) };
+}
+
+function waterBed(s, b, now) {
+  const g = growState(b, now);
+  if (!g.thirsty) return false;
+  b.plantedAt = now - g.p * g.dur; // Wachstum geht ab hier weiter
+  b.drinks = (b.drinks || 0) + 1;
+  s.stats.watered++; s.tasks.progress.water++;
+  track(s, 'water');
+  return true;
+}
+
+export function water(s, i, now) {
+  const b = s.beds[i];
+  if (!b || b.locked || !b.seed) return err('notGrowing');
+  if (!waterBed(s, b, now)) return err('notThirsty');
+  return { ok: true };
+}
+
+export const thirstyBeds = (s, now) => s.beds.map((b, i) => (!b.locked && b.seed && growState(b, now).thirsty ? i : -1)).filter((i) => i >= 0);
+
 export function bedInfo(s, i, now) {
   const b = s.beds[i];
   if (!b) return null;
@@ -231,11 +266,11 @@ export function bedInfo(s, i, now) {
   if (!bedVisible(s, i)) return { ...base, locked: true, hidden: true, price: C.BED_UNLOCK[i].cost, needLevel: C.BED_UNLOCK[i].level, needLand: C.BED_UNLOCK[i].land };
   if (b.locked) { const u = C.BED_UNLOCK[i]; return { ...base, locked: true, price: u.cost, needLevel: s.level < u.level ? u.level : 0 }; }
   if (!b.seed) return { ...base, empty: true };
-  const dur = b.dur || growTime(b, b.seed);
-  const p = Math.max(0, Math.min(1, (now - b.plantedAt) / dur));
+  const g = growState(b, now), p = g.p;
   let stage = 0;
   for (let k = 0; k < C.GROWTH_STAGE_AT.length; k++) if (p >= C.GROWTH_STAGE_AT[k]) stage = k;
-  return { ...base, seed: b.seed, progress: p, stage, ready: p >= 1, remaining: Math.max(0, dur - (now - b.plantedAt)), shiny: b.shiny && p >= 1, shinyHidden: b.shiny, var: b.var };
+  const ready = !g.thirsty && p >= 1;
+  return { ...base, seed: b.seed, progress: p, stage, ready, thirsty: g.thirsty, remaining: g.remaining, shiny: b.shiny && ready, shinyHidden: b.shiny, compost: !!b.compost, waterLeft: thirstPoints(b).length - (b.drinks || 0), var: b.var };
 }
 
 export function plant(s, i, seedId, now, rand = Math.random) {
@@ -249,7 +284,7 @@ export function plant(s, i, seedId, now, rand = Math.random) {
   if (!st.available) return err('seedLocked', { message: `${d.name.replace(/­/g, '')}: ${st.reason}.` });
   if (!spend(s, d.cost)) return noCoins(s, d.cost, d.name.replace(/­/g, ''));
   const chance = (C.SHINY_CHANCE + C.BED_LEVELS[b.lvl - 1].shiny) * (isWeekend(now) ? C.WEEKEND_BONUS.shinyFactor : 1);
-  b.seed = seedId; b.plantedAt = now; b.dur = growTime(b, seedId); b.shiny = rand() < chance; b.var = Math.floor(rand() * 1000);
+  b.seed = seedId; b.plantedAt = now; b.dur = growTime(b, seedId); b.shiny = rand() < chance; b.var = Math.floor(rand() * 1000); b.drinks = 0;
   s.stats.planted++; s.tasks.progress.plant++;
   track(s, 'plant', seedId);
   if (s.tutorial < 1) s.tutorial = 1;
@@ -261,12 +296,13 @@ export function harvest(s, i, now) {
   if (!b) return err('invalid');
   if (b.locked) return err('locked');
   if (!b.seed) return err('empty');
-  const d = C.SEEDS[b.seed], dur = b.dur || growTime(b, b.seed);
-  if (now - b.plantedAt < dur) return err('notReady', { remaining: dur - (now - b.plantedAt) });
-  const shiny = !!b.shiny, seed = b.seed;
-  const reward = Math.round(d.reward * C.BED_LEVELS[b.lvl - 1].mult * (shiny ? C.SHINY_MULTIPLIER : 1));
+  const d = C.SEEDS[b.seed], g = growState(b, now);
+  if (g.thirsty) return err('thirsty');
+  if (g.p < 1) return err('notReady', { remaining: g.remaining });
+  const shiny = !!b.shiny, seed = b.seed, compost = !!b.compost;
+  const reward = Math.round(d.reward * C.BED_LEVELS[b.lvl - 1].mult * (shiny ? C.SHINY_MULTIPLIER : 1) * (compost ? C.COMPOST_BONUS : 1));
   const xp = d.xp * (shiny ? 2 : 1);
-  b.seed = null; b.plantedAt = 0; b.dur = 0; b.shiny = false;
+  b.seed = null; b.plantedAt = 0; b.dur = 0; b.shiny = false; b.drinks = 0; b.compost = false;
   addCoins(s, reward);
   const entry = (s.collection[seed] ||= { count: 0, shiny: 0 });
   entry.count++; if (shiny) { entry.shiny++; s.stats.shiny++; track(s, 'shiny', seed); }
@@ -277,7 +313,7 @@ export function harvest(s, i, now) {
   if (ev) { tokens = eventTokensFor(reward); s.event.tokens += tokens; s.event.total += tokens; }
   if (s.tutorial < 2) s.tutorial = 2;
   const levelUps = addXp(s, xp);
-  return { ok: true, seed, reward, xp, shiny, tokens, levelUps };
+  return { ok: true, seed, reward, xp, shiny, compost, tokens, levelUps };
 }
 
 export function unlockBed(s, i) {
@@ -299,7 +335,7 @@ export function buySprinkler(s, i, now) {
   if (s.level < C.SPRINKLER.level) return needLevel(C.SPRINKLER.level, 'Die Bewässerung');
   if (!spend(s, C.SPRINKLER.cost)) return noCoins(s, C.SPRINKLER.cost, 'die Bewässerung');
   if (b.seed) {
-    const old = b.dur || growTime(b, b.seed), p = Math.min(1, (now - b.plantedAt) / old);
+    const p = growState(b, now).p; // auch eine durstige Blume wächst ab jetzt weiter
     b.sprinkler = true;
     b.dur = growTime(b, b.seed);
     b.plantedAt = now - p * b.dur;
@@ -332,22 +368,34 @@ export function buyItem(s, id, pack = false) {
 export function useItem(s, id, i, now) {
   if (!C.ITEMS[id]) return err('invalid');
   if (!s.items[id]) return err('noItem');
+  if (id === 'pollen') return err('invalid', { message: 'Zauberpollen benutzt du im Gewächshaus beim Starten einer Züchtung.' });
   if (id === 'boost') {
     const job = s.greenhouse.job;
     if (!job) return err('noJob');
     if (now - job.start >= job.dur) return err('invalid', { message: 'Die Züchtung ist schon fertig.' });
     job.start = now - job.dur;
+  } else if (id === 'rain') {
+    // Regenwolke: alle durstigen Blumen auf einmal
+    const list = thirstyBeds(s, now);
+    if (!list.length) return err('invalid', { message: 'Gerade hat keine Blume Durst.' });
+    for (const k of list) waterBed(s, s.beds[k], now);
   } else {
     const b = s.beds[i];
     if (!b || b.locked || !b.seed) return err('notGrowing');
-    const dur = b.dur || growTime(b, b.seed), done = now - b.plantedAt >= dur;
+    const g = growState(b, now), done = !g.thirsty && g.p >= 1;
     if (id === 'lucky') {
       if (b.shiny) return err('invalid', { message: 'Diese Blume wird schon eine Funkelblüte.' });
       b.shiny = true;
+    } else if (id === 'compost') {
+      if (b.compost) return err('invalid', { message: 'In diesem Beet ist schon Kompost.' });
+      b.compost = true;
     } else {
       if (done) return err('invalid', { message: 'Die Blume ist schon erntereif.' });
-      if (id === 'fert') b.plantedAt = Math.max(now - dur, b.plantedAt - dur * 0.5);
-      if (id === 'turbo') b.plantedAt = now - dur;
+      if (id === 'fert') {
+        if (g.thirsty) return err('thirsty');
+        b.plantedAt = Math.max(now - g.dur, b.plantedAt - g.dur * 0.5);
+      }
+      if (id === 'turbo') { b.plantedAt = now - g.dur; b.drinks = thirstPoints(b).length; }
     }
   }
   s.items[id]--;
@@ -370,6 +418,18 @@ export function findRecipe(a, b) {
 }
 
 export const discovered = (s, id) => (s.collection[id]?.count || 0) > 0;
+export const harvestCount = (s, id) => s.collection[id]?.count || 0;
+export const breedDiff = (r) => C.BREED_DIFF[r?.diff] || C.BREED_DIFF[1];
+
+// Erfolgschance einer Kreuzung (0..1) mit allen Boni
+export function breedChance(s, r, { pollen = false } = {}) {
+  const D = breedDiff(r);
+  const fails = s.breedFails?.[r.result] || 0;
+  let helpers = 0;
+  for (const [id, v] of Object.entries(C.BREED_HELPERS)) if (s.decor.some((d) => d.id === id && !d.stored)) helpers += v;
+  const bonus = fails * C.BREED_PITY + helpers + (pollen ? C.BREED_POLLEN : 0);
+  return { chance: Math.min(1, D.chance + bonus), base: D.chance, fails, helpers, pollen: pollen ? C.BREED_POLLEN : 0, diff: r.diff || 1, name: D.name, harvests: D.harvests };
+}
 
 export function breedCheck(s, a, b, night) {
   if (!s.greenhouse.unlocked) return err('invalid', { message: 'Restauriere zuerst das Gewächshaus.' });
@@ -382,16 +442,24 @@ export function breedCheck(s, a, b, night) {
   if (s.bred.includes(r.result)) return err('owned', { message: `${d.name.replace(/­/g, '')} hast du schon gezüchtet.`, recipe: r });
   if (s.level < d.level) return needLevel(d.level, `Die Züchtung ${d.name.replace(/­/g, '')}`);
   if (r.night && !night) return err('night', { message: 'Diese Kreuzung gelingt nur nachts. Warte auf die Nacht oder stelle in den Einstellungen „Immer Nacht“ ein.', recipe: r });
+  const need = breedDiff(r).harvests;
+  const short = [a, b].filter((k) => harvestCount(s, k) < need);
+  if (short.length) return err('harvests', { message: `Für diese ${breedDiff(r).adj} Züchtung brauchst du jede Eltern-Blume ${need}× geerntet. Noch nötig: ${short.map((k) => `${C.SEEDS[k].name.replace(/­/g, '')} (${harvestCount(s, k)}/${need})`).join(' und ')}.`, recipe: r });
   return { ok: true, recipe: r };
 }
 
-export function startBreeding(s, a, b, now, night) {
+export function startBreeding(s, a, b, now, night, { pollen = false, rand = Math.random } = {}) {
   const c = breedCheck(s, a, b, night);
   if (!c.ok) return c;
   const r = c.recipe;
+  if (pollen && !s.items.pollen) return err('noItem');
+  const ch = breedChance(s, r, { pollen });
   if (!spend(s, r.cost)) return noCoins(s, r.cost, 'diese Züchtung');
-  s.greenhouse.job = { a, b, result: r.result, start: now, dur: r.ms };
-  return { ok: true, result: r.result };
+  if (pollen) { s.items.pollen--; s.stats.itemsUsed++; track(s, 'useItem', 'pollen'); }
+  // Das Ergebnis steht beim Start fest; gezeigt wird es erst beim Abholen.
+  const success = ch.chance >= 1 || rand() < ch.chance;
+  s.greenhouse.job = { a, b, result: r.result, start: now, dur: r.ms, chance: ch.chance, success, cost: r.cost };
+  return { ok: true, result: r.result, chance: ch.chance };
 }
 
 export function breedingInfo(s, now) {
@@ -406,9 +474,19 @@ export function collectBreeding(s, now) {
   if (!info) return err('noJob');
   if (!info.ready) return err('notReady', { message: 'Die Züchtung braucht noch etwas Zeit.' });
   s.greenhouse.job = null;
+  const d = C.SEEDS[info.result];
+  if (info.success === false) {
+    // Misslungen: ein Teil der Kosten zurück, Erfahrung macht den nächsten Versuch leichter
+    s.breedFails[info.result] = (s.breedFails[info.result] || 0) + 1;
+    s.stats.breedFailed++;
+    const refund = Math.round((info.cost || 0) * C.BREED_REFUND);
+    s.coins += refund;
+    const levelUps = addXp(s, 5);
+    const r = C.RECIPES.find((x) => x.result === info.result);
+    return { ok: true, failed: true, seed: info.result, refund, xp: 5, next: r ? breedChance(s, r).chance : 1, levelUps };
+  }
   if (!s.bred.includes(info.result)) s.bred.push(info.result);
   s.stats.bred++;
-  const d = C.SEEDS[info.result];
   const levelUps = addXp(s, 20 + d.xp);
   return { ok: true, seed: info.result, xp: 20 + d.xp, levelUps };
 }
@@ -429,7 +507,7 @@ function track(s, type, id, amount = 1) {
 
 function questProgress(s, goal) {
   switch (goal.type) {
-    case 'plant': case 'harvest': case 'useItem': case 'shiny': case 'earn': return [Math.min(goal.n, s.story.count), goal.n];
+    case 'plant': case 'harvest': case 'useItem': case 'shiny': case 'earn': case 'water': return [Math.min(goal.n, s.story.count), goal.n];
     case 'level': return [Math.min(goal.n, s.level), goal.n];
     case 'beds': return [Math.min(goal.n, s.beds.filter((b) => !b.locked).length), goal.n];
     case 'deco': return [Math.min(goal.n, s.deco.length), goal.n];
@@ -622,7 +700,7 @@ export function equipSkin(s, animal, id) {
 // ---------- Tägliches ----------
 export function ensureDaily(s, now) {
   const k = dayKey(now);
-  if (s.tasks.date !== k) s.tasks = { date: k, progress: { plant: 0, harvest: 0, earn: 0 }, claimed: [] };
+  if (s.tasks.date !== k) s.tasks = { date: k, progress: { plant: 0, harvest: 0, earn: 0, water: 0 }, claimed: [] };
 }
 
 export function taskList(s) {
@@ -722,7 +800,7 @@ export function migrate(raw, now = Date.now()) {
     s.v = SAVE_VERSION;
     return { state: repair(s, now), migrated: true };
   }
-  if (raw.v === 3 || raw.v === SAVE_VERSION) {
+  if (raw.v === 3 || raw.v === 4 || raw.v === SAVE_VERSION) {
     const s = { ...base, ...raw, settings: { ...base.settings, ...(raw.settings || {}) }, stats: { ...base.stats, ...(raw.stats || {}) }, activeSkin: { ...base.activeSkin, ...(raw.activeSkin || {}) } };
     // Version 3 -> 4: frei verschiebbarer Garten, Deko als einzelne Teile
     if (raw.v === 3) { s.decor = undefined; s.layout = undefined; s.land = 0; }
@@ -753,6 +831,8 @@ export function repair(s, now) {
       shiny: seed ? !!(b.shiny ?? b.golden) : false, var: ok ? num(b.var, 0) : 0,
       lvl: ok ? Math.min(C.BED_LEVELS.length, Math.max(1, num(b.lvl, 1, 1))) : 1,
       sprinkler: ok ? !!b.sprinkler : false,
+      drinks: ok ? Math.min(2, num(b.drinks, 0)) : 0,
+      compost: seed && ok ? !!b.compost : false,
     };
     if (seed) bed.dur = num(b.dur, 0, 1) || growTime(bed, seed);
     return bed;
@@ -796,7 +876,10 @@ export function repair(s, now) {
   s.items = {};
   for (const k of C.ITEM_ORDER) s.items[k] = num(Number(items[k]), 0);
   const gh = obj(s.greenhouse) ? s.greenhouse : {};
-  const job = obj(gh.job) && C.SEEDS[gh.job.result]?.bred ? { a: gh.job.a, b: gh.job.b, result: gh.job.result, start: num(gh.job.start, now), dur: num(gh.job.dur, 60_000, 1) } : null;
+  const job = obj(gh.job) && C.SEEDS[gh.job.result]?.bred ? { a: gh.job.a, b: gh.job.b, result: gh.job.result, start: num(gh.job.start, now), dur: num(gh.job.dur, 60_000, 1), chance: Math.min(1, Math.max(0, Number(gh.job.chance) || 1)), success: gh.job.success !== false, cost: num(Number(gh.job.cost), 0) } : null;
+  const bf = obj(s.breedFails) ? s.breedFails : {};
+  s.breedFails = {};
+  for (const [k, n] of Object.entries(bf)) if (C.SEEDS[k]?.bred && Number.isFinite(n) && n > 0) s.breedFails[k] = Math.min(20, Math.floor(n));
   s.greenhouse = { unlocked: !!gh.unlocked, job: gh.unlocked ? job : null };
   const story = obj(s.story) ? s.story : {};
   s.story = { ch: Math.min(C.STORY.length, num(story.ch, 0)), q: num(story.q, 0), count: num(Number(story.count), 0), intro: Number.isFinite(story.intro) ? Math.floor(story.intro) : -1 };

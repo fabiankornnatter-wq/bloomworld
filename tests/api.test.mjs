@@ -119,3 +119,17 @@ test('Konto löschen entfernt alles und gibt Name und E-Mail frei', async () => 
   assert.equal(again.status, 201);
   assert.equal((await call(save, { cookie: cookieOf(again) })).body.save, null);
 });
+
+test('Angemeldet bleiben: dauerhaftes oder Sitzungs-Cookie, Verlängerung', async () => {
+  const r = await call(auth, { method: 'POST', ip: '9.9.9.1', body: { action: 'register', name: 'Merle Moos', email: 'merle@example.com', password: 'blumen123' } });
+  assert.equal(r.status, 201);
+  assert.match(r.headers['set-cookie'], /Max-Age=\d+/);
+  const short = await call(auth, { method: 'POST', ip: '9.9.9.1', body: { action: 'login', login: 'Merle Moos', password: 'blumen123', remember: false } });
+  assert.equal(short.status, 200);
+  assert.doesNotMatch(short.headers['set-cookie'], /Max-Age/);
+  const me = await call(auth, { cookie: cookieOf(short) });
+  assert.equal(me.body.user.name, 'Merle Moos');
+  assert.equal(me.headers['set-cookie'], undefined, 'kurze Sitzungen werden nicht verlängert');
+  const me2 = await call(auth, { cookie: cookieOf(r) });
+  assert.equal(me2.body.user.name, 'Merle Moos');
+});

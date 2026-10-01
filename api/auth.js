@@ -13,7 +13,10 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const s = await A.sessionUser(token);
       // Nicht angemeldet ist kein Fehler: user = null
-      return send(res, 200, { ok: true, user: s ? A.publicUser(s.uid, s.user) : null });
+      if (!s) return send(res, 200, { ok: true, user: null });
+      let renewed = false;
+      try { renewed = await A.renewSession(token); } catch { /* nicht schlimm */ }
+      return send(res, 200, { ok: true, user: A.publicUser(s.uid, s.user) }, renewed ? { 'Set-Cookie': sessionCookie(req, token) } : {});
     }
     if (req.method !== 'POST') return fail(res, 405, 'method', 'Nicht erlaubt.', {});
     if (!sameOrigin(req)) return fail(res, 403, 'origin', 'Anfrage abgelehnt.');
@@ -26,8 +29,9 @@ export default async function handler(req, res) {
       case 'register': {
         await A.rateLimit('reg', ip, 8, 3600);
         const { uid, user } = await A.register(body);
-        const t = await A.createSession(uid);
-        return send(res, 201, { ok: true, user: A.publicUser(uid, user) }, { 'Set-Cookie': sessionCookie(req, t) });
+        const remember = body.remember !== false;
+        const t = await A.createSession(uid, remember);
+        return send(res, 201, { ok: true, user: A.publicUser(uid, user) }, { 'Set-Cookie': sessionCookie(req, t, remember) });
       }
       case 'login': {
         await A.rateLimit('login-ip', ip, 40, 900);
@@ -40,8 +44,9 @@ export default async function handler(req, res) {
           throw e;
         }
         const { uid, user } = res1;
-        const t = await A.createSession(uid);
-        return send(res, 200, { ok: true, user: A.publicUser(uid, user) }, { 'Set-Cookie': sessionCookie(req, t) });
+        const remember = body.remember !== false;
+        const t = await A.createSession(uid, remember);
+        return send(res, 200, { ok: true, user: A.publicUser(uid, user) }, { 'Set-Cookie': sessionCookie(req, t, remember) });
       }
       case 'logout': {
         const s = await A.sessionUser(token);
