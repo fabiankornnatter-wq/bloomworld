@@ -1,0 +1,17 @@
+{
+  "name": "BloomWorld",
+  "short_name": "BloomWorld",
+  "description": "Dein gemütlicher Garten im Browser: Blumen pflanzen, ernten, sammeln und den Garten gestalten.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#c9a4f4",
+  "theme_color": "#ff92c6",
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

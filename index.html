@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>BloomWorld</title>
+  <meta name="description" content="BloomWorld – dein gemütlicher Garten im Browser. Pflanze Blumen, ernte sie und gestalte deinen eigenen Garten.">
+  <meta name="theme-color" content="#ff92c6">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="BloomWorld">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="preload" href="assets/fonts/poppins-bold.woff" as="font" type="font/woff" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="world" aria-label="Dein Garten"></canvas>
+    <div id="vignette"></div>
+    <div id="bubbles"></div>
+
+    <header id="hud" hidden>
+      <button class="pill lvl" id="lvl" aria-label="Level und Erfahrung"></button>
+      <div class="pill coins" id="coinPill"><span id="coinIcon"></span><span id="coins">0</span><button class="plus" id="coinPlus" aria-label="Münzen im Shop">+</button></div>
+      <div class="spacer"></div>
+      <div class="pill timepill" id="timePill"></div>
+      <button class="round" id="gearBtn" aria-label="Einstellungen"></button>
+    </header>
+
+    <div id="side" hidden>
+      <button class="sidebtn" id="tasksBtn" aria-label="Tagesaufgaben"><i class="badge" id="tasksBadge" hidden></i><span>Aufgaben</span></button>
+      <button class="sidebtn" id="centerBtn" aria-label="Ansicht zentrieren"><span>Ansicht</span></button>
+    </div>
+
+    <button class="btn gold" id="harvestAll" hidden></button>
+    <div id="hint" hidden></div>
+
+    <section class="panel" id="panel" aria-live="polite"></section>
+    <section class="sheet" id="sheet"></section>
+
+    <nav id="nav" hidden aria-label="Hauptmenü"></nav>
+    <div id="floaters"></div>
+    <div id="modal" role="dialog" aria-modal="true"></div>
+    <div id="toast" role="status"></div>
+
+    <div id="loader">
+      <div id="bloomIcon"></div>
+      <div class="logo">Bloom<span>World</span></div>
+      <div class="sub">Dein gemütlicher Garten</div>
+      <div class="lbar"><i id="lbar"></i></div>
+      <div class="msg" id="lmsg">Garten wird vorbereitet …</div>
+      <button class="btn big" id="playBtn" hidden>Spielen</button>
+    </div>
+    <noscript><div style="position:fixed;inset:0;display:grid;place-items:center;background:#c9a4f4;font:18px sans-serif;padding:24px;text-align:center">BloomWorld braucht JavaScript. Bitte aktiviere JavaScript in deinem Browser.</div></noscript>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
