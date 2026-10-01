@@ -5,7 +5,7 @@ import * as G from './game.js';
 import * as C from './config.js';
 import { LocalStore, SaveManager, accountKey } from './storage.js';
 import { api as Net, CloudSync } from './account.js';
-import { SocialHub, socialApi, loadNews } from './social.js';
+import { SocialHub, socialApi, loadNews, loadLegal } from './social.js';
 import { showAuth } from './authui.js';
 import { Sound } from './audio.js';
 import { UI, fmtTime } from './ui.js';
@@ -25,6 +25,7 @@ const sound = new Sound();
 const guestStore = new LocalStore();
 let store = null, state, world, ui, saver, cloud = null, user = null, icons;
 let hub = null;    // Freunde & Chat (nur mit Konto)
+let basketWarned = false;
 let visit = null;  // Besuch im Garten eines Freundes: { id, name, state, skew, helpLeft, liked, queued }
 let migrated = false, started = false, freshSave = false, entered = false;
 // Zeitgesteuerte Effekte; beim Zurücksetzen werden alte verworfen
@@ -176,7 +177,7 @@ async function enter(u, autoStart, isNew = false, resumed = false) {
       onAuthLost: () => hub?.stop(),
     });
   }
-  ui = new UI({ state: () => state, now, icons, sound, act: actions, world, account: () => ({ user, status: cloud?.status, lastSaved: cloud?.lastSaved }), isNight, social: () => hub, visiting: () => visit });
+  ui = new UI({ state: () => state, now, icons, sound, act: actions, world, account: () => ({ user, status: cloud?.status, lastSaved: cloud?.lastSaved }), isNight, breedCtx, social: () => hub, visiting: () => visit });
   ui.init();
   applySound();
   setupInput();
@@ -194,6 +195,7 @@ async function enter(u, autoStart, isNew = false, resumed = false) {
   else if (resumed && autoStart && u) notes.unshift([`Willkommen zurück, ${escapeHtml(u.name)}!`, 'good']);
   const showNotes = () => notes.forEach(([t, k], i) => setTimeout(() => ui.toast(t, k), 400 + i * 3000));
 
+  if (u?.mustRename) { renameDialog(u, () => { if (autoStart) { start(); showNotes(); } }); if (!autoStart) { $('playBtn').hidden = false; $('playBtn').onclick = () => { start(); showNotes(); }; } return; }
   if (autoStart) { start(); showNotes(); return; }
   // Angemeldet zurück: ein Tipp auf „Spielen“ schaltet auch den Ton frei
   $('userLine').innerHTML = u ? `Angemeldet als <b>${escapeHtml(u.name)}</b> · <button class="link" id="switchUser">Abmelden</button>` : '';
@@ -219,12 +221,22 @@ function start() {
   showNews();
 }
 
-// Ankündigungen vom BloomWorld-Team: neue werden einmal beim Start gezeigt
+// Ankündigungen, Event-Schalter und Wartungshinweise vom BloomWorld-Team (alle 5 Minuten neu)
 const NEWS_SEEN = 'bw_news_seen';
-async function showNews() {
+let newsTimer = null;
+async function showNews(first = true) {
+  clearTimeout(newsTimer);
+  newsTimer = setTimeout(() => showNews(false), 5 * 60_000);
   const r = await loadNews();
   if (!r.ok || !Array.isArray(r.news)) return;
   ui.news = r.news;
+  ui.legalAvail = r.legal || {};
+  const hadBoosts = Object.keys(ui.boosts || {}).join(), boosts = r.boosts || {};
+  G.setBoosts(boosts, r.offer);
+  ui.boosts = boosts;
+  ui.setMaint(r.maint);
+  if (Object.keys(boosts).join() !== hadBoosts) { ui.refresh(); if (!first && Object.keys(boosts).length) ui.toast(`🎉 Event gestartet: ${Object.values(boosts).map((b) => BOOST_NAMES[b.id] || b.id).join(', ')}`, 'good'); }
+  if (!first) return;
   if (!r.news.length) return;
   let seen = 0; try { seen = Number(localStorage.getItem(NEWS_SEEN)) || 0; } catch { /* egal */ }
   // Neue Spieler sehen nur die neueste Meldung, alle anderen alles seit dem letzten Besuch (höchstens 3)
@@ -232,6 +244,45 @@ async function showNews() {
   try { localStorage.setItem(NEWS_SEEN, String(r.news[0].ts)); } catch { /* egal */ }
   if (fresh.length) ui.modal({ queue: true, title: fresh.length > 1 ? 'Neuigkeiten' : 'Neuigkeit', cls: 'newsdlg', html: fresh.map((n) => ui.newsHtml(n)).join(''), buttons: [['Super!', 'closeModal', '']] });
   if (ui.panel === 'events') ui.renderPanel(true);
+}
+export const BOOST_NAMES = { doubleXp: 'Doppelte Erfahrung', doubleCoins: 'Doppelte Münzen', shinyDay: 'Funkel-Tag', traderSale: 'Händler zahlt mehr' };
+
+// Rechtstexte (Impressum, Datenschutz) – vom Admin gepflegt
+async function legalDialog(key) {
+  ui.modal({ title: key === 'impressum' ? 'Impressum' : 'Datenschutz', cls: 'legaldlg', html: '<p>Wird geladen …</p>', buttons: [['OK', 'closeModal', '']] });
+  const r = await loadLegal(key);
+  const text = r.ok && r.text ? `<div class="legal">${escapeHtml(r.text).replace(/\n/g, '<br>')}</div>` : r.ok && r.fallback ? r.fallback : key === 'impressum' ? '<p>Das Impressum wird gerade eingerichtet.</p>' : '<p>Konnte nicht geladen werden.</p>';
+  if (ui.modalOpen) ui.modal({ title: key === 'impressum' ? 'Impressum' : 'Datenschutz', cls: 'legaldlg', html: text, buttons: [['OK', 'closeModal', '']] });
+}
+
+// Spielername muss neu gewählt werden (vom Admin zurückgesetzt)
+function renameDialog(u, then) {
+  ui.modal({ title: 'Neuer Spielername', cls: 'renamedlg', html: `<p>Dein Spielername <b>${escapeHtml(u.name)}</b> wurde vom BloomWorld-Team zurückgesetzt, weil er nicht zu den Regeln passt. Bitte wähle einen neuen.</p><label class="fld"><span>Neuer Spielername</span><input id="renameInp" maxlength="20" minlength="3" autocomplete="nickname"></label><p class="ferr" id="renameErr" role="alert"></p>`, buttons: [['Speichern', 'modalOk', '']], onOk: async () => {
+    const inp = $('renameInp'), err = $('renameErr');
+    const r = await Net.rename(inp?.value || '');
+    if (!r.ok) { renameDialog(u, then); setTimeout(() => { const e = $('renameErr'); if (e) e.textContent = r.message || 'Das hat nicht geklappt.'; const i = $('renameInp'); if (i) i.value = inp?.value || ''; }, 0); return; }
+    user = r.user; setLastUser(user);
+    ui.toast(`Willkommen, ${escapeHtml(r.user.name)}!`, 'good');
+    then?.();
+  } });
+}
+
+// Als App installieren (Android: „Zum Startbildschirm hinzufügen“)
+let installPrompt = null;
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; if (ui?.panel === 'settings') ui.renderPanel(true); });
+addEventListener('appinstalled', () => { installPrompt = null; ui?.toast('BloomWorld ist jetzt als App installiert! 🌸', 'good'); if (ui?.panel === 'settings') ui.renderPanel(true); });
+if ('serviceWorker' in navigator && location.protocol === 'https:') addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+
+// Geschenk vom BloomWorld-Team (Admin) oder eingelöster Gutschein
+function teamGiftDialog(e) {
+  sound.play('level');
+  ui.bumpCoins();
+  ui.modal({ queue: true, title: 'Ein Geschenk für dich!', html: `${I.gift.replace('<svg', '<svg style="width:96px;height:96px"')}<p><b>${escapeHtml(e.title)}</b></p>${ui.chips({ coins: e.coins, items: e.items })}`, buttons: [['Danke!', 'closeModal', '']] });
+}
+function applyRedeem(item) {
+  const ev = G.applyInbox(state, [item], now());
+  ev.forEach(teamGiftDialog);
+  changed();
 }
 
 // Post von Freunden: Geschenke, Hilfe beim Gießen, Herzen
@@ -244,7 +295,8 @@ function receiveInbox(items) {
     else if (e.k === 'help') {
       if (!visit) e.beds.forEach((i) => world.burst(i, 'water'));
       if (e.beds.length) { sound.play('water'); ui.toast(`💧 ${escapeHtml(e.name)} hat ${e.beds.length === 1 ? 'eine Blume' : `${e.beds.length} Blumen`} in deinem Garten gegossen!`, 'good'); }
-    } else if (e.k === 'like') { sound.play('magic'); ui.toast(`💖 ${escapeHtml(e.name)} findet deinen Garten wunderschön!${e.coins ? ` +${e.coins} Münzen` : ''}`, 'good'); ui.bumpCoins(); }
+    } else if (e.k === 'teamgift') { teamGiftDialog(e); }
+    else if (e.k === 'like') { sound.play('magic'); ui.toast(`💖 ${escapeHtml(e.name)} findet deinen Garten wunderschön!${e.coins ? ` +${e.coins} Münzen` : ''}`, 'good'); ui.bumpCoins(); }
   }, k * 3200));
   changed();
 }
@@ -255,6 +307,8 @@ function applySound() {
 }
 
 const isNight = () => !!state && environment(G.cyclePhase(state, now())).name === 'night';
+// Für die Zucht: aktuelle Tageszeit und Mond
+const breedCtx = () => ({ time: state ? environment(G.cyclePhase(state, now())).name : 'day', full: G.isFullMoon(now()), now: now() });
 
 // ---------- Spielschleife ----------
 let last = performance.now(), hudTick = 1, perf = { t: 0, frames: 0, checks: 0 }, dayTime = 0;
@@ -281,6 +335,7 @@ function loop(t) {
     hudTick = 0;
     ui.setTime(env);
     sound.night = env.name === 'night';
+    if (state.trader?.day !== G.dayKey(n)) { G.ensureTrader(state, n); persist(false); ui.refresh(); }
     storyCheck();
   }
   if (started && env.name !== 'night') { dayTime += dt; if (dayTime > 12 && !state.seenAnimals.includes('butterfly')) discover('butterfly'); }
@@ -469,6 +524,7 @@ function tap(x, y) {
   if (!hit || hit.type === 'ground') { if (ui.sheetBed >= 0) ui.closeSheet(); return; }
   if (hit.type === 'bed') actions.tapBed(hit.index);
   else if (hit.type === 'greenhouse') actions.tapGreenhouse();
+  else if (hit.type === 'trader') { sound.play('tap'); ui.nav('trader'); }
   else if (hit.type === 'animal') {
     world.poke(hit.id);
     sound.play('animal');
@@ -491,7 +547,7 @@ function newerSave(a, b) {
   if (ma !== mb) return ma > mb ? a : b;
   return (a?.updatedAt || 0) >= (b?.updatedAt || 0) ? a : b;
 }
-function changed() { persist(); if (!visit) world.syncLayout(state); ui.refresh(); }
+function changed() { persist(); if (!visit) { world.syncLayout(state); world.setTrader(state.level >= C.TRADER.level); } ui.refresh(); }
 function fail(r) {
   sound.play('error');
   if (r.code === 'noCoins') ui.toast(r.message, 'err', { label: 'Shop', fn: () => ui.nav('shop', 'offers') });
@@ -518,6 +574,7 @@ function syncWorld() {
   world.syncLayout(state);
   world.syncSkins(state.activeSkin);
   world.syncGreenhouse(state.greenhouse.unlocked);
+  world.setTrader(state.level >= C.TRADER.level);
   world.r.setQuality(resolveQuality(state.settings.quality));
   applySound();
 }
@@ -634,6 +691,7 @@ const actions = {
     sound.play(r.shiny ? 'gold' : 'harvest');
     ui.floatReward(i, r.reward, r.shiny, r.tokens, eventColor());
     if (r.shiny) ui.toast(`Funkelblüte: ${plain(C.SEEDS[r.seed].name)}! Dreifache Belohnung.`, 'good');
+    else if (!r.basket && state.level >= C.TRADER.level && !basketWarned) { basketWarned = true; ui.toast('Dein Blumenkorb ist voll – verkaufe Blumen beim Händler.', '', { label: 'Händler', fn: () => ui.nav('trader') }); }
     changed();
     afterLevelUps(r.levelUps);
   },
@@ -742,7 +800,7 @@ const actions = {
     const rc = C.RECIPES[idx];
     if (!rc) return;
     const pollen = !!ui.pollenOn && state.items.pollen > 0;
-    const r = G.startBreeding(state, rc.a, rc.b, now(), isNight(), { pollen });
+    const r = G.startBreeding(state, rc.a, rc.b, now(), breedCtx(), { pollen });
     if (!r.ok) return fail(r);
     if (pollen && !state.items.pollen) ui.pollenOn = false;
     sound.play('magic');
@@ -777,7 +835,66 @@ const actions = {
     afterLevelUps(r.levelUps);
   },
 
+  // ----- Blumenhändler -----
+  trDeliver(i) {
+    const r = G.deliverOrder(state, i, now());
+    if (!r.ok) return fail(r);
+    sound.play('buy');
+    ui.bumpCoins();
+    ui.toast(`Geliefert! +${r.coins} Münzen, +${r.xp} EP${r.items ? ` und ${Object.entries(r.items).map(([k, n]) => `${n}× ${C.ITEMS[k].name}`).join(', ')}` : ''}.`, 'good');
+    if (r.repUp) ui.modal({ queue: true, title: 'Neue Ruf-Stufe!', html: `<img class="big" alt="" src="${icons.animal.hedgehog}"><p>${C.TRADER.name} schätzt dich sehr! Dein Korb fasst jetzt <b>${C.TRADER.basket[r.repUp]} Blumen</b> und du bekommst <b>+${Math.round(C.TRADER.repBonus[r.repUp] * 100)} %</b> auf alle Preise.</p>`, buttons: [['Danke!', 'closeModal', '']] });
+    basketWarned = false;
+    changed();
+    afterLevelUps(r.levelUps);
+  },
+  trSell(seed, shiny, n) {
+    const r = G.sellFlowers(state, seed, shiny, n, now());
+    if (!r.ok) return fail(r);
+    sound.play('buy'); ui.bumpCoins(); basketWarned = false;
+    ui.toast(`${r.n}× ${plain(C.SEEDS[seed].name)} verkauft: +${r.coins} Münzen`, 'good');
+    changed();
+  },
+  trSellAll() {
+    const r = G.sellAll(state, now());
+    if (!r.ok) return fail(r);
+    sound.play('buy'); ui.bumpCoins(); basketWarned = false;
+    ui.toast(`${r.n} Blumen verkauft: +${r.coins} Münzen`, 'good');
+    changed();
+  },
+  trOffer() {
+    const r = G.buyTraderOffer(state, now());
+    if (!r.ok) return fail(r);
+    sound.play('buy');
+    if (r.kind === 'deco') { world.syncLayout(state); ui.toast(`${C.DECO[r.id].name} gekauft${r.k !== undefined && !state.decor[r.k]?.stored ? ' und im Garten aufgestellt' : ' – liegt im Lager'}!`, 'good'); }
+    else ui.toast(`${r.n}× ${C.ITEMS[r.id].name} gekauft.`, 'good');
+    changed();
+  },
+  trGift() {
+    const r = G.claimTraderGift(state, now());
+    if (!r.ok) return fail(r);
+    sound.play('level');
+    ui.toast(`Geschenk vom Händler: ${Object.entries(r.items).map(([k, n]) => `${n}× ${C.ITEMS[k].name}`).join(', ')}`, 'good');
+    changed();
+  },
+  trBuy(id) {
+    const r = G.buyFromTrader(state, id, now());
+    if (!r.ok) return fail(r);
+    sound.play('buy');
+    ui.toast(`${C.ITEMS[id].name} gekauft.`, 'good');
+    changed();
+  },
+
   // ----- Freunde -----
+  redeemed(item) { applyRedeem(item); },
+  legal(key) { legalDialog(key); },
+  async install() {
+    if (!installPrompt) { ui.modal({ title: 'Als App installieren', html: '<p>Öffne das Browser-Menü (⋮ oben rechts in Chrome) und tippe auf <b>„Zum Startbildschirm hinzufügen“</b> bzw. <b>„App installieren“</b>. Auf dem iPhone: Teilen-Symbol → „Zum Home-Bildschirm“.</p>', buttons: [['OK', 'closeModal', '']] }); return; }
+    installPrompt.prompt();
+    try { await installPrompt.userChoice; } catch { /* egal */ }
+    installPrompt = null;
+  },
+  canInstall() { return !!installPrompt; },
+
   giftSent(r, name, kind) {
     sound.play('buy');
     const ups = G.grant(state, { xp: r.xp || 0 });

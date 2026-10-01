@@ -169,12 +169,17 @@ export class World {
     const front = new Geo(), fR = rng(23);
     for (let k = 0; k < Math.round(G * 1.6); k++) {
       const t = -G + 1.2 + k * 1.3 + fR() * 0.6, off = G + 1.2 + fR() * 1.8;
-      if (Math.abs(t - OX) < 1.6) continue;
+      if (Math.abs(t - OX) < 1.6 || (k % 2 && t > OX - 5.4 && t < OX - 1.8)) continue;
       if (k % 2) front.add(M.bush(80 + k, fR() < 0.5 ? ['#ff8fc0', '#ffffff', '#ffd84a'][k % 3] : null), T(t, 0, off, fR() * 6, 0, 0, 0.8 + fR() * 0.4));
       else front.add(M.bush(90 + k, null), T(off, 0, t, fR() * 6, 0, 0, 0.8 + fR() * 0.4));
     }
     add(front);
     add(M.DECO_MODELS.mailbox(), T(OX + 1.8, 0, G + 0.6, -PI / 2));
+    // Verkaufskarren des Händlers vor dem Tor
+    this.cartPos = [OX - 3.6, G + 1.9];
+    this.cartObj = add(M.traderCart(), T(this.cartPos[0], 0, this.cartPos[1], 0.12));
+    this.cartObj.visible = !!this.cartOn;
+    this.syncLights();
     if (this.owl) this.owl.pos[2] = G;
     this.clampTarget?.();
   }
@@ -214,7 +219,25 @@ export class World {
     return this.decoInfo[id];
   }
 
+  // Händler-Karren zeigen (ab Level 2)
+  setTrader(on) { this.cartOn = !!on; if (this.cartObj) this.cartObj.visible = this.cartOn; this.syncLights(); }
+
+  // Lichtquellen sammeln: Deko-Lichter, Haustür, Händler-Karren
+  syncLights() {
+    const L = [[this.housePos[0] + 0.7, 2.0, this.housePos[1] + 2.0, 4.5]];
+    if (this.cartOn && this.cartPos) L.push([this.cartPos[0] + 0.9, 1.8, this.cartPos[1] + 0.5, 4]);
+    (this.decorList || []).forEach((d) => {
+      const l = C.LIGHTS[d.id];
+      if (!l || d.stored) return;
+      if (d.id === 'stringLights') { const a = (d.r || 0) * PI / 2, c = Math.cos(a), s = Math.sin(a); L.push([d.x - c * 0.6, l[0], d.z + s * 0.6, l[1] * 0.75], [d.x + c * 0.6, l[0], d.z - s * 0.6, l[1] * 0.75]); }
+      else L.push([d.x, l[0], d.z, l[1]]);
+    });
+    this.lightList = L;
+  }
+
   syncDecor(list) {
+    this.decorList = list;
+    this.syncLights();
     list.forEach((d, k) => {
       let o = this.decoObjs[k];
       if (!o || o.id !== d.id) {
@@ -610,6 +633,11 @@ export class World {
       const tg = rayBox(o, d, [gx - w / 2, 0, gz - dd / 2], [gx + w / 2, 3.2, gz + dd / 2]);
       if (tg !== null) consider(tg, { type: 'greenhouse' });
     }
+    if (this.cartPos && this.cartOn) {
+      const [cx, cz] = this.cartPos;
+      const tc = rayBox(o, d, [cx - 1.1, 0, cz - 0.7], [cx + 1.1, 2.5, cz + 0.8]);
+      if (tc !== null) consider(tc, { type: 'trader' });
+    }
     for (const id of ['fox', 'hedgehog', 'owl']) {
       if (id === 'owl' && this.owl.vis < 0.5) continue;
       const p = this.animalPos(id), r = id === 'fox' ? 0.95 : 0.7;
@@ -657,7 +685,13 @@ export class World {
 
   render(env) {
     const cam = this.cameraState();
-    this.r.render(cam, { ...env, shadowCenter: [this.cam.target[0] * 0.5, 0, this.cam.target[2] * 0.5], shadowRadius: 17 }, this.time);
+    // höchstens 12 Lichter: die nächsten zur Bildmitte
+    let lights = this.lightList || [];
+    const amt = Math.min(1, (env.emis || 0) * 1.15);
+    if (lights.length > 12) { const [tx, , tz] = this.cam.target; lights = [...lights].sort((a, b) => Math.hypot(a[0] - tx, a[2] - tz) - Math.hypot(b[0] - tx, b[2] - tz)).slice(0, 12); }
+    const arr = this._lightArr || (this._lightArr = new Float32Array(48));
+    arr.fill(0); lights.forEach((l, i) => arr.set(l, i * 4));
+    this.r.render(cam, { ...env, lights: arr, lightN: amt > 0.01 ? lights.length : 0, lightAmt: amt, shadowCenter: [this.cam.target[0] * 0.5, 0, this.cam.target[2] * 0.5], shadowRadius: 17 }, this.time);
   }
 
   // ---------- Drehansicht (Sammlung) ----------

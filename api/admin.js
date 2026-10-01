@@ -15,15 +15,30 @@ export default async function handler(req, res) {
     let b;
     try { b = await readJson(req); } catch { return fail(res, 400, 'body', 'Die Anfrage konnte nicht gelesen werden.'); }
     await A.rateLimit('admin', me.uid, 120, 60);
+    const L = (action, detail) => AD.log(me.user.name, action, detail);
     switch (b.action) {
       case 'overview': {
-        const [news, reports, bans, stats] = await Promise.all([AD.news(50), AD.reports(), AD.bans(), AD.stats()]);
-        return send(res, 200, { ok: true, news, reports, bans, stats });
+        const [news, reports, bans, stats, gifts, codes, feedback, pub, boosts, offer, legal, logs, words] = await Promise.all([AD.news(50), AD.reports(), AD.bans(), AD.stats(), AD.giftsAll(), AD.codes(), AD.feedback(), AD.getPublic(), AD.allBoosts(), AD.getTraderOffer(), AD.getLegal(), AD.logs(), AD.words()]);
+        return send(res, 200, { ok: true, news, reports, bans, stats, gifts, codes, feedback, maint: pub.maint, boosts, offer, legal, logs, words, mail: !!process.env.RESEND_API_KEY });
       }
-      case 'post': return send(res, 200, { ok: true, item: await AD.postNews(me.user.name, b) });
+      case 'post': { const item = await AD.postNews(me.user.name, b); await L('Ankündigung', item.title); return send(res, 200, { ok: true, item }); }
+      case 'findPlayer': return send(res, 200, { ok: true, player: await AD.findPlayer(b.q) });
+      case 'grant': { const r = await AD.grantPlayer(me.user.name, String(b.id || ''), b); await L('Gutschrift', `${b.id}: ${r.coins} Münzen ${JSON.stringify(r.items)}`); return send(res, 200, { ok: true }); }
+      case 'forceRename': await AD.forceRename(String(b.id || ''), b.on !== false); await L('Name zurücksetzen', String(b.id || '')); return send(res, 200, { ok: true });
+      case 'resetCode': { if (!(await A.getUser(String(b.id || '')))) return fail(res, 404, 'not_found', 'Spieler nicht gefunden.'); const code = await AD.makeResetCode(String(b.id)); await L('Reset-Code', String(b.id)); return send(res, 200, { ok: true, code }); }
+      case 'maintenance': { const v = await AD.setMaintenance(b.on, b.text, b.until); await L('Wartung', v.on ? `an: ${v.text}` : 'aus'); return send(res, 200, { ok: true, maint: v }); }
+      case 'boost': { const v = await AD.setBoost(String(b.id || ''), b.hours, b.mult); await L('Event-Schalter', `${b.id} ${v ? `${b.hours}h ×${v.mult}` : 'aus'}`); return send(res, 200, { ok: true, boost: v }); }
+      case 'traderOffer': { const v = await AD.setTraderOffer(b); await L('Händler-Angebot', v ? `${v.kind} ${v.id} −${Math.round(v.off * 100)} %` : 'gelöscht'); return send(res, 200, { ok: true, offer: v }); }
+      case 'legal': await AD.setLegal(String(b.key || ''), b.text); await L('Rechtstext', String(b.key || '')); return send(res, 200, { ok: true });
+      case 'addWord': { const w = await AD.addWord(b.word); await L('Wortfilter +', w); return send(res, 200, { ok: true }); }
+      case 'removeWord': await AD.removeWord(b.word); await L('Wortfilter −', String(b.word || '')); return send(res, 200, { ok: true });
       case 'deleteNews': return send(res, 200, { ok: await AD.deleteNews(String(b.id || '')) });
       case 'resolve': return send(res, 200, { ok: await AD.resolveReport(String(b.id || '')) });
-      case 'ban': await AD.ban(b.id, b.days, b.reason); return send(res, 200, { ok: true });
+      case 'giftAll': { const item = await AD.giftAll(me.user.name, b); await L('Geschenk an alle', `${item.title}: ${item.coins} Münzen`); return send(res, 200, { ok: true, item }); }
+      case 'ban': await AD.ban(b.id, b.days, b.reason); await L('Chat-Sperre', `${b.id} ${b.days} Tage`); return send(res, 200, { ok: true });
+      case 'createCode': return send(res, 200, { ok: true, item: await AD.createCode(b) });
+      case 'deleteCode': await AD.deleteCode(b.code); return send(res, 200, { ok: true });
+      case 'deleteFeedback': return send(res, 200, { ok: await AD.deleteFeedback(String(b.id || '')) });
       case 'unban': await AD.unban(String(b.id || '')); return send(res, 200, { ok: true });
       default: return fail(res, 400, 'action', 'Unbekannte Aktion.');
     }

@@ -32,7 +32,7 @@ export class Detail {
       if (recipe) {
         const ch = G.breedChance(s, recipe);
         how = `<div class="dline">${this.mini(recipe.a)}<span class="plus">+</span>${this.mini(recipe.b)}<span class="arrow">➜</span>${this.mini(id, true)}</div>
-          <p><span class="diff d${ch.diff}">${'★'.repeat(ch.diff)}<b>${ch.name}</b></span> Im Gewächshaus züchten · Erfolgschance ${Math.round(ch.chance * 100)} %${recipe.night ? ' · nur nachts' : ''}${ch.harvests > 1 ? ` · jede Eltern-Blume ${ch.harvests}× geerntet` : ''}.</p>`;
+          <p><span class="diff d${ch.diff}">${'★'.repeat(ch.diff)}<b>${ch.name}</b></span> Im Gewächshaus züchten · Erfolgschance ${Math.round(ch.chance * 100)} %${recipe.when ? ` · ${C.WHEN_LABEL[recipe.when]}` : ''}${recipe.moon ? ' · nur bei Vollmond' : ''}${ch.harvests > 1 ? ` · jede Eltern-Blume ${ch.harvests}× geerntet` : ''}.</p>`;
       } else if (d.rare) how = `<p>Seltene Sorte: im Shop unter „Blumen“ für ${I.coin()} ${d.unlockCoins} freischalten (ab Level ${d.level}). Danach kannst du sie jederzeit pflanzen.</p>`;
       else how = `<p>Saatgut gibt es im Beet-Menü ${d.level > 1 ? `ab Level ${d.level}` : 'von Anfang an'}.</p>`;
       const uses = C.RECIPES.filter((r) => r.a === id || r.b === id);

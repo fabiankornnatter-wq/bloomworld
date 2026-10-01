@@ -119,6 +119,22 @@ export async function login({ login: id, password }) {
   return { uid, user: u };
 }
 
+// Neuer Spielername (z. B. nach Zurücksetzen durch den Admin)
+export async function renameUser(uid, u, newName) {
+  const name = cleanName(newName);
+  const db = kv();
+  if (nameKey(name) !== nameKey(u.name) && (await db.cmd('SET', K.name(nameKey(name)), uid, 'NX')) === null) throw new UserError(409, 'name_taken', 'Dieser Spielername ist schon vergeben. Probier einen anderen.');
+  await db.pipe([['HSET', K.user(uid), 'name', name], ['HDEL', K.user(uid), 'mustRename'], ...(nameKey(name) !== nameKey(u.name) ? [['DEL', K.name(nameKey(u.name))]] : [])]);
+  return name;
+}
+
+export async function setPassword(uid, pw) {
+  const hash = await hashPassword(checkPassword(pw));
+  const sessions = await kv().cmd('SMEMBERS', K.userSessions(uid));
+  // alle anderen Sitzungen beenden
+  await kv().pipe([['HSET', K.user(uid), 'pw', hash], ...(sessions || []).map((h) => ['DEL', K.sess(h)]), ['DEL', K.userSessions(uid)]]);
+}
+
 // Kurze Sitzung, wenn „Angemeldet bleiben“ aus ist
 export const SHORT_SESSION = 12 * 3600;
 

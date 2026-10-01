@@ -460,3 +460,105 @@ test('Post von Freunden: Geschenk, Gießen, Gefällt mir – mit Grenzen', () =>
   assert.deepEqual(ev.map((e) => e.k), ['gift', 'help', 'like']);
   assert.deepEqual(ev[1].beds, [0]);
 });
+
+test('Echtzeit: Sonnenzeiten, Dämmerung, Tageszeiten, Mond', () => {
+  process.env.TZ = process.env.TZ || 'Europe/Berlin';
+  const at = (iso) => new Date(iso).getTime();
+  const sum = G.sunTimes(at('2026-06-21T12:00:00+02:00'));
+  const win = G.sunTimes(at('2026-12-21T12:00:00+01:00'));
+  const h = (t) => new Date(t).getUTCHours() + new Date(t).getUTCMinutes() / 60;
+  // Sommer: Aufgang ca. 3:00–3:30 UTC, Untergang ca. 19:30–20:00 UTC (Mitte Deutschlands)
+  assert.ok(h(sum.rise) > 2.5 && h(sum.rise) < 4, `Sommer-Aufgang ${h(sum.rise)}`);
+  assert.ok(h(sum.set) > 19 && h(sum.set) < 20.5, `Sommer-Untergang ${h(sum.set)}`);
+  assert.ok(h(win.rise) > 6.5 && h(win.rise) < 7.8, `Winter-Aufgang ${h(win.rise)}`);
+  assert.ok(h(win.set) > 14.8 && h(win.set) < 16, `Winter-Untergang ${h(win.set)}`);
+  assert.ok(sum.dawn < sum.rise && sum.dusk > sum.set);
+  // Phasen im Tagesverlauf (Winter)
+  const ph = (t) => G.timeOfDay(G.realPhase(t));
+  assert.equal(ph(win.noon), 'day');
+  assert.equal(ph(win.rise + 10 * 60_000), 'morning');
+  assert.equal(ph(win.set + 20 * 60_000), 'evening');
+  assert.equal(ph(win.dusk + 2 * 3600_000), 'night');
+  assert.equal(ph(win.dawn + 5 * 60_000), 'morning');
+  // stetig: keine Sprünge
+  for (let t = at('2026-03-01T00:00:00Z'); t < at('2026-03-02T00:00:00Z'); t += 600_000) {
+    const p = G.realPhase(t);
+    assert.ok(p >= 0 && p < 1, `Phase ${p}`);
+  }
+  // neuer Spielstand startet in Echtzeit; alte „automatisch“-Stände werden einmal umgestellt
+  assert.equal(G.newState(T0).settings.cycle, 'real');
+  const old = G.newState(T0); old.settings.cycle = 'auto'; delete old.settings.rt;
+  assert.equal(G.migrate(JSON.parse(JSON.stringify(old)), T0).state.settings.cycle, 'real');
+  const chosen = G.newState(T0); chosen.settings.cycle = 'auto';
+  assert.equal(G.migrate(JSON.parse(JSON.stringify(chosen)), T0).state.settings.cycle, 'auto', 'eigene Wahl bleibt');
+  // Vollmond 2026-10-26 (ungefähr)
+  assert.ok(G.isFullMoon(at('2026-10-26T12:00:00Z')));
+  assert.ok(!G.isFullMoon(at('2026-10-12T12:00:00Z')));
+  const nf = G.nextFullMoon(at('2026-10-12T12:00:00Z'));
+  assert.ok(G.isFullMoon(nf + 3600_000) && nf > at('2026-10-20T00:00:00Z') && nf < at('2026-10-28T00:00:00Z'));
+});
+
+test('Zucht-Bedingungen: Morgen, Abend, Nacht, Vollmond', () => {
+  const s = G.newState(T0);
+  s.coins = 99999; s.level = 20; s.greenhouse.unlocked = true;
+  for (const k of ['lily', 'moonOrchid', 'poppy', 'sunflower', 'northRose']) s.collection[k] = { count: 10, shiny: 0 };
+  assert.equal(G.breedCheck(s, 'lily', 'moonOrchid', { time: 'night' }).code, 'night');
+  assert.ok(G.breedCheck(s, 'lily', 'moonOrchid', { time: 'morning' }).ok);
+  assert.ok(G.breedCheck(s, 'poppy', 'sunflower', { time: 'evening' }).ok);
+  assert.equal(G.breedCheck(s, 'poppy', 'sunflower', true).code, 'night');
+  assert.equal(G.breedCheck(s, 'moonOrchid', 'northRose', { time: 'night', full: false, now: T0 }).code, 'moon');
+  assert.ok(G.breedCheck(s, 'moonOrchid', 'northRose', { time: 'night', full: true }).ok);
+});
+
+test('Händler: Korb, Bestellungen, Tagesblume, Besonderheiten, Ruf', () => {
+  const day = new Date('2026-10-01T10:00:00').getTime(); // Donnerstag
+  const s = G.newState(day);
+  s.coins = 5000; s.level = 5; s.tutorial = 2;
+  // Ernten füllen den Korb
+  assert.ok(G.plant(s, 0, 'daisy', day - 60_000, never).ok);
+  assert.ok(G.harvest(s, 0, day).basket);
+  assert.equal(s.basket.daisy, 1);
+  const info = G.traderInfo(s, day);
+  assert.equal(info.day.id, 'thu');
+  assert.ok(info.orders.length >= 3);
+  assert.equal(info.cap, C.TRADER.basket[0]);
+  // gleiche Besonderheiten für alle am selben Tag
+  assert.equal(G.dayFlower(s, day), G.dayFlower(G.migrate(JSON.parse(JSON.stringify(s)), day).state, day));
+  // Bestellung erfüllen
+  const o = info.orders.find((x) => !x.special);
+  for (const [k, q] of Object.entries(o.want)) s.basket[k] = (s.basket[k] || 0) + q;
+  const coins = s.coins;
+  const r = G.deliverOrder(s, o.i, day);
+  assert.ok(r.ok, r.message);
+  assert.equal(s.coins, coins + r.coins);
+  assert.equal(s.trader.rep, 2, 'Donnerstag zählt doppelt');
+  assert.equal(G.deliverOrder(s, o.i, day).code, 'claimed');
+  // Verkaufen
+  s.basket.daisy = 4;
+  const p = G.sellPrice(s, 'daisy', false, day);
+  assert.ok(p >= 1);
+  const sold = G.sellFlowers(s, 'daisy', false, 2, day);
+  assert.equal(sold.coins, p * 2);
+  assert.equal(s.basket.daisy, 2);
+  // Korb voll -> nichts mehr hinein
+  s.basket.tulip = 200;
+  assert.ok(G.plant(s, 1, 'daisy', day - 60_000, never).ok);
+  assert.equal(G.harvest(s, 1, day).basket, false);
+  // Neuer Tag -> neue Bestellungen; Samstag Geschenk
+  const sat = new Date('2026-10-03T10:00:00').getTime();
+  assert.equal(G.traderInfo(s, sat).day.id, 'sat');
+  assert.ok(G.claimTraderGift(s, sat).ok);
+  assert.equal(G.claimTraderGift(s, sat).code, 'claimed');
+  // Tagesangebot nur einmal
+  s.coins = 99999;
+  assert.ok(G.buyTraderOffer(s, sat).ok);
+  assert.equal(G.buyTraderOffer(s, sat).code, 'claimed');
+  // Dienstag: Dünger günstiger
+  const tue = new Date('2026-10-06T10:00:00').getTime();
+  assert.ok(G.traderItemPrice('fert', tue) < C.ITEMS.fert.price);
+  assert.ok(G.buyFromTrader(s, 'fert', tue).ok);
+  // Speichern/Laden
+  const back = G.migrate(JSON.parse(JSON.stringify(s)), sat).state;
+  assert.equal(back.trader.rep, 2);
+  assert.equal(back.basket.daisy, 2);
+});

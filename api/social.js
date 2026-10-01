@@ -3,6 +3,8 @@ import { kvConfigured } from './_lib/kv.js';
 import { send, fail, readJson, cookies, sameOrigin, SESSION_COOKIE } from './_lib/http.js';
 import * as A from './_lib/accounts.js';
 import * as S from './_lib/social.js';
+import * as AD from './_lib/admin.js';
+import { kv } from './_lib/kv.js';
 
 export default async function handler(req, res) {
   try {
@@ -17,7 +19,16 @@ export default async function handler(req, res) {
     const uid = me.uid, name = me.user.name;
     let r;
     switch (b.action) {
-      case 'sync': r = { ok: true, ...(await S.sync(uid)) }; break;
+      case 'sync': {
+        const d = await S.sync(uid);
+        const gifts = await AD.pendingGifts(uid, me.user.created);
+        const day = S.today();
+        try { await kv().pipe([['PFADD', `bw:stat:act:${day}`, uid], ['EXPIRE', `bw:stat:act:${day}`, 40 * 86400], ['SET', `bw:seen:${uid}`, Date.now()]]); } catch { /* Statistik ist nicht wichtig */ }
+        r = { ok: true, ...d, inbox: [...gifts, ...d.inbox] };
+        break;
+      }
+      case 'redeem': await A.rateLimit('redeem', uid, 10, 3600); r = { ok: true, item: await AD.redeem(uid, b.code) }; break;
+      case 'feedback': await A.rateLimit('feedback', uid, 6, 3600); await AD.addFeedback(uid, name, b); r = { ok: true }; break;
       case 'request': r = await S.request(uid, name, b.name); break;
       case 'accept': r = await S.accept(uid, b.id); break;
       case 'decline': r = await S.decline(uid, b.id); break;

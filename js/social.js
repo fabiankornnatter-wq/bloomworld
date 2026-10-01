@@ -19,6 +19,8 @@ export const socialApi = {
   like: (id) => post('like', { id }),
   visit: (id) => post('visit', { id }),
   help: (id, beds) => post('help', { id, beds }),
+  redeem: (code) => post('redeem', { code }),
+  feedback: (d) => post('feedback', d),
 };
 
 export const adminApi = {
@@ -28,8 +30,23 @@ export const adminApi = {
   resolve: (id) => call('/admin', { method: 'POST', body: { action: 'resolve', id } }),
   ban: (id, days, reason) => call('/admin', { method: 'POST', body: { action: 'ban', id, days, reason } }),
   unban: (id) => call('/admin', { method: 'POST', body: { action: 'unban', id } }),
+  giftAll: (d) => call('/admin', { method: 'POST', body: { action: 'giftAll', ...d } }),
+  createCode: (d) => call('/admin', { method: 'POST', body: { action: 'createCode', ...d } }),
+  deleteCode: (code) => call('/admin', { method: 'POST', body: { action: 'deleteCode', code } }),
+  deleteFeedback: (id) => call('/admin', { method: 'POST', body: { action: 'deleteFeedback', id } }),
+  findPlayer: (q) => call('/admin', { method: 'POST', body: { action: 'findPlayer', q } }),
+  grant: (d) => call('/admin', { method: 'POST', body: { action: 'grant', ...d } }),
+  forceRename: (id, on) => call('/admin', { method: 'POST', body: { action: 'forceRename', id, on } }),
+  resetCode: (id) => call('/admin', { method: 'POST', body: { action: 'resetCode', id } }),
+  maintenance: (d) => call('/admin', { method: 'POST', body: { action: 'maintenance', ...d } }),
+  boost: (id, hours, mult) => call('/admin', { method: 'POST', body: { action: 'boost', id, hours, mult } }),
+  traderOffer: (d) => call('/admin', { method: 'POST', body: { action: 'traderOffer', ...d } }),
+  legal: (key, text) => call('/admin', { method: 'POST', body: { action: 'legal', key, text } }),
+  addWord: (word) => call('/admin', { method: 'POST', body: { action: 'addWord', word } }),
+  removeWord: (word) => call('/admin', { method: 'POST', body: { action: 'removeWord', word } }),
 };
 export const loadNews = () => call('/news', { timeout: 8000 });
+export const loadLegal = (key) => call(`/news?legal=${key}`, { timeout: 8000 });
 
 const SYNC_MS = 20_000, SYNC_CHAT_MS = 9_000, CHAT_MS = 3_000;
 

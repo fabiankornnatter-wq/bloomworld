@@ -1,11 +1,19 @@
 // /api/auth – Registrieren, Anmelden, Abmelden, Konto löschen, aktueller Spieler.
-import { kvConfigured } from './_lib/kv.js';
+import { kvConfigured, kv } from './_lib/kv.js';
 import { send, fail, readJson, cookies, sameOrigin, clientIp, sessionCookie, SESSION_COOKIE } from './_lib/http.js';
 import * as A from './_lib/accounts.js';
 import { isAdmin } from './_lib/admin.js';
 import { purgeUser } from './_lib/social.js';
 
-const pub = async (uid, user) => ({ ...A.publicUser(uid, user), admin: await isAdmin(uid) });
+const pub = async (uid, user) => ({ ...A.publicUser(uid, user), admin: await isAdmin(uid), mustRename: user.mustRename === '1' });
+
+// Passwort-Reset per E-Mail, wenn ein Mail-Dienst hinterlegt ist (RESEND_API_KEY + MAIL_FROM in den Vercel-Umgebungsvariablen)
+async function sendResetMail(to, code) {
+  const key = process.env.RESEND_API_KEY, from = process.env.MAIL_FROM || 'BloomWorld <onboarding@resend.dev>';
+  if (!key) return false;
+  const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to, subject: 'BloomWorld: Passwort zurücksetzen', text: `Hallo!\n\nDein Code zum Zurücksetzen des Passworts lautet: ${code}\n\nEr ist 30 Minuten gültig. Gib ihn im Spiel unter „Passwort vergessen“ ein. Wenn du das nicht warst, kannst du diese E-Mail ignorieren.\n\nDein BloomWorld-Team` }) });
+  return r.ok;
+}
 
 const NOT_READY = 'Der Spiel-Server ist noch nicht fertig eingerichtet. Bitte versuche es später noch einmal.';
 
@@ -33,6 +41,7 @@ export default async function handler(req, res) {
       case 'register': {
         await A.rateLimit('reg', ip, 8, 3600);
         const { uid, user } = await A.register(body);
+        try { const k = `bw:stat:reg:${new Date().toISOString().slice(0, 10)}`; await kv().pipe([['INCR', k], ['EXPIRE', k, 400 * 86400]]); } catch { /* Statistik */ }
         const remember = body.remember !== false;
         const t = await A.createSession(uid, remember);
         return send(res, 201, { ok: true, user: await pub(uid, user) }, { 'Set-Cookie': sessionCookie(req, t, remember) });
@@ -51,6 +60,40 @@ export default async function handler(req, res) {
         const remember = body.remember !== false;
         const t = await A.createSession(uid, remember);
         return send(res, 200, { ok: true, user: await pub(uid, user) }, { 'Set-Cookie': sessionCookie(req, t, remember) });
+      }
+      case 'rename': {
+        const s = await A.sessionUser(token);
+        if (!s) return fail(res, 401, 'not_logged_in', 'Bitte melde dich zuerst an.');
+        await A.rateLimit('rename', s.uid, 5, 3600);
+        const name = await A.renameUser(s.uid, s.user, body.name);
+        return send(res, 200, { ok: true, user: await pub(s.uid, { ...s.user, name, mustRename: '0' }) });
+      }
+      case 'forgot': {
+        await A.rateLimit('forgot-ip', ip, 10, 3600);
+        const uid = await A.findLogin(body.login);
+        const u = uid ? await A.getUser(uid) : null;
+        // Immer dieselbe Antwort, damit niemand Konten erraten kann
+        if (u) {
+          await A.rateLimit('forgot-uid', uid, 3, 3600);
+          const { makeResetCode } = await import('./_lib/admin.js');
+          const code = await makeResetCode(uid);
+          let sent = false; try { sent = await sendResetMail(u.email, code); } catch (e) { console.error('mail', e); }
+          return send(res, 200, { ok: true, mail: sent });
+        }
+        return send(res, 200, { ok: true, mail: !!process.env.RESEND_API_KEY });
+      }
+      case 'resetPassword': {
+        await A.rateLimit('reset-ip', ip, 20, 3600);
+        const uid = await A.findLogin(body.login);
+        const code = String(body.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const { sha256 } = await import('./_lib/http.js');
+        const hit = uid && code.length >= 6 ? await kv().cmd('GET', `bw:pwreset:${sha256(uid + ':' + code)}`) : null;
+        if (!hit || hit !== uid) return fail(res, 401, 'bad_code', 'Der Code ist falsch oder abgelaufen.');
+        await A.setPassword(uid, body.password);
+        await kv().cmd('DEL', `bw:pwreset:${sha256(uid + ':' + code)}`);
+        const u = await A.getUser(uid);
+        const t = await A.createSession(uid, true);
+        return send(res, 200, { ok: true, user: await pub(uid, u) }, { 'Set-Cookie': sessionCookie(req, t, true) });
       }
       case 'logout': {
         const s = await A.sessionUser(token);

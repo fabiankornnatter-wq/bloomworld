@@ -164,6 +164,7 @@ Object.assign(FLOWER_LOOK, {
   rainbowHydrangea: { petals: ['#ff6f9a', '#ffd23f', '#7be86a', '#5ab4ff', '#b48cff'], petal: '#ff6f9a', tip: '#ffffff', center: '#ffffff' },
   dragonLily: { petal: '#6a0a24', tip: '#ffb81c', center: '#ffd23f', glow: 0.35 },
   crystalRose: { petal: '#cfefff', tip: '#ffffff', center: '#8fd6ff', glow: 0.85 },
+  moonRose: { petal: '#dfe6ff', tip: '#fbfcff', center: '#a9b8ff', glow: 0.9 },
 });
 const brighten = (look) => {
   const b = (c) => { const v = col(c); return v.map((x) => Math.min(1, x * 1.12 + 0.04)); };
@@ -315,7 +316,7 @@ export function plant(seedId, stage, shiny = false, seed = 1) {
     g.add(sm, T(Math.cos(a) * off, 0, Math.sin(a) * off, a));
   }
   g.windByHeight(0.05, tall * 1.1, 1);
-  const k = PLANT_SCALE[type] * (['starRose', 'crystalRose', 'dragonLily'].includes(seedId) ? 1.12 : 1);
+  const k = PLANT_SCALE[type] * (['starRose', 'crystalRose', 'dragonLily', 'moonRose'].includes(seedId) ? 1.12 : 1);
   return new Geo().add(g, T(0, 0, 0, 0, 0, 0, k));
 }
 export const PLANT_SCALE = { daisy: 2.3, tulip: 2.1, sunflower: 1.5, lavender: 1.9, rose: 2.15, orchid: 2.1, cornflower: 2.1, poppy: 2.0, lily: 1.9, hydrangea: 1.9 };
@@ -984,3 +985,73 @@ DECO_MODELS.stringLights = () => {
   }
   return g;
 };
+
+// ---------- v3.4: Beleuchtung & Händler ----------
+DECO_MODELS.groundLights = () => {
+  const g = new Geo();
+  const caps = ['#7fe3ff', '#ffd27a', '#c9a4ff'];
+  [[-0.22, -0.12, 0.34], [0.2, -0.18, 0.26], [0.02, 0.22, 0.3]].forEach(([x, z, h], i) => {
+    g.add(cylinder(0.045, 0.06, h, '#f3ead8', 8), T(x, 0, z));
+    g.add(sphere(0.15, caps[i], 12, 8, 0.55), T(x, h, z), { emissive: 1 });
+    g.add(sphere(0.03, '#ffffff', 6, 4), T(x + 0.06, h + 0.07, z + 0.05));
+  });
+  g.add(disk(0.42, '#5f9e3f', 16), T(0, 0.01, 0));
+  return g;
+};
+DECO_MODELS.torch = () => {
+  const g = new Geo();
+  g.add(cylinder(0.035, 0.05, 1.05, '#b78a4a', 8), T(0, 0, 0));
+  for (const y of [0.25, 0.55, 0.85]) g.add(cylinder(0.055, 0.055, 0.03, '#8a6430', 8), T(0, y, 0));
+  g.add(cylinder(0.09, 0.06, 0.16, '#5b4630', 8), T(0, 1.02, 0));
+  g.add(sphere(0.1, '#ffb43a', 10, 8, 1.3), T(0, 1.2, 0), { emissive: 1 });
+  g.add(sphere(0.055, '#fff2a8', 8, 6, 1.4), T(0, 1.24, 0), { emissive: 1 });
+  return g;
+};
+DECO_MODELS.lampPost = () => {
+  const g = new Geo();
+  g.add(cylinder(0.16, 0.2, 0.12, '#2f3542', 10));
+  g.add(cylinder(0.05, 0.06, 2.0, '#2f3542', 8), T(0, 0.1, 0));
+  g.add(sphere(0.07, '#2f3542', 8, 6), T(0, 2.12, 0));
+  for (const sx of [-1, 1]) {
+    g.add(cylinder(0.025, 0.025, 0.42, '#2f3542', 6), T(sx * 0.2, 1.95, 0, 0, 0, sx * P / 2));
+    g.add(cylinder(0.02, 0.02, 0.1, '#2f3542', 6), T(sx * 0.4, 1.85, 0));
+    g.add(roundedBox(0.2, 0.26, 0.2, 0.04, '#2f3542', 2), T(sx * 0.4, 1.7, 0));
+    g.add(roundedBox(0.15, 0.21, 0.15, 0.04, '#ffe7a3', 2), T(sx * 0.4, 1.7, 0), { emissive: 1 });
+    g.add(cylinder(0.0, 0.17, 0.12, '#2f3542', 4), T(sx * 0.4, 1.83, 0, P / 4));
+  }
+  return g;
+};
+
+// Verkaufskarren des Händlers (steht vor dem Zaun)
+export function traderCart() {
+  const g = new Geo();
+  const wood = '#b97a45', dark = '#7a4a26';
+  g.add(roundedBox(1.9, 0.5, 1.0, 0.08, wood, 2), T(0, 0.75, 0));
+  g.add(roundedBox(1.95, 0.08, 1.05, 0.03, dark, 1), T(0, 1.0, 0));
+  for (const sx of [-1, 1]) {
+    g.add(cylinder(0.36, 0.36, 0.08, dark, 16), T(sx * 0.62, 0.36, 0.56, 0, P / 2));
+    g.add(cylinder(0.08, 0.08, 0.1, '#e8c070', 10), T(sx * 0.62, 0.36, 0.6, 0, P / 2));
+    g.add(cylinder(0.035, 0.035, 1.25, dark, 6), T(sx * 0.88, 1.0, -0.42));
+    g.add(cylinder(0.035, 0.035, 1.25, dark, 6), T(sx * 0.88, 1.0, 0.42));
+  }
+  // gestreiftes Dach
+  for (let i = 0; i < 8; i++) {
+    const x = -0.95 + (i + 0.5) * (1.9 / 8);
+    g.add(roundedBox(1.9 / 8, 0.06, 1.25, 0.02, i % 2 ? '#ffffff' : '#ff5e97', 1), T(x, 2.3, 0, 0, 0.12, 0));
+  }
+  for (let i = 0; i < 8; i++) g.add(sphere(0.07, i % 2 ? '#ffffff' : '#ff5e97', 8, 6), T(-0.84 + i * 0.24, 2.2, 0.66));
+  // Eimer mit Blumen
+  const cols = ['#ff6f9a', '#ffd23f', '#9b6df0', '#5ab4ff', '#ff8a3d'];
+  for (let i = 0; i < 5; i++) {
+    const x = -0.72 + i * 0.36;
+    g.add(cylinder(0.13, 0.1, 0.24, '#9aa6b5', 10), T(x, 1.04, 0.1));
+    for (let k = 0; k < 4; k++) g.add(sphere(0.075, cols[(i + k) % cols.length], 7, 5), T(x + Math.cos(k * 1.6) * 0.07, 1.36 + (k % 2) * 0.05, 0.1 + Math.sin(k * 1.6) * 0.07));
+  }
+  // Schild
+  g.add(roundedBox(0.9, 0.28, 0.05, 0.04, '#fff6e0', 2), T(0, 0.8, 0.53));
+  g.add(roundedBox(0.6, 0.06, 0.02, 0.02, '#e2287f', 1), T(0, 0.84, 0.56));
+  g.add(roundedBox(0.4, 0.05, 0.02, 0.02, '#3fa52b', 1), T(0, 0.74, 0.56));
+  // Laterne am Karren
+  g.add(roundedBox(0.16, 0.2, 0.16, 0.03, '#ffe7a3', 2), T(0.88, 1.75, 0.5), { emissive: 1 });
+  return g;
+}

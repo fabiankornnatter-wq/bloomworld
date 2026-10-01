@@ -7,6 +7,7 @@ import { formatEUR } from './payments.js';
 import { PHASE_LABEL } from './world/sky.js';
 import { PRIVACY_HTML } from './legal.js';
 import { Detail } from './detail.js';
+import { pTrader, onTraderAct, traderBadge, TRADER_ACTS } from './traderui.js';
 import { pFriends, pChat, chatTitle, pAdmin, onSocialAct, onSocialForm, updateChat, newsCard, avatar, SOCIAL_ACTS } from './friendsui.js';
 
 const $ = (id) => document.getElementById(id);
@@ -29,7 +30,7 @@ const TIER = { selten: ['Selten', 't1'], episch: ['Episch', 't2'], legendär: ['
 const tierTag = (d) => (d.tier ? `<span class="tier ${TIER[d.tier][1]}">${TIER[d.tier][0]}</span>` : d.rare ? '<span class="tier t0">Selten</span>' : '');
 
 const NAV_ITEMS = [['garden', 'Garten'], ['quests', 'Aufgaben'], ['events', 'Events'], ['collection', 'Sammlung'], ['shop', 'Shop'], ['friends', 'Freunde']];
-const TITLES = { quests: 'Aufgaben', events: 'Events', collection: 'Sammlung', shop: 'Shop', friends: 'Freunde', settings: 'Einstellungen', breed: 'Gewächshaus', chat: 'Chat', admin: 'Admin' };
+const TITLES = { quests: 'Aufgaben', events: 'Events', collection: 'Sammlung', shop: 'Shop', friends: 'Freunde', settings: 'Einstellungen', breed: 'Gewächshaus', chat: 'Chat', admin: 'Admin', trader: 'Händler' };
 const GH = C.BED_COUNT; // Index der Gewächshaus-Blase
 
 export class UI {
@@ -63,11 +64,13 @@ export class UI {
     $('coinPlus').onclick = () => this.nav('shop', 'offers');
     $('lvl').onclick = () => this.nav('quests', 'levels');
     $('breedBtn').onclick = () => this.api.act.tapGreenhouse();
+    $('traderBtn').insertAdjacentHTML('afterbegin', I.cart);
+    $('traderBtn').onclick = () => this.nav('trader');
     $('centerBtn').onclick = () => { this.api.sound.play('tap'); this.api.world.resetView(); };
     $('harvestAll').onclick = () => (this.haRain ? this.api.act.useRain() : this.api.act.harvestAll());
     $('quest').onclick = () => this.api.act.questTracker();
     for (const el of [$('panel'), $('sheet'), $('modal'), $('toast'), $('modeBar'), $('editBar'), $('visitBar')]) el.addEventListener('click', (e) => this.onAct(e));
-    document.addEventListener('submit', (e) => { const f = e.target.closest?.('form[data-form]'); if (!f) return; e.preventDefault(); onSocialForm(this, f); });
+    document.addEventListener('submit', (e) => { const f = e.target.closest?.('form[data-form]'); if (!f) return; e.preventDefault(); const sb = e.submitter; if (sb?.name) f.dataset[sb.name] = sb.value; else { delete f.dataset.on; delete f.dataset.stop; delete f.dataset.clear; } onSocialForm(this, f); });
     $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') this.closeModal(); });
     $('panel').addEventListener('input', (e) => this.onInput(e));
     for (const id of ['hud', 'side', 'nav']) $(id).hidden = false;
@@ -182,6 +185,9 @@ export class UI {
     const job = G.breedingInfo(s, now);
     const bb = $('breedBadge');
     bb.textContent = job?.ready ? '!' : ''; bb.hidden = !job?.ready;
+    $('traderBtn').hidden = s.level < C.TRADER.level;
+    const tb = traderBadge(s, now), tbe = $('traderBadge');
+    tbe.textContent = tb || ''; tbe.hidden = !tb;
     this.renderQuest(st);
     if (this.mode) this.renderModeBar();
     if (this.panel) this.renderPanel(true);
@@ -267,6 +273,22 @@ export class UI {
   }
 
   // ---------- Blasen über Beeten und Gewächshaus (jedes Bild) ----------
+  // Wartungshinweis vom Team (oben im Bild)
+  setMaint(m) {
+    const el = $('maint');
+    if (!m) { el.hidden = true; return; }
+    const until = m.until ? ` (bis ${new Date(m.until).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr)` : '';
+    el.innerHTML = `${svg(I.gear, 22)}<span><b>Wartung${until}:</b> ${esc(m.text || 'Es kann kurz zu Störungen kommen. Dein Fortschritt wird auf diesem Gerät gesichert.')}</span>`;
+    el.hidden = false;
+  }
+
+  boostCards() {
+    const list = Object.values(this.boosts || {}).filter((b) => b.end > Date.now());
+    if (!list.length) return '';
+    const NAMES = { doubleXp: ['Doppelte Erfahrung', I.xp], doubleCoins: ['Doppelte Münzen', I.coinPile], shinyDay: ['Funkel-Tag', I.sparkle], traderSale: ['Händler zahlt mehr', I.cart] };
+    return `<div class="sec">Gerade aktiv</div>` + list.map((b) => { const [n, ic] = NAMES[b.id] || [b.id, I.sparkle]; const left = b.end - Date.now(); const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / 60000); return `<div class="card row boost">${svg(ic, 44)}<div class="grow"><h4>${n} ×${b.mult}</h4><p>Noch ${h ? `${h} Std ` : ''}${m} Min – für alle Spieler.</p></div></div>`; }).join('');
+  }
+
   // Besuch bei einem Freund: Leiste oben, eigene Knöpfe ausblenden
   newsHtml(n) { return newsCard(n); }
 
@@ -475,18 +497,20 @@ export class UI {
     const el = $('panel');
     // Im Chat nur die Nachrichten auffrischen – das Eingabefeld bleibt unberührt
     if (soft && id === 'chat' && $('chatList')) { updateChat(this); const p = el.querySelector('.pill span'); if (p) p.textContent = num(this.s.coins); return; }
-    const body = { quests: () => this.pQuests(), events: () => this.pEvents(), collection: () => this.pCollection(), friends: () => pFriends(this), shop: () => this.pShop(), settings: () => this.pSettings(), breed: () => this.pBreed(), chat: () => pChat(this), admin: () => pAdmin(this) }[id]();
+    const body = { quests: () => this.pQuests(), events: () => this.pEvents(), collection: () => this.pCollection(), friends: () => pFriends(this), shop: () => this.pShop(), settings: () => this.pSettings(), breed: () => this.pBreed(), chat: () => pChat(this), admin: () => pAdmin(this), trader: () => pTrader(this) }[id]();
     const prevScroll = el.querySelector('.pbody')?.scrollTop || 0;
     // Eingaben (z. B. halb getippter Spielername) beim Neuzeichnen behalten
     const keep = {}; let focus = null;
-    for (const inp of el.querySelectorAll('input[name], textarea[name]')) { if (inp.type === 'radio') { if (inp.checked) keep[`${inp.name}=${inp.value}`] = true; } else keep[inp.name] = inp.value; }
-    if (document.activeElement?.name && el.contains(document.activeElement)) focus = document.activeElement.name;
+    const kid = (inp) => `${inp.closest('form')?.dataset.form || ''}|${inp.closest('form')?.dataset.id || ''}|${inp.name}`;
+    for (const inp of el.querySelectorAll('input[name], textarea[name]')) { if (inp.type === 'radio') { if (inp.checked) keep[`${kid(inp)}=${inp.value}`] = true; } else if (inp.value) keep[kid(inp)] = inp.value; }
+    if (document.activeElement?.name && el.contains(document.activeElement)) focus = kid(document.activeElement);
     el.classList.toggle('chatmode', id === 'chat');
     el.innerHTML = `<div class="phead"><h2 class="outlined">${id === 'chat' ? chatTitle(this) : TITLES[id]}</h2><div class="pill">${I.coin()}<span>${num(this.s.coins)}</span></div><button class="x" data-act="closePanel" aria-label="Schließen">✕</button></div><div class="pbody">${body}</div>`;
     for (const inp of el.querySelectorAll('input[name], textarea[name]')) {
-      if (inp.type === 'radio') { if (Object.keys(keep).some((k) => k.startsWith(inp.name + '='))) inp.checked = !!keep[`${inp.name}=${inp.value}`]; } else if (keep[inp.name]) inp.value = keep[inp.name];
+      const k = kid(inp);
+      if (inp.type === 'radio') { if (Object.keys(keep).some((x) => x.startsWith(k + '='))) inp.checked = !!keep[`${k}=${inp.value}`]; } else if (keep[k] !== undefined) inp.value = keep[k];
+      if (focus === k) inp.focus({ preventScroll: true });
     }
-    if (focus) el.querySelector(`[name="${focus}"]`)?.focus({ preventScroll: true });
     if (soft) el.querySelector('.pbody').scrollTop = prevScroll;
     if (id === 'chat') updateChat(this, { first: true });
   }
@@ -601,6 +625,7 @@ export class UI {
     const s = this.s, now = this.api.now();
     const ev = G.eventInfo(s, now);
     let h = '';
+    h += this.boostCards();
     if (this.news?.length) h += `<div class="sec">Neuigkeiten</div>${this.news.slice(0, 3).map((n) => newsCard(n)).join('')}`;
     if (ev.active) {
       const a = ev.active;
@@ -668,7 +693,7 @@ export class UI {
 
   // ----- Gewächshaus & Zucht -----
   pBreed() {
-    const s = this.s, now = this.api.now(), night = this.api.isNight();
+    const s = this.s, now = this.api.now(), night = this.api.breedCtx();
     if (!s.greenhouse.unlocked) {
       const lvOk = s.level >= C.GREENHOUSE.level;
       return `<div class="card ghcard"><img alt="" src="${this.icons.greenhouse}"><h4>Das alte Gewächshaus</h4><p>Hinter dem Haus steht Ophelias altes Gewächshaus. Restauriert kannst du darin zwei Blumen kreuzen und ganz neue Sorten züchten – wie die Nordlicht-Rose, die Schwarze Rose oder die legendäre Sternenrose.</p>
@@ -682,7 +707,9 @@ export class UI {
         <div class="prog"><i style="width:${job.progress * 100}%"></i></div><p>${job.ready ? (sure ? 'Hol deine neue Sorte ab – danach kannst du sie in jedes Beet pflanzen.' : `Erfolgschance ${pct} %. Schau nach, ob die Kreuzung gelungen ist!`) : `Noch ${fmtTime(job.remaining)}${sure ? '' : ` · Erfolgschance ${pct} %`}`}</p></div></div>
         <div class="btnrow center">${job.ready ? `<button class="btn big" data-act="collectBreed">${sure ? 'Abholen' : 'Nachsehen'}</button>` : `<button class="btn ${s.items.boost ? 'gold' : 'ghost'}" data-act="boostBreed" ${s.level >= C.ITEMS.boost.level ? '' : 'disabled'}>${svg(I.ITEM.boost, 28)} ${s.items.boost ? `Beschleuniger benutzen (${s.items.boost})` : s.level >= C.ITEMS.boost.level ? `Beschleuniger ${I.coin()} ${C.ITEMS.boost.price}` : `Beschleuniger ab Lv ${C.ITEMS.boost.level}`}</button>`}</div>`;
     } else {
-      h += `<div class="card row">${svg(night ? I.moonSmall : I.greenhouse, 50)}<div class="grow"><h4>Zuchtbuch</h4><p>Wähle eine Kreuzung. Schwere Züchtungen können misslingen – dann gibt es 40 % zurück und der nächste Versuch wird leichter. ${night ? '<b>Es ist Nacht – jetzt gelingen auch Nachtzüchtungen.</b>' : ''}</p></div></div>`;
+      const tl = { morning: 'Sonnenaufgang', day: 'Tag', evening: 'Abenddämmerung', night: 'Nacht' }[night.time];
+      const mp = G.moonPhase(now), moon = night.full ? 'Vollmond 🌕' : mp < 0.03 || mp > 0.97 ? 'Neumond 🌑' : mp < 0.5 ? 'zunehmender Mond 🌒' : 'abnehmender Mond 🌘';
+      h += `<div class="card row">${svg(night.time === 'night' ? I.moonSmall : I.greenhouse, 50)}<div class="grow"><h4>Zuchtbuch</h4><p>Jetzt: <b>${tl}</b> · ${moon}. Manche Kreuzungen gelingen nur zu bestimmten Tageszeiten oder bei Vollmond. Schwere Züchtungen können misslingen – dann gibt es 40 % zurück.</p></div></div>`;
       h += this.breedHelpers();
     }
     return h + this.recipeList(true, night, !!job);
@@ -717,7 +744,8 @@ export class UI {
         else if (c < need) reasons.push(`${plain(C.SEEDS[k].name)} ${c}/${need}× geerntet`);
       }
       if (s.level < d.level) reasons.push(`ab Level ${d.level}`);
-      if (r.night && !night) reasons.push('nur nachts');
+      if (r.when && r.when !== night.time) reasons.push(C.WHEN_LABEL[r.when]);
+      if (r.moon && !night.full) reasons.push(`nur bei Vollmond (ab ${new Date(G.nextFullMoon(this.api.now())).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })})`);
       const parent = (k, c) => `<span class="par ${c >= need ? '' : 'miss'}"><img alt="" src="${this.icons.flower[k]}"><small>${esc(C.SEEDS[k].name)}</small>${need > 1 && !bred ? `<i class="cnt ${c >= need ? 'ok' : ''}">${Math.min(c, need)}/${need}</i>` : ''}</span>`;
       const pct = Math.round(ch.chance * 100);
       const diff = `<span class="diff d${ch.diff}" title="Schwierigkeit">${'★'.repeat(ch.diff)}<b>${ch.name}</b></span>`;
@@ -727,7 +755,7 @@ export class UI {
       else if (!active) btn = '';
       else btn = `<button class="btn small" data-act="breed" data-id="${idx}" ${busy || reasons.length ? 'disabled' : ''}>Züchten · ${I.coin()} ${r.cost}</button>`;
       return `<div class="card recipe ${bred ? 'bred' : ''}"><div class="rline">${parent(r.a, ca)}<span class="plus">+</span>${parent(r.b, cb)}<span class="arrow">➜</span><span class="par res ${bred ? '' : 'unknown'}"><img alt="" src="${this.icons.flower[r.result]}"><small>${esc(d.name)}</small></span></div>
-        <div class="rfoot">${diff}${chance}${tierTag(d)}<span class="meta">⏱ ${growLabel(r.ms)}${r.night ? ` · ${svg(I.moonSmall, 16)} nachts` : ''}</span>${reasons.length && !bred ? `<span class="why">${esc(reasons.join(' · '))}</span>` : `<span class="hint">${esc(r.hint)}</span>`}${btn}</div></div>`;
+        <div class="rfoot">${diff}${chance}${tierTag(d)}<span class="meta">⏱ ${growLabel(r.ms)}${r.when ? ` · ${svg(r.when === 'night' ? I.moonSmall : r.when === 'morning' ? I.sunrise : r.when === 'evening' ? I.sunset : I.sun, 16)} ${C.WHEN_SHORT[r.when]}` : ''}${r.moon ? ' · 🌕 Vollmond' : ''}</span>${reasons.length && !bred ? `<span class="why">${esc(reasons.join(' · '))}</span>` : `<span class="hint">${esc(r.hint)}</span>`}${btn}</div></div>`;
     }).join('');
   }
 
@@ -804,6 +832,7 @@ export class UI {
   pSettings() {
     const st = this.s.settings, acc = this.api.account();
     let autoOn = true; try { autoOn = localStorage.getItem('bw_autostart') !== '0'; } catch { /* egal */ }
+    const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
     const seg = (key, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${st[key] === v ? 'on' : ''}" data-act="set" data-key="${key}" data-val="${v}">${l}</button>`).join('')}</div>`;
     const LBL = { music: 'Musik', sound: 'Soundeffekte', musicVol: 'Musik-Lautstärke', soundVol: 'Effekt-Lautstärke', cycleMin: 'Länge eines Tages in Minuten' };
     const sw = (key) => `<button class="switch ${st[key] ? 'on' : ''}" role="switch" aria-checked="${!!st[key]}" data-act="toggle" data-key="${key}" aria-label="${LBL[key]}"></button>`;
@@ -818,16 +847,23 @@ export class UI {
           <div class="btnrow"><button class="btn small ghost" data-act="logout">Abmelden</button><button class="btn small red" data-act="deleteAccount">Konto löschen</button></div></div>`
       : `<div class="card set"><div class="lab">Konto</div><p>Du spielst offline. Dein Garten wird nur auf diesem Gerät gespeichert. Mit einem Konto ist er auf jedem Gerät verfügbar – dein bisheriger Fortschritt wird übernommen.</p><button class="btn small" style="align-self:flex-start" data-act="login">Anmelden oder registrieren</button></div>`;
     const admin = acc.user?.admin ? `<div class="card set admincard"><div class="lab">${svg(I.shield, 28)} Admin-Bereich</div><p>Ankündigungen und Update-Hinweise für alle Spieler schreiben, gemeldete Nachrichten prüfen und Chats sperren.</p><button class="btn small" style="align-self:flex-start" data-act="openAdmin">Admin-Bereich öffnen</button></div>` : '';
-    return `${account}${admin}
-      <div class="card set"><div class="lab">Tageszeit</div>${seg('cycle', [['auto', 'Automatischer Zyklus'], ['day', 'Immer Tag'], ['night', 'Immer Nacht']])}
-        <div class="lab" style="margin-top:6px">Zyklusgeschwindigkeit <small>1 Tag = ${st.cycleMin} Min</small></div>${range('cycleMin', 2, 30, 1, st.cycleMin, st.cycle !== 'auto')}
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:-6px"><span>schnell</span><span>langsam</span></div></div>
+    const extra = acc.user ? `<form class="card set codeform" data-form="redeem" autocomplete="off"><div class="lab">${svg(I.gift, 26)} Gutschein einlösen</div><div class="row"><input name="code" maxlength="20" placeholder="CODE" autocapitalize="characters" spellcheck="false" aria-label="Gutscheincode"><button class="btn small" type="submit">Einlösen</button></div></form>
+      <form class="card set fbform" data-form="feedback" autocomplete="off"><div class="lab">${svg(I.megaphone, 26)} Feedback an das Team</div>
+        <div class="seg small kinds">${[['bug', 'Fehler'], ['idea', 'Idee'], ['other', 'Sonstiges']].map(([k, l], i) => `<label><input type="radio" name="kind" value="${k}" ${i === 1 ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+        <textarea name="text" maxlength="1000" rows="3" placeholder="Was ist dir aufgefallen? Was wünschst du dir?" aria-label="Feedback"></textarea>
+        <button class="btn small" type="submit" style="align-self:flex-start">Senden</button></form>` : '';
+    return `${account}${admin}${extra}
+      <div class="card set"><div class="lab">Tageszeit</div>${seg('cycle', [['real', 'Echtzeit'], ['auto', 'Schneller Zyklus'], ['day', 'Immer Tag'], ['night', 'Immer Nacht']])}
+        ${st.cycle === 'real' ? (() => { const t = G.sunTimes(this.api.now()), f = (x) => new Date(x).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); return `<p>Tag und Nacht wie draußen – mit Morgen- und Abenddämmerung. Heute: Dämmerung ab ${f(t.dawn)}, ${svg(I.sunrise, 18)} ${f(t.rise)}, ${svg(I.sunset, 18)} ${f(t.set)}, dunkel ab ${f(t.dusk)}. Nachts leuchten Laternen, Fackeln und Lichterketten.</p>`; })() : ''}
+        ${st.cycle === 'auto' ? `<div class="lab" style="margin-top:6px">Zyklusgeschwindigkeit <small>1 Tag = ${st.cycleMin} Min</small></div>${range('cycleMin', 2, 30, 1, st.cycleMin, false)}
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:-6px"><span>schnell</span><span>langsam</span></div>` : ''}</div>
       <div class="card set"><div class="lab">Grafik &amp; Leistung</div>${seg('quality', [['auto', 'Auto'], ['high', 'Hoch'], ['medium', 'Mittel'], ['low', 'Sparsam']])}<p>${qd[st.quality]}</p></div>
       <div class="card set"><div class="lab">Musik ${sw('music')}</div>${range('musicVol', 0, 1, 0.05, st.musicVol, !st.music)}
         <div class="lab" style="margin-top:6px">Soundeffekte ${sw('sound')}</div>${range('soundVol', 0, 1, 0.05, st.soundVol, !st.sound)}</div>
       <div class="card set"><div class="lab">Spielstand</div><p>Wird automatisch gespeichert${acc.user ? ' – in deinem Konto und auf diesem Gerät' : ' – auf diesem Gerät'}.</p><button class="btn red small" style="align-self:flex-start;margin-top:6px" data-act="reset">Garten neu beginnen</button></div>
-      <div class="btnrow center"><button class="btn small ghost" data-act="privacy">Datenschutz</button></div>
-      <p class="note">BloomWorld · Version 3.3<br>Schrift: Poppins (SIL Open Font License)</p>`;
+      <div class="card set"><div class="lab">Als App auf dem Handy</div><p>${standalone ? 'BloomWorld läuft als App. 🌸' : 'Mit eigenem Symbol auf dem Startbildschirm, ohne Browserleiste.'}</p>${standalone ? '' : '<button class="btn small" style="align-self:flex-start;margin-top:6px" data-act="install">Zum Startbildschirm hinzufügen</button>'}</div>
+      <div class="btnrow center"><button class="btn small ghost" data-act="legal" data-id="impressum">Impressum</button><button class="btn small ghost" data-act="legal" data-id="datenschutz">Datenschutz</button></div>
+      <p class="note">BloomWorld · Version 3.4<br>Schrift: Poppins (SIL Open Font License)</p>`;
   }
 
   // ---------- Klicks in Panels, Leisten, Dialogen ----------
@@ -839,6 +875,7 @@ export class UI {
     const { act: a, id } = el.dataset;
     const bed = el.dataset.bed !== undefined ? +el.dataset.bed : this.sheetBed;
     if (SOCIAL_ACTS.has(a)) { onSocialAct(this, a, el); return; }
+    if (TRADER_ACTS.has(a)) { onTraderAct(this, a, el); return; }
     const A = this.api.act;
     switch (a) {
       case 'closePanel': this.nav(this.panel === 'chat' ? 'friends' : 'garden'); break;
@@ -910,6 +947,8 @@ export class UI {
       case 'deleteAccount': this.deleteAccountDialog(); break;
       case 'confirmDelete': { const pw = $('delPw')?.value || ''; A.deleteAccount(pw); break; }
       case 'privacy': this.modal({ title: 'Datenschutz', html: PRIVACY_HTML, buttons: [['OK', 'closeModal', '']] }); break;
+      case 'legal': A.legal(id); break;
+      case 'install': A.install(); break;
       case 'storyOk': this.closeModal(); A.storySeen(); break;
     }
   }

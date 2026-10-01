@@ -34,6 +34,7 @@ uniform vec3 uFogCol; uniform vec3 uCamPos; uniform vec3 uEmisCol;
 uniform float uFogNear; uniform float uFogFar; uniform float uFogAmt; uniform float uEmis; uniform float uShadowOn;
 uniform float uMode; uniform float uTint; uniform vec3 uTintCol; uniform float uSat;
 uniform vec2 uShadowTexel; uniform sampler2D uShadow;
+uniform vec4 uPL[12]; uniform float uPLn; uniform float uPLAmt; uniform vec3 uPLCol;
 varying vec3 vNrm; varying vec3 vWorld; varying vec4 vCol; varying vec4 vLight;
 float unpack(vec4 c){ return dot(c, vec4(1.0, 1.0/255.0, 1.0/65025.0, 1.0/16581375.0)); }
 float shadowAt(float ndl){
@@ -76,6 +77,18 @@ void main(){
     col = mix(col, base * (1.15 + 0.45 * uEmis) + 0.04, k * (0.2 + 0.8 * uEmis));
   } else {
     col = mix(col, uEmisCol * (1.0 + 0.25 * vCol.a), clamp(vCol.a * uEmis, 0.0, 1.0));
+  }
+  // Gartenlichter (Laternen, Fackeln …): leuchten ab der Dämmerung
+  if (uPLAmt > 0.01) {
+    float acc = 0.0;
+    for (int i = 0; i < 12; i++) {
+      if (float(i) >= uPLn) break;
+      vec3 dl = uPL[i].xyz - vWorld;
+      float d = length(dl);
+      float a = clamp(1.0 - d / uPL[i].w, 0.0, 1.0);
+      acc += a * a * clamp(dot(n, dl / max(d, 0.001)) * 0.6 + 0.4, 0.0, 1.0);
+    }
+    col += (base * 1.9 + 0.04) * uPLCol * min(acc, 1.8) * uPLAmt;
   }
   if (uTint > 0.0) col = mix(col, col * uTintCol, uTint);
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
@@ -334,6 +347,11 @@ export class Renderer {
     gl.uniform1f(u.uShadowOn, useShadow ? 1 : 0);
     gl.uniform1f(u.uTint, env.tint || 0); gl.uniform3fv(u.uTintCol, env.tintCol || [1, 1, 1]);
     gl.uniform1f(u.uSat, env.sat ?? 1.08);
+    const nl = Math.min(12, env.lightN || 0);
+    gl.uniform1f(u.uPLn, nl);
+    gl.uniform1f(u.uPLAmt, nl ? (env.lightAmt || 0) : 0);
+    gl.uniform3fv(u.uPLCol, [1.0, 0.72, 0.38]);
+    if (nl && u['uPL[0]']) gl.uniform4fv(u['uPL[0]'], env.lights);
     if (!useShadow) { gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, null); }
     if (useShadow) {
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);

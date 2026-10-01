@@ -29,10 +29,11 @@ export const SEEDS = {
   rainbowHydrangea: { name: 'Regenbogen­hortensie', cost: 140, growMs: 16 * M,  reward: 520,  xp: 55,  level: 11, model: 'hydrangea', bred: true, tier: 'episch', water: 2 },
   starRose:         { name: 'Sternen­rose',         cost: 250, growMs: 25 * M,  reward: 1100, xp: 120, level: 12, model: 'rose', bred: true, tier: 'legendär', water: 2 },
   dragonLily:       { name: 'Drachen­lilie',        cost: 160, growMs: 18 * M,  reward: 640,  xp: 70,  level: 13, model: 'lily', bred: true, tier: 'legendär', water: 2 },
+  moonRose:         { name: 'Mondschein­rose',     cost: 200, growMs: 22 * M,  reward: 900,  xp: 95,  level: 12, model: 'rose', bred: true, tier: 'legendär', water: 2 },
   crystalRose:      { name: 'Kristall­rose',        cost: 320, growMs: 30 * M,  reward: 1500, xp: 160, level: 16, model: 'rose', bred: true, tier: 'legendär', water: 2 },
 };
 export const SEED_ORDER = ['daisy', 'tulip', 'cornflower', 'sunflower', 'lavender', 'rose', 'poppy', 'orchid', 'lily', 'hydrangea',
-  'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'crystalRose'];
+  'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'moonRose', 'crystalRose'];
 // Kurzbeschreibungen für die Detailansicht in der Sammlung
 export const FLOWER_INFO = {
   daisy: 'Klein, fröhlich und unverwüstlich. Das Gänseblümchen wächst blitzschnell und braucht nie Wasser – perfekt für den Anfang.',
@@ -57,6 +58,7 @@ export const FLOWER_INFO = {
   rainbowHydrangea: 'Eine Blütenkugel in allen Farben des Regenbogens – jede Blüte ein kleines Kunstwerk.',
   starRose: 'Golden glühend mit sternförmigem Schimmer. Nur Meistergärtner haben sie je gesehen.',
   dragonLily: 'Feurig rot mit dunklen Spitzen – wild, stolz und nur bei Nacht zu züchten.',
+  moonRose: 'Silbern schimmernd wie Mondlicht. Sie entsteht nur in Vollmondnächten – ein echter Schatz für Nachtschwärmer.',
   crystalRose: 'Klar wie Kristall und funkelnd im Licht. Die Krönung jeder Sammlung.',
 };
 
@@ -68,17 +70,18 @@ export const BRED_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].bred);
 // Kreuzungen im Gewächshaus. Eltern müssen schon einmal geerntet worden sein.
 export const RECIPES = [
   { a: 'tulip', b: 'daisy', result: 'rainbowTulip', diff: 1, cost: 60, ms: 3 * M, hint: 'Zwei Frühlingsblumen ergeben ein buntes Farbenspiel.' },
-  { a: 'tulip', b: 'sunflower', result: 'sunTulip', diff: 1, cost: 80, ms: 4 * M, hint: 'Etwas Sonne macht Tulpen feurig.' },
+  { a: 'tulip', b: 'sunflower', result: 'sunTulip', when: 'day', diff: 1, cost: 80, ms: 4 * M, hint: 'Etwas Sonne macht Tulpen feurig.' },
   { a: 'rose', b: 'sunflower', result: 'goldRose', diff: 2, cost: 150, ms: 8 * M, hint: 'Die Rose liebt das Licht der Sonnenblume.' },
-  { a: 'orchid', b: 'lavender', result: 'moonOrchid', diff: 2, cost: 200, ms: 10 * M, hint: 'Ein Duft wie eine sternklare Nacht.' },
+  { a: 'orchid', b: 'lavender', result: 'moonOrchid', when: 'night', diff: 2, cost: 200, ms: 10 * M, hint: 'Ein Duft wie eine sternklare Nacht.' },
   { a: 'rose', b: 'lavender', result: 'northRose', diff: 2, cost: 220, ms: 10 * M, hint: 'Violett und Rot tanzen wie Polarlichter.' },
-  { a: 'rose', b: 'orchid', result: 'blackRose', diff: 3, cost: 250, ms: 12 * M, night: true, hint: 'Gelingt nur, wenn es Nacht ist.' },
+  { a: 'rose', b: 'orchid', result: 'blackRose', when: 'night', diff: 3, cost: 250, ms: 12 * M, hint: 'Gelingt nur, wenn es Nacht ist.' },
   { a: 'northRose', b: 'blackRose', result: 'starRose', diff: 4, cost: 600, ms: 30 * M, hint: 'Die seltenste Rose von allen.' },
   { a: 'cornflower', b: 'lavender', result: 'skyCornflower', diff: 1, cost: 90, ms: 4 * M, hint: 'Blau wie ein wolkenloser Sommerhimmel.' },
-  { a: 'poppy', b: 'sunflower', result: 'firePoppy', diff: 2, cost: 180, ms: 8 * M, hint: 'Glüht wie ein Lagerfeuer am Abend.' },
-  { a: 'lily', b: 'moonOrchid', result: 'iceLily', diff: 3, cost: 300, ms: 12 * M, hint: 'Kühl schimmernd wie Raureif im Mondlicht.' },
+  { a: 'poppy', b: 'sunflower', result: 'firePoppy', when: 'evening', diff: 2, cost: 180, ms: 8 * M, hint: 'Glüht wie ein Lagerfeuer am Abend.' },
+  { a: 'lily', b: 'moonOrchid', result: 'iceLily', when: 'morning', diff: 3, cost: 300, ms: 12 * M, hint: 'Kühl schimmernd wie Raureif am frühen Morgen.' },
   { a: 'hydrangea', b: 'rainbowTulip', result: 'rainbowHydrangea', diff: 3, cost: 350, ms: 14 * M, hint: 'Hunderte kleine Blüten in allen Farben.' },
-  { a: 'lily', b: 'blackRose', result: 'dragonLily', diff: 4, cost: 450, ms: 16 * M, night: true, hint: 'Gelingt nur nachts – feurig und geheimnisvoll.' },
+  { a: 'lily', b: 'blackRose', result: 'dragonLily', when: 'night', diff: 4, cost: 450, ms: 16 * M, hint: 'Gelingt nur nachts – feurig und geheimnisvoll.' },
+  { a: 'moonOrchid', b: 'northRose', result: 'moonRose', when: 'night', moon: 'full', diff: 4, cost: 500, ms: 20 * M, hint: 'Blüht nur auf, wenn der Vollmond am Himmel steht.' },
   { a: 'starRose', b: 'iceLily', result: 'crystalRose', diff: 5, cost: 900, ms: 35 * M, hint: 'Die Krönung jeder Gärtnerin, jedes Gärtners.' },
 ];
 export const GREENHOUSE = { cost: 400, level: 4 };
@@ -94,6 +97,38 @@ export const GIFT_XP = 5;                 // Dank fürs Schenken
 export const HELP = { perDay: 5, coins: 5, xp: 3 };  // Blumen gießen bei Freunden: je Freund und Tag
 export const LIKE = { coins: 10 };        // „Gefällt mir“ für einen Garten: Belohnung für den Besitzer
 export const MAX_FRIENDS = 100;
+
+// Zucht-Bedingungen: Tageszeit (morning = Sonnenaufgang/Morgen, day, evening = Abenddämmerung, night) und Mond
+export const WHEN_LABEL = { morning: 'nur bei Sonnenaufgang', day: 'nur tagsüber', evening: 'nur in der Abenddämmerung', night: 'nur nachts' };
+export const WHEN_SHORT = { morning: 'morgens', day: 'tagsüber', evening: 'abends', night: 'nachts' };
+
+// Standort für echte Sonnenzeiten (Mitte Deutschlands; Längengrad wird aus der Zeitzone geschätzt)
+export const SUN_LAT = 51.5;
+
+// ---------- Blumenhändler ----------
+export const TRADER = {
+  name: 'Herr Igelmann', level: 2,
+  orders: 3,               // Bestellungen pro Tag
+  sellRate: 0.35,          // Verkauf aus dem Korb: Anteil der normalen Ernte-Belohnung
+  orderRate: 0.9,          // Bestellungen: Anteil der Ernte-Belohnungen, plus Bonus
+  dayFlowerMult: 2,        // Tagesblume: doppelter Preis
+  shinySell: 2.5,          // Funkelblüten im Korb
+  rep: [0, 5, 15, 30, 60], // Ruf-Stufen
+  basket: [30, 40, 50, 65, 80],
+  repBonus: [0, 0.05, 0.1, 0.15, 0.2],
+  offerDiscount: 0.3,      // Tagesangebot
+};
+// Besonderheiten je Wochentag (0 = Sonntag)
+export const TRADER_DAYS = [
+  { id: 'sun', name: 'Sonntagsmarkt', desc: 'Alle Verkaufspreise +25 %.', sell: 1.25 },
+  { id: 'mon', name: 'Montags-Mischung', desc: 'Heute gibt es eine Bestellung mehr.', extraOrder: 1 },
+  { id: 'tue', name: 'Dünger-Dienstag', desc: 'Dünger, Kompost und Regenwolken 30 % günstiger.', itemDiscount: 0.3, items: ['fert', 'compost', 'rain'] },
+  { id: 'wed', name: 'Wunsch-Mittwoch', desc: 'Sonderwünsche zahlen das Dreifache.', specialMult: 3 },
+  { id: 'thu', name: 'Doppel-Donnerstag', desc: 'Doppelte Ruf-Punkte für jede Bestellung.', repMult: 2 },
+  { id: 'fri', name: 'Funkel-Freitag', desc: 'Funkelblüten bringen den vierfachen Preis.', shinySell: 4 },
+  { id: 'sat', name: 'Samen-Samstag', desc: 'Ein Gratis-Geschenk vom Händler und Deko 20 % günstiger.', freeGift: true, decoDiscount: 0.2 },
+];
+export const TRADER_ITEMS = ['fert', 'turbo', 'rain', 'compost', 'pollen'];
 
 // Schwierigkeitsgrad der Züchtungen: Grund-Erfolgschance und wie oft jede Eltern-Blume
 // schon geerntet sein muss. Misslingt eine Kreuzung, gibt es einen Teil der Kosten zurück
@@ -228,11 +263,14 @@ export const DECO = {
   rainBarrel:  { name: 'Regentonne',    price: 90,  level: 3, size: [0.9, 0.9], desc: 'Sammelt Regenwasser zum Gießen.' },
   compostBin:  { name: 'Kompostkiste',  price: 100, level: 4, size: [1.2, 1.2], desc: 'Aus Gartenabfällen wird gute Erde.' },
   insectHotel: { name: 'Insektenhotel', price: 130, level: 4, size: [0.9, 0.6], desc: 'Zuhause für Wildbienen und Marienkäfer.' },
+  groundLights: { name: 'Pilzleuchten', price: 50, level: 1, size: [0.8, 0.8], desc: 'Kleine leuchtende Pilze – erhellen nachts den Boden.' },
+  torch:        { name: 'Gartenfackel', price: 70, level: 2, size: [0.4, 0.4], desc: 'Flackert warm in der Dämmerung.' },
+  lampPost:     { name: 'Doppel-Laterne', price: 180, level: 4, size: [0.7, 0.5], desc: 'Hell und elegant – beleuchtet einen großen Bereich.' },
   stringLights: { name: 'Lichterkette', price: 220, level: 6, size: [2.4, 0.5], desc: 'Warme Lichter für gemütliche Abende.' },
   pumpkinLantern: { name: 'Kürbislaterne', size: [1.1, 1.1], desc: 'Exklusiv vom Herbstfest. Leuchtet nachts.', event: 'autumn' },
   leafPile:    { name: 'Laubhaufen', size: [1.6, 1.5], desc: 'Exklusiv vom Herbstfest.', event: 'autumn' },
 };
-export const DECO_ORDER = ['pathStone', 'pinwheel', 'hedgeBlock', 'flowerpots', 'hoseReel', 'lantern', 'planter', 'rainBarrel', 'compostBin', 'birdhouse', 'bench', 'insectHotel', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'stringLights', 'tableSet', 'arch', 'fountain'];
+export const DECO_ORDER = ['pathStone', 'groundLights', 'pinwheel', 'hedgeBlock', 'flowerpots', 'hoseReel', 'lantern', 'torch', 'lampPost', 'planter', 'rainBarrel', 'compostBin', 'birdhouse', 'bench', 'insectHotel', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'stringLights', 'tableSet', 'arch', 'fountain'];
 export const ALL_DECO = [...DECO_ORDER, 'pumpkinLantern', 'leafPile'];
 export const MAX_DECO = 80; // Deko-Teile insgesamt (Leistung auf dem Handy)
 // Bevorzugte Plätze (Übernahme alter Spielstände, erste Käufe)
@@ -347,6 +385,9 @@ export const EVENTS = [
     shop: [{ id: 'fert3', items: { fert: 3 }, price: 15 }, { id: 'turbo1', items: { turbo: 1 }, price: 25 }] },
 ];
 // Jedes Wochenende: doppelte Chance auf Funkelblüten
+// Lichtquellen im Garten (Höhe und Reichweite in Metern) – leuchten automatisch ab der Dämmerung
+export const LIGHTS = { lantern: [1.7, 5], torch: [1.1, 4], lampPost: [2.0, 6.5], groundLights: [0.3, 3.2], stringLights: [1.75, 5.5], pumpkinLantern: [0.5, 3.5] };
+
 export const WEEKEND_BONUS = { name: 'Funkel-Wochenende', shinyFactor: 2 };
 
 // Echtgeld-Produkte (nur Vorschau, Zahlungen noch nicht aktiv)

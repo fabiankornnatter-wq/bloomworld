@@ -151,3 +151,103 @@ test('Freunde, Chat, Geschenk, Besuch, Gießen, Melden, Admin, Sperren, Löschen
   assert.equal((await call(auth, { cookie: cara.cookie, body: { action: 'delete', password: 'blumen123' } })).status, 200);
   assert.equal((await soc(anna, { action: 'sync' })).body.friends.length, 0);
 });
+
+test('Admin: Geschenk an alle, Gutscheine, Feedback, Statistik', async () => {
+  const ov0 = async (u) => (await call(admin, { cookie: u.cookie, body: { action: 'overview' } }));
+  const boss = await register('Boss');
+  // Admin ist das älteste Konto – in diesem Testlauf ggf. ein anderes; Admin-Teil nur mit frischer Datenbank
+  if (!boss.admin && process.env.BW_TEST_REDIS_URL && !process.env.BW_TEST_FRESH) return;
+  const adminUser = boss.admin ? boss : null;
+  const player = await register('Pia');
+  // Admin aus vorherigem Test finden (Anna ist das älteste Konto der Speicher-Datenbank)
+  const any = adminUser || (await (async () => { const r = await call(auth, { body: { action: 'login', login: 'Anna' + tag, password: 'blumen123' }, ip: '10.9.9.9' }); return r.status === 200 ? { cookie: (r.headers['set-cookie'] || '').split(';')[0] } : null; })());
+  if (!any) return;
+  assert.equal((await call(admin, { cookie: any.cookie, body: { action: 'giftAll', title: 'Sorry!', coins: 200, items: { fert: 3, gold: 9 } } })).status, 200);
+  const s1 = (await soc(player, { action: 'sync' })).body;
+  const g = s1.inbox.find((x) => x.k === 'teamgift');
+  assert.equal(g.coins, 200);
+  assert.deepEqual(g.items, { fert: 3 });
+  assert.equal((await soc(player, { action: 'sync' })).body.inbox.filter((x) => x.k === 'teamgift').length, 0, 'nur einmal');
+  // Gutschein
+  assert.equal((await call(admin, { cookie: any.cookie, body: { action: 'createCode', code: 'herbst-2026', coins: 50, items: { rain: 2 }, max: 1, days: 3 } })).status, 200);
+  assert.equal((await call(admin, { cookie: any.cookie, body: { action: 'createCode', code: 'HERBST-2026', coins: 1 } })).status, 409);
+  let r = await soc(player, { action: 'redeem', code: ' herbst-2026 ' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.item.coins, 50);
+  assert.equal((await soc(player, { action: 'redeem', code: 'HERBST-2026' })).status, 409);
+  assert.equal((await soc(boss, { action: 'redeem', code: 'HERBST-2026' })).status, 410, 'Limit erreicht');
+  assert.equal((await soc(player, { action: 'redeem', code: 'GIBTSNICHT' })).status, 404);
+  // Feedback
+  assert.equal((await soc(player, { action: 'feedback', kind: 'idea', text: 'Mehr Tiere bitte!' })).status, 200);
+  const ov = await ov0(any);
+  assert.equal(ov.status, 200);
+  assert.ok(ov.body.feedback.some((f) => f.text === 'Mehr Tiere bitte!' && f.kind === 'idea'));
+  assert.ok(ov.body.codes.some((c) => c.code === 'HERBST-2026' && c.used === 1));
+  assert.ok(ov.body.stats.newToday >= 2);
+  assert.ok(ov.body.stats.activeToday >= 1);
+  assert.equal((await call(admin, { cookie: player.cookie, body: { action: 'giftAll', coins: 5 } })).status, 403);
+});
+
+test('Admin-Werkzeuge: Spieler-Support, Namensreset, Passwort-Reset, Wartung, Events, Rechtstexte, Wortfilter, Protokoll', async () => {
+  const fresh = !process.env.BW_TEST_REDIS_URL || process.env.BW_TEST_FRESH;
+  if (!fresh) return;
+  const r0 = await call(auth, { body: { action: 'login', login: 'Anna' + tag, password: 'blumen123' }, ip: '10.9.9.8' });
+  const adm = { cookie: (r0.headers['set-cookie'] || '').split(';')[0] };
+  const kim = await register('Kim');
+  const A = (body) => call(admin, { cookie: adm.cookie, body });
+  // Spieler suchen + Gutschrift
+  let r = await A({ action: 'findPlayer', q: kim.name });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.player.id, kim.id);
+  assert.doesNotMatch(r.body.player.email, /^kim/, 'E-Mail nur maskiert');
+  assert.equal((await A({ action: 'grant', id: kim.id, title: 'Sorry', coins: 77, items: { rain: 1 } })).status, 200);
+  const inbox = (await soc(kim, { action: 'sync' })).body.inbox.find((x) => x.k === 'teamgift');
+  assert.equal(inbox.coins, 77);
+  // Namensreset
+  assert.equal((await A({ action: 'forceRename', id: kim.id })).status, 200);
+  const me = await call(auth, { method: 'GET', cookie: kim.cookie });
+  assert.equal(me.body.user.mustRename, true);
+  assert.equal((await call(auth, { cookie: kim.cookie, body: { action: 'rename', name: 'Anna' + tag } })).status, 409);
+  r = await call(auth, { cookie: kim.cookie, body: { action: 'rename', name: 'Kimi' + tag } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.user.name, 'Kimi' + tag);
+  assert.equal(r.body.user.mustRename, false);
+  assert.equal((await call(auth, { body: { action: 'login', login: 'Kimi' + tag, password: 'blumen123' }, ip: '10.9.9.7' })).status, 200);
+  assert.equal((await call(auth, { body: { action: 'login', login: 'Kim' + tag, password: 'blumen123' }, ip: '10.9.9.7' })).status, 401, 'alter Name frei');
+  // Passwort-Reset mit Admin-Code
+  r = await A({ action: 'resetCode', id: kim.id });
+  assert.equal(r.status, 200);
+  assert.equal((await call(auth, { body: { action: 'resetPassword', login: 'Kimi' + tag, code: 'FALSCH99', password: 'neuespw123' }, ip: '10.9.9.6' })).status, 401);
+  r = await call(auth, { body: { action: 'resetPassword', login: 'Kimi' + tag, code: r.body.code.toLowerCase(), password: 'neuespw123' }, ip: '10.9.9.6' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await call(auth, { body: { action: 'login', login: 'Kimi' + tag, password: 'neuespw123' }, ip: '10.9.9.5' })).status, 200);
+  assert.equal((await call(auth, { method: 'GET', cookie: kim.cookie })).body.user, null, 'alte Sitzung beendet');
+  assert.equal((await call(auth, { body: { action: 'forgot', login: 'Kimi' + tag }, ip: '10.9.9.4' })).body.mail, false);
+  // Wartung, Events, Händler-Angebot
+  assert.equal((await A({ action: 'maintenance', on: true, text: 'Kurze Wartung', until: Date.now() + 3600_000 })).status, 200);
+  assert.equal((await A({ action: 'boost', id: 'doubleXp', hours: 2, mult: 2 })).status, 200);
+  assert.equal((await A({ action: 'boost', id: 'hack', hours: 2 })).status, 400);
+  assert.equal((await A({ action: 'traderOffer', kind: 'item', id: 'fert', n: 3, off: 0.5 })).status, 200);
+  const n = await call(newsApi, { method: 'GET' });
+  assert.equal(n.body.maint.text, 'Kurze Wartung');
+  assert.equal(n.body.boosts.doubleXp.mult, 2);
+  assert.equal(n.body.offer.price, 45);
+  assert.equal((await A({ action: 'maintenance', on: false })).status, 200);
+  assert.equal((await call(newsApi, { method: 'GET' })).body.maint, null);
+  // Rechtstexte + Wortfilter
+  assert.equal((await A({ action: 'legal', key: 'impressum', text: 'Max Muster\nMusterweg 1' })).status, 200);
+  const req = Readable.from([]); req.method = 'GET'; req.url = '/api/news?legal=impressum'; req.headers = { host: 'localhost:3000' };
+  const leg = await new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, end: (t) => resolve(JSON.parse(t)) }; newsApi(req, res); });
+  assert.equal(leg.text, 'Max Muster\nMusterweg 1');
+  assert.equal((await A({ action: 'addWord', word: 'Blubberwort' })).status, 200);
+  const ben = { cookie: (await call(auth, { body: { action: 'login', login: 'Ben' + tag, password: 'blumen123' }, ip: '10.9.9.3' })).headers['set-cookie'].split(';')[0] };
+  await soc(adm, { action: 'request', name: 'Ben' + tag }); // Ben hatte Anna blockiert -> bleibt blockiert; Test über Kim
+  const kimNew = { cookie: (await call(auth, { body: { action: 'login', login: 'Kimi' + tag, password: 'neuespw123' }, ip: '10.9.9.2' })).headers['set-cookie'].split(';')[0] };
+  await soc(kimNew, { action: 'request', name: 'Ben' + tag }); await soc(ben, { action: 'accept', id: kim.id });
+  const msg = await soc(kimNew, { action: 'send', id: (await soc(kimNew, { action: 'sync' })).body.friends[0].id, text: 'so ein blubberwort' });
+  assert.equal(msg.status, 200, JSON.stringify(msg.body));
+  assert.equal(msg.body.message.t, 'so ein ***********');
+  const ov = await A({ action: 'overview' });
+  assert.ok(ov.body.logs.some((l) => l.action === 'Rechtstext'));
+  assert.ok(ov.body.words.includes('blubberwort'));
+});

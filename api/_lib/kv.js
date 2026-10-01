@@ -203,8 +203,8 @@ class MemoryKV {
       case 'HSET': { const h = has ? this.m.get(k) : new Map(); for (let i = 1; i < a.length; i += 2) h.set(String(a[i]), String(a[i + 1])); this.m.set(k, h); return 1; }
       case 'HGET': return has ? (this.m.get(k).get(String(a[1])) ?? null) : null;
       case 'HGETALL': return has ? [...this.m.get(k)].flat() : [];
-      case 'SADD': { const s = has ? this.m.get(k) : new Set(); for (const x of a.slice(1)) s.add(String(x)); this.m.set(k, s); return 1; }
-      case 'SREM': { if (has) for (const x of a.slice(1)) this.m.get(k).delete(String(x)); return 1; }
+      case 'SADD': { const s = has ? this.m.get(k) : new Set(); const n0 = s.size; for (const x of a.slice(1)) s.add(String(x)); this.m.set(k, s); return s.size - n0; }
+      case 'SREM': { if (!has) return 0; let c = 0; for (const x of a.slice(1)) if (this.m.get(k).delete(String(x))) c++; return c; }
       case 'SMEMBERS': return has ? [...this.m.get(k)] : [];
       case 'SISMEMBER': return has && this.m.get(k).has(String(a[1])) ? 1 : 0;
       case 'SCARD': return has ? this.m.get(k).size : 0;
@@ -222,6 +222,8 @@ class MemoryKV {
       case 'LRANGE': { if (!has) return []; const l = this.m.get(k); const len = l.length; let s0 = Number(a[1]), e0 = Number(a[2]); if (s0 < 0) s0 = Math.max(0, len + s0); if (e0 < 0) e0 = len + e0; return l.slice(s0, e0 + 1); }
       case 'LTRIM': { if (!has) return 'OK'; const l = this.m.get(k); const len = l.length; let s0 = Number(a[1]), e0 = Number(a[2]); if (s0 < 0) s0 = Math.max(0, len + s0); if (e0 < 0) e0 = len + e0; this.m.set(k, l.slice(s0, e0 + 1)); return 'OK'; }
       case 'LREM': { if (!has) return 0; const l = this.m.get(k); const v = String(a[2]); const before = l.length; this.m.set(k, l.filter((x) => x !== v)); return before - this.m.get(k).length; }
+      case 'PFADD': { const s = has ? this.m.get(k) : new Set(); const n0 = s.size; for (const x of a.slice(1)) s.add(String(x)); this.m.set(k, s); return s.size > n0 ? 1 : 0; }
+      case 'PFCOUNT': { const u = new Set(); for (const x of a) if (this.alive(String(x))) for (const v of this.m.get(String(x))) u.add(v); return u.size; }
       case 'SCAN': {
         const mi = a.findIndex((x) => String(x).toUpperCase() === 'MATCH');
         const pat = mi >= 0 ? String(a[mi + 1]) : '*';

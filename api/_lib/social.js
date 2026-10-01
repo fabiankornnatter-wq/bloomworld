@@ -34,7 +34,14 @@ const nope = (msg, status = 400, code = 'invalid') => new UserError(status, code
 // Links, E-Mail-Adressen und Telefonnummern werden entfernt (Schutz vor Betrug und für Kinder),
 // grobe Schimpfwörter werden mit Sternchen ersetzt.
 const BAD = ['fick', 'fuck', 'fotze', 'hurens', 'hure', 'wichser', 'arschloch', 'schlampe', 'nutte', 'missgeburt', 'spast', 'bitch', 'cunt', 'asshole', 'motherf', 'nigg', 'kanake', 'schwuchtel', 'retard', 'whore', 'slut'];
-export function cleanText(v) {
+let extraWords = { list: [], at: 0 };
+export const resetWords = () => { extraWords.at = 0; };
+export async function loadWords() {
+  if (Date.now() - extraWords.at < 60_000) return extraWords.list;
+  try { extraWords = { list: ((await kv().cmd('SMEMBERS', 'bw:badwords')) || []).map(String), at: Date.now() }; } catch { extraWords.at = Date.now(); }
+  return extraWords.list;
+}
+export function cleanText(v, extra = extraWords.list) {
   let t = String(v ?? '').normalize('NFC')
     .replace(/[\u0000-\u0009\u000b-\u001f\u007f​-‏‪-‮⁦-⁩]/g, '')
     .replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
@@ -46,7 +53,7 @@ export function cleanText(v) {
     .replace(/(?:\+|\b00)?\d[\d ()/.-]{6,}\d/g, (m) => (m.replace(/\D/g, '').length >= 9 ? '[entfernt]' : m));
   const low = t.toLowerCase();
   const marks = new Array(t.length).fill(false);
-  for (const w of BAD) { let i = low.indexOf(w); while (i >= 0) { for (let k = i; k < i + w.length; k++) marks[k] = true; i = low.indexOf(w, i + 1); } }
+  for (const w of [...BAD, ...extra]) { let i = low.indexOf(w); while (i >= 0) { for (let k = i; k < i + w.length; k++) marks[k] = true; i = low.indexOf(w, i + 1); } }
   if (marks.some(Boolean)) t = [...t].map((c, i) => (marks[i] && /\S/.test(c) ? '*' : c)).join('');
   return t;
 }
@@ -195,7 +202,7 @@ export async function send(uid, other, text) {
   if (await chatBanned(uid)) throw nope('Dein Chat wurde wegen eines Verstoßes gegen die Regeln gesperrt.', 403, 'banned');
   await rateLimit('chat', uid, 20, 60);
   await rateLimit('chatday', uid, 500, DAY);
-  const t = cleanText(text);
+  const t = cleanText(text, await loadWords());
   const m = await pushChat(uid, other, { k: 'msg', t });
   return { ok: true, message: m };
 }

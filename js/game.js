@@ -4,6 +4,12 @@ import * as C from './config.js';
 
 export const SAVE_VERSION = 5;
 
+// Vom Admin geschaltete Events (kommen vom Server; gelten für alle Spieler) und Händler-Angebot
+let BOOSTS = {}, OFFER = null;
+export function setBoosts(b, offer = null) { BOOSTS = b && typeof b === 'object' ? b : {}; OFFER = offer && typeof offer === 'object' ? offer : null; }
+export const boost = (id) => (BOOSTS[id] && BOOSTS[id].end > Date.now() ? Number(BOOSTS[id].mult) || 2 : 1);
+export const activeBoosts = () => Object.values(BOOSTS).filter((b) => b.end > Date.now());
+
 export const ERR = {
   locked: 'Dieses Beet ist noch nicht freigeschaltet.',
   occupied: 'Hier wächst schon etwas.',
@@ -61,11 +67,13 @@ export function newState(now = Date.now()) {
     event: { id: null, year: 0, tokens: 0, total: 0, claimed: [] },
     tasks: { date: dayKey(now), progress: { plant: 0, harvest: 0, earn: 0, water: 0 }, claimed: [] },
     dailyGift: null,
-    stats: { planted: 0, harvested: 0, earned: 0, shiny: 0, bred: 0, itemsUsed: 0, watered: 0, breedFailed: 0 },
+    stats: { planted: 0, harvested: 0, earned: 0, shiny: 0, bred: 0, itemsUsed: 0, watered: 0, breedFailed: 0, orders: 0, sold: 0 },
+    trader: { day: '', orders: [], rep: 0, gift: '', offer: '' },
+    basket: {}, basketShiny: {},   // Blumenkorb für den Händler
     breedFails: {},      // Fehlversuche je Züchtung (machen den nächsten Versuch leichter)
     seenAnimals: [],
     tutorial: 0,
-    settings: { cycle: 'auto', cycleMin: 8, cycleEpoch: now, quality: 'auto', music: true, musicVol: 0.5, sound: true, soundVol: 0.8 },
+    settings: { cycle: 'real', rt: true, cycleMin: 8, cycleEpoch: now, quality: 'auto', music: true, musicVol: 0.5, sound: true, soundVol: 0.8 },
   };
 }
 
@@ -124,7 +132,7 @@ export function levelUnlocks(lvl) {
 }
 
 export function addXp(s, n) {
-  s.xp += Math.max(0, Math.floor(n));
+  s.xp += Math.max(0, Math.floor(n * boost('doubleXp')));
   const ups = [];
   while (s.level < C.MAX_LEVEL && s.xp >= C.LEVELS[s.level]) {
     s.level++;
@@ -278,6 +286,13 @@ export function applyInbox(s, items, now) {
         done.push(i);
       }
       out.push({ k: 'help', name: name(it), beds: done });
+    } else if (it.k === 'teamgift') {
+      const coins = Math.max(0, Math.min(5000, Math.floor(Number(it.coins) || 0)));
+      const items = {};
+      for (const [k, n] of Object.entries(it.items || {})) if (C.ITEMS[k]) items[k] = Math.max(0, Math.min(50, Math.floor(Number(n) || 0)));
+      if (coins) addCoins(s, coins);
+      addItems(s, items);
+      out.push({ k: 'teamgift', title: String(it.title || 'Geschenk').slice(0, 60), coins, items });
     } else if (it.k === 'like') {
       const coins = Math.max(0, Math.min(C.LIKE.coins, Math.floor(Number(it.coins) || 0)));
       if (coins) addCoins(s, coins);
@@ -313,7 +328,7 @@ export function plant(s, i, seedId, now, rand = Math.random) {
   const st = seedStatus(s, seedId);
   if (!st.available) return err('seedLocked', { message: `${d.name.replace(/­/g, '')}: ${st.reason}.` });
   if (!spend(s, d.cost)) return noCoins(s, d.cost, d.name.replace(/­/g, ''));
-  const chance = (C.SHINY_CHANCE + C.BED_LEVELS[b.lvl - 1].shiny) * (isWeekend(now) ? C.WEEKEND_BONUS.shinyFactor : 1);
+  const chance = (C.SHINY_CHANCE + C.BED_LEVELS[b.lvl - 1].shiny) * (isWeekend(now) ? C.WEEKEND_BONUS.shinyFactor : 1) * boost('shinyDay');
   b.seed = seedId; b.plantedAt = now; b.dur = growTime(b, seedId); b.shiny = rand() < chance; b.var = Math.floor(rand() * 1000); b.drinks = 0;
   s.stats.planted++; s.tasks.progress.plant++;
   track(s, 'plant', seedId);
@@ -330,7 +345,7 @@ export function harvest(s, i, now) {
   if (g.thirsty) return err('thirsty');
   if (g.p < 1) return err('notReady', { remaining: g.remaining });
   const shiny = !!b.shiny, seed = b.seed, compost = !!b.compost;
-  const reward = Math.round(d.reward * C.BED_LEVELS[b.lvl - 1].mult * (shiny ? C.SHINY_MULTIPLIER : 1) * (compost ? C.COMPOST_BONUS : 1));
+  const reward = Math.round(d.reward * C.BED_LEVELS[b.lvl - 1].mult * (shiny ? C.SHINY_MULTIPLIER : 1) * (compost ? C.COMPOST_BONUS : 1) * boost('doubleCoins'));
   const xp = d.xp * (shiny ? 2 : 1);
   b.seed = null; b.plantedAt = 0; b.dur = 0; b.shiny = false; b.drinks = 0; b.compost = false;
   addCoins(s, reward);
@@ -342,8 +357,9 @@ export function harvest(s, i, now) {
   const ev = ensureEvent(s, now);
   if (ev) { tokens = eventTokensFor(reward); s.event.tokens += tokens; s.event.total += tokens; }
   if (s.tutorial < 2) s.tutorial = 2;
+  const basket = toBasket(s, seed, shiny);
   const levelUps = addXp(s, xp);
-  return { ok: true, seed, reward, xp, shiny, compost, tokens, levelUps };
+  return { ok: true, seed, reward, xp, shiny, compost, tokens, basket, levelUps };
 }
 
 export function unlockBed(s, i) {
@@ -461,6 +477,14 @@ export function breedChance(s, r, { pollen = false } = {}) {
   return { chance: Math.min(1, D.chance + bonus), base: D.chance, fails, helpers, pollen: pollen ? C.BREED_POLLEN : 0, diff: r.diff || 1, name: D.name, harvests: D.harvests };
 }
 
+// Bedingungen der Zucht prüfen. ctx: { time: 'morning'|'day'|'evening'|'night', full: Vollmond? }
+// (true/false wie früher = Nacht/Tag)
+const breedCtx = (t) => (t && typeof t === 'object' ? t : { time: t === true ? 'night' : typeof t === 'string' ? t : 'day', full: false });
+export function whenOk(r, ctx) {
+  const c = breedCtx(ctx);
+  return (!r.when || r.when === c.time) && (!r.moon || !!c.full);
+}
+
 export function breedCheck(s, a, b, night) {
   if (!s.greenhouse.unlocked) return err('invalid', { message: 'Restauriere zuerst das Gewächshaus.' });
   if (s.greenhouse.job) return err('busy');
@@ -471,7 +495,12 @@ export function breedCheck(s, a, b, night) {
   const d = C.SEEDS[r.result];
   if (s.bred.includes(r.result)) return err('owned', { message: `${d.name.replace(/­/g, '')} hast du schon gezüchtet.`, recipe: r });
   if (s.level < d.level) return needLevel(d.level, `Die Züchtung ${d.name.replace(/­/g, '')}`);
-  if (r.night && !night) return err('night', { message: 'Diese Kreuzung gelingt nur nachts. Warte auf die Nacht oder stelle in den Einstellungen „Immer Nacht“ ein.', recipe: r });
+  const ctx = breedCtx(night);
+  if (r.when && r.when !== ctx.time) {
+    const tip = r.when === 'night' ? 'Warte auf die Nacht oder stelle in den Einstellungen „Immer Nacht“ ein.' : 'Stelle in den Einstellungen die Tageszeit auf „Echtzeit“ oder „Schneller Zyklus“ und warte auf den passenden Moment.';
+    return err('night', { message: `Diese Kreuzung gelingt ${C.WHEN_LABEL[r.when]}. ${tip}`, recipe: r });
+  }
+  if (r.moon && !ctx.full) return err('moon', { message: `Diese Kreuzung gelingt nur bei Vollmond. Nächster Vollmond: ${new Date(nextFullMoon(ctx.now || Date.now())).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}.`, recipe: r });
   const need = breedDiff(r).harvests;
   const short = [a, b].filter((k) => harvestCount(s, k) < need);
   if (short.length) return err('harvests', { message: `Für diese ${breedDiff(r).adj} Züchtung brauchst du jede Eltern-Blume ${need}× geerntet. Noch nötig: ${short.map((k) => `${C.SEEDS[k].name.replace(/­/g, '')} (${harvestCount(s, k)}/${need})`).join(' und ')}.`, recipe: r });
@@ -762,7 +791,7 @@ export function claimDailyGift(s, now) {
 
 // ---------- Einstellungen ----------
 const SETTING_RULES = {
-  cycle: (v) => ['auto', 'day', 'night'].includes(v),
+  cycle: (v) => ['real', 'auto', 'day', 'night'].includes(v),
   cycleMin: (v) => Number.isFinite(v) && v >= 2 && v <= 30,
   quality: (v) => ['auto', 'high', 'medium', 'low'].includes(v),
   music: (v) => typeof v === 'boolean',
@@ -787,10 +816,280 @@ export function setSetting(s, key, value, now) {
 
 export function cyclePhase(s, now) {
   const st = s.settings;
+  if (st.cycle === 'real') return realPhase(now);
   if (st.cycle === 'day') return 0.3;
   if (st.cycle === 'night') return 0.82;
   const len = st.cycleMin * 60_000;
   return ((((now - st.cycleEpoch) / len + CYCLE_OFFSET) % 1) + 1) % 1;
+}
+
+// ---------- Echte Tageszeit: Sonnenstand und Mond ----------
+const RAD = Math.PI / 180, DAY_MS = 86_400_000, J1970 = 2440587.5, J2000 = 2451545;
+const toJ = (ms) => ms / DAY_MS + J1970, fromJ = (j) => (j - J1970) * DAY_MS;
+
+// Längengrad grob aus der Zeitzone (Standardzeit, ohne Sommerzeit): Berlin ≈ 15° Ost
+function guessLon(now) {
+  const y = new Date(now).getFullYear();
+  const std = Math.max(new Date(y, 0, 1).getTimezoneOffset(), new Date(y, 6, 1).getTimezoneOffset());
+  return -std / 4;
+}
+
+// Sonnenaufgang, -untergang und bürgerliche Dämmerung (Sonne 6° unter dem Horizont) für den Tag von now
+export function sunTimes(now, lat = C.SUN_LAT, lon = guessLon(now)) {
+  const d = new Date(now); d.setHours(12, 0, 0, 0);
+  const n = Math.round(toJ(d.getTime()) - J2000 - 0.0009 + lon / 360);
+  const Js = n - lon / 360;
+  const M = (357.5291 + 0.98560028 * Js) % 360;
+  const Cc = 1.9148 * Math.sin(M * RAD) + 0.02 * Math.sin(2 * M * RAD) + 0.0003 * Math.sin(3 * M * RAD);
+  const L = (M + Cc + 180 + 102.9372) % 360;
+  const Jt = J2000 + Js + 0.0053 * Math.sin(M * RAD) - 0.0069 * Math.sin(2 * L * RAD);
+  const dec = Math.asin(Math.sin(L * RAD) * Math.sin(23.4397 * RAD));
+  const w = (h) => { const c = (Math.sin(h * RAD) - Math.sin(lat * RAD) * Math.sin(dec)) / (Math.cos(lat * RAD) * Math.cos(dec)); return Math.acos(Math.max(-1, Math.min(1, c))) / RAD; };
+  const w0 = w(-0.833), w6 = w(-6);
+  return { dawn: fromJ(Jt - w6 / 360), rise: fromJ(Jt - w0 / 360), noon: fromJ(Jt), set: fromJ(Jt + w0 / 360), dusk: fromJ(Jt + w6 / 360) };
+}
+
+// Phase des Spiel-Himmels aus der echten Uhrzeit: 0 = Sonnenaufgang, 0.35 = Mittag, 0.66 = Sonnenuntergang,
+// 0.73 = Ende der Abenddämmerung, 0.96 = Beginn der Morgendämmerung
+export function realPhase(now) {
+  const t = sunTimes(now);
+  const lerpP = (x, a, b, pa, pb) => pa + (pb - pa) * Math.max(0, Math.min(1, (x - a) / Math.max(1, b - a)));
+  if (now >= t.rise && now < t.noon) return lerpP(now, t.rise, t.noon, 0, 0.35);
+  if (now >= t.noon && now < t.set) return lerpP(now, t.noon, t.set, 0.35, 0.66);
+  if (now >= t.set && now < t.dusk) return lerpP(now, t.set, t.dusk, 0.66, 0.73);
+  if (now >= t.dawn && now < t.rise) return lerpP(now, t.dawn, t.rise, 0.96, 1) % 1;
+  // Nacht: vom Ende der Abenddämmerung bis zur Morgendämmerung
+  const dusk = now >= t.dusk ? t.dusk : sunTimes(now - DAY_MS).dusk;
+  const dawn = now >= t.dusk ? sunTimes(now + DAY_MS).dawn : t.dawn;
+  return lerpP(now, dusk, dawn, 0.73, 0.96);
+}
+
+// Tageszeit-Name wie am Himmel (Morgen, Tag, Abend, Nacht)
+export function timeOfDay(phase) {
+  if (phase < 0.15 || phase >= 0.95) return 'morning';
+  if (phase < 0.55) return 'day';
+  if (phase < 0.7) return 'evening';
+  return 'night';
+}
+
+// Mondphase 0 = Neumond, 0.5 = Vollmond
+const SYNODIC = 29.530588853, NEW_MOON = Date.UTC(2000, 0, 6, 18, 14);
+export const moonPhase = (now) => ((((now - NEW_MOON) / DAY_MS / SYNODIC) % 1) + 1) % 1;
+export const isFullMoon = (now) => Math.abs(moonPhase(now) - 0.5) < 0.055;
+export function nextFullMoon(now) {
+  if (isFullMoon(now)) return now;
+  let p = moonPhase(now);
+  const days = ((0.5 - 0.055 - p + 1) % 1) * SYNODIC;
+  return now + days * DAY_MS;
+}
+
+// ---------- Blumenhändler ----------
+// Einfacher Zufall mit festem Startwert: alle Spieler sehen am selben Tag dieselben Besonderheiten
+function seeded(str) {
+  let h = 2166136261;
+  for (const c of str) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+}
+const pick = (R, list) => list[Math.floor(R() * list.length)];
+
+export const traderDay = (now) => C.TRADER_DAYS[new Date(now).getDay()];
+export const repLevel = (s) => { let l = 0; C.TRADER.rep.forEach((t, i) => { if ((s.trader?.rep || 0) >= t) l = i; }); return l; };
+export const basketCap = (s) => C.TRADER.basket[repLevel(s)];
+export const basketCount = (s) => Object.values(s.basket || {}).reduce((a, b) => a + b, 0) + Object.values(s.basketShiny || {}).reduce((a, b) => a + b, 0);
+
+// Sorten, die der Spieler gerade anbauen kann
+function growable(s) {
+  return C.SEED_ORDER.filter((k) => { const d = C.SEEDS[k]; return d.bred ? s.bred.includes(k) : d.level <= s.level && (!d.rare || s.rareUnlocked.includes(k)); });
+}
+
+// Tagesblume: wird heute doppelt bezahlt
+export function dayFlower(s, now) {
+  const R = seeded('flower' + dayKey(now));
+  const list = growable(s).filter((k) => !C.SEEDS[k].bred);
+  return list.length ? pick(R, list) : 'daisy';
+}
+
+// Neue Bestellungen für den Tag (abhängig von dem, was der Spieler anbauen kann)
+function makeOrders(s, now) {
+  const day = dayKey(now), R = seeded('orders' + day + (s.level >= 10 ? 'b' : s.level >= 5 ? 'm' : 'a'));
+  const td = traderDay(now);
+  const list = growable(s);
+  const base = list.filter((k) => !C.SEEDS[k].bred);
+  const n = C.TRADER.orders + (td.extraOrder || 0) + (repLevel(s) >= 3 ? 1 : 0);
+  const orders = [];
+  for (let i = 0; i < n; i++) {
+    const kinds = Math.min(base.length, 1 + Math.floor(R() * Math.min(3, 1 + s.level / 4)));
+    const want = {};
+    const pool = [...base];
+    for (let k = 0; k < kinds; k++) {
+      const sd = pool.splice(Math.floor(R() * pool.length), 1)[0];
+      if (!sd) break;
+      const cheap = C.SEEDS[sd].growMs <= 2 * 60_000;
+      want[sd] = (cheap ? 3 : 1) + Math.floor(R() * (cheap ? 4 : 3));
+    }
+    const value = Object.entries(want).reduce((a, [k, q]) => a + C.SEEDS[k].reward * q, 0);
+    const xp = Math.round(Object.entries(want).reduce((a, [k, q]) => a + C.SEEDS[k].xp * q, 0) * 0.5) + 5;
+    const bonus = R() < 0.4 ? { [pick(R, ['fert', 'fert', 'rain', 'compost', 'turbo'])]: 1 } : null;
+    orders.push({ id: `${day}-${i}`, want, coins: Math.round(value * C.TRADER.orderRate), xp, items: bonus, done: false });
+  }
+  // Sonderwunsch: eine Funkelblüte oder eine Züchtung
+  const bred = list.filter((k) => C.SEEDS[k].bred);
+  const shinyOk = Object.keys(s.collection).some((k) => s.collection[k]?.shiny);
+  if (bred.length || shinyOk) {
+    const useBred = bred.length && (!shinyOk || R() < 0.5);
+    const seed = useBred ? pick(R, bred) : pick(R, base);
+    const mult = (useBred ? 1.6 : 1.2) * (td.specialMult || 1);
+    orders.push({ id: `${day}-x`, special: useBred ? 'bred' : 'shiny', want: { [seed]: 1 }, coins: Math.round(C.SEEDS[seed].reward * (useBred ? 1 : C.SHINY_MULTIPLIER) * mult), xp: 15 + C.SEEDS[seed].xp, items: { [useBred ? 'pollen' : 'lucky']: 1 }, done: false });
+  }
+  return orders;
+}
+
+export function ensureTrader(s, now) {
+  const day = dayKey(now);
+  if (!s.trader || typeof s.trader !== 'object') s.trader = { day: '', orders: [], rep: 0, gift: '', offer: '' };
+  if (s.trader.day !== day || (!s.trader.orders.length && s.level >= C.TRADER.level)) Object.assign(s.trader, { day, orders: s.level >= C.TRADER.level ? makeOrders(s, now) : [], gift: s.trader.gift === day ? day : '', offer: '' });
+  return s.trader;
+}
+
+// Verkaufspreis einer Blume aus dem Korb
+export function sellPrice(s, seed, shiny, now) {
+  const d = C.SEEDS[seed]; if (!d) return 0;
+  const td = traderDay(now);
+  let p = d.reward * C.TRADER.sellRate * (td.sell || 1) * (1 + C.TRADER.repBonus[repLevel(s)]) * boost('traderSale');
+  if (seed === dayFlower(s, now)) p *= C.TRADER.dayFlowerMult;
+  if (shiny) p *= td.shinySell || C.TRADER.shinySell;
+  return Math.max(1, Math.round(p));
+}
+
+// Tagesangebot: ein Gegenstand oder eine Deko günstiger
+export function traderOffer(s, now) {
+  if (OFFER && OFFER.day === dayKey(now) && (OFFER.kind === 'deco' ? C.DECO[OFFER.id] : C.ITEMS[OFFER.id])) return { kind: OFFER.kind, id: OFFER.id, n: OFFER.n || 1, price: OFFER.price, was: OFFER.was, off: OFFER.off, admin: true };
+  const R = seeded('offer' + dayKey(now));
+  const deco = C.DECO_ORDER.filter((k) => (C.DECO[k].level || 1) <= Math.max(s.level, 1) && !C.DECO[k].event);
+  const useDeco = R() < 0.5 && deco.length;
+  const td = traderDay(now);
+  if (useDeco) {
+    const id = pick(R, deco), d = C.DECO[id];
+    const off = Math.max(C.TRADER.offerDiscount, td.decoDiscount || 0);
+    return { kind: 'deco', id, price: Math.round(d.price * (1 - off)), was: d.price, off };
+  }
+  const id = pick(R, C.TRADER_ITEMS.filter((k) => C.ITEMS[k].level <= Math.max(s.level, 1)));
+  const n = id === 'pollen' || id === 'turbo' ? 2 : 3;
+  const was = C.ITEMS[id].price * n;
+  return { kind: 'item', id, n, price: Math.round(was * (1 - C.TRADER.offerDiscount)), was, off: C.TRADER.offerDiscount };
+}
+
+// Händler-Preise für Bedarf (Dienstag günstiger)
+export function traderItemPrice(id, now) {
+  const td = traderDay(now);
+  const it = C.ITEMS[id];
+  return Math.round(it.price * (td.items?.includes(id) ? 1 - td.itemDiscount : 1));
+}
+
+export function traderInfo(s, now) {
+  const t = ensureTrader(s, now);
+  const td = traderDay(now), lvl = repLevel(s);
+  return {
+    open: s.level >= C.TRADER.level, day: td, flower: dayFlower(s, now), offer: traderOffer(s, now), offerBought: t.offer === t.day,
+    giftReady: !!td.freeGift && t.gift !== t.day,
+    orders: t.orders.map((o, i) => ({ ...o, i, can: !o.done && canDeliver(s, o) })),
+    basket: basketCount(s), cap: basketCap(s), rep: t.rep, repLvl: lvl, nextRep: C.TRADER.rep[lvl + 1] ?? null,
+  };
+}
+
+function canDeliver(s, o) {
+  return Object.entries(o.want).every(([k, q]) => (o.special === 'shiny' ? s.basketShiny[k] || 0 : (s.basket[k] || 0) + (s.basketShiny[k] || 0)) >= q);
+}
+
+// Ernte in den Korb legen (wenn Platz ist)
+function toBasket(s, seed, shiny) {
+  if (s.level < C.TRADER.level || basketCount(s) >= basketCap(s)) return false;
+  const box = shiny ? s.basketShiny : s.basket;
+  box[seed] = (box[seed] || 0) + 1;
+  return true;
+}
+
+export function deliverOrder(s, i, now) {
+  const t = ensureTrader(s, now);
+  const o = t.orders[i];
+  if (!o) return err('invalid');
+  if (o.done) return err('claimed', { message: 'Diese Bestellung hast du schon geliefert.' });
+  if (!canDeliver(s, o)) return err('invalid', { message: 'Dafür fehlen noch Blumen in deinem Korb.' });
+  for (const [k, q] of Object.entries(o.want)) {
+    let left = q;
+    if (o.special !== 'shiny') { const n = Math.min(left, s.basket[k] || 0); s.basket[k] = (s.basket[k] || 0) - n; left -= n; }
+    if (left) s.basketShiny[k] -= left;
+    if (!s.basket[k]) delete s.basket[k];
+    if (!s.basketShiny[k]) delete s.basketShiny[k];
+  }
+  o.done = true;
+  const lvl0 = repLevel(s);
+  t.rep += (o.special ? 2 : 1) * (traderDay(now).repMult || 1);
+  const coins = Math.round(o.coins * (1 + C.TRADER.repBonus[lvl0]));
+  addCoins(s, coins);
+  if (o.items) addItems(s, o.items);
+  s.stats.orders = (s.stats.orders || 0) + 1;
+  track(s, 'order');
+  const levelUps = addXp(s, o.xp);
+  return { ok: true, coins, xp: o.xp, items: o.items, repUp: repLevel(s) > lvl0 ? repLevel(s) : 0, levelUps };
+}
+
+export function sellFlowers(s, seed, shiny, n, now) {
+  const box = shiny ? s.basketShiny : s.basket;
+  const have = box[seed] || 0;
+  n = Math.min(have, Math.max(1, Math.floor(n) || 1));
+  if (!have) return err('invalid', { message: 'Davon ist nichts im Korb.' });
+  const coins = sellPrice(s, seed, shiny, now) * n;
+  box[seed] = have - n; if (!box[seed]) delete box[seed];
+  addCoins(s, coins);
+  s.stats.sold = (s.stats.sold || 0) + n;
+  return { ok: true, coins, n };
+}
+
+export function sellAll(s, now) {
+  let coins = 0, n = 0;
+  const day = dayFlower(s, now);
+  // Was für offene Bestellungen gebraucht wird, bleibt im Korb
+  const keep = {};
+  for (const o of ensureTrader(s, now).orders) if (!o.done && !o.special) for (const [k, q] of Object.entries(o.want)) keep[k] = (keep[k] || 0) + q;
+  for (const [k, q] of Object.entries({ ...s.basket })) {
+    const sell = Math.max(0, q - (keep[k] || 0));
+    if (sell) { const r = sellFlowers(s, k, false, sell, now); coins += r.coins; n += r.n; }
+  }
+  void day;
+  if (!n) return err('invalid', { message: 'Im Korb ist nichts zu verkaufen (Blumen für offene Bestellungen bleiben drin).' });
+  return { ok: true, coins, n };
+}
+
+export function buyTraderOffer(s, now) {
+  const t = ensureTrader(s, now), o = traderOffer(s, now);
+  if (t.offer === t.day) return err('claimed', { message: 'Das Tagesangebot hast du heute schon gekauft.' });
+  if (!spend(s, o.price)) return noCoins(s, o.price, 'das Angebot');
+  t.offer = t.day;
+  if (o.kind === 'deco') { if (!s.deco.includes(o.id)) s.deco.push(o.id); const k = addDecor(s, o.id); return { ok: true, ...o, k }; }
+  addItems(s, { [o.id]: o.n });
+  return { ok: true, ...o };
+}
+
+export function buyFromTrader(s, id, now) {
+  const it = C.ITEMS[id];
+  if (!it || !C.TRADER_ITEMS.includes(id)) return err('invalid');
+  if (s.level < it.level) return needLevel(it.level, it.name);
+  const price = traderItemPrice(id, now);
+  if (!spend(s, price)) return noCoins(s, price, it.name);
+  s.items[id]++;
+  return { ok: true, price };
+}
+
+export function claimTraderGift(s, now) {
+  const t = ensureTrader(s, now);
+  if (!traderDay(now).freeGift) return err('invalid', { message: 'Geschenke gibt es samstags.' });
+  if (t.gift === t.day) return err('claimed', { message: 'Das Geschenk von heute hast du schon.' });
+  t.gift = t.day;
+  const R = seeded('gift' + t.day);
+  const items = pick(R, [{ fert: 3 }, { rain: 2 }, { compost: 2 }, { fert: 2, rain: 1 }]);
+  addItems(s, items);
+  return { ok: true, items };
 }
 
 // ---------- Laden, Prüfen, Übernehmen ----------
@@ -813,6 +1112,7 @@ export function migrate(raw, now = Date.now()) {
       if (raw.set.low) s.settings.quality = 'low';
       s.settings.music = !!raw.set.music; s.settings.sound = raw.set.snd !== false;
     }
+    s.settings.rt = false;
     return { state: repair(s, now), migrated: true };
   }
   if (raw.v === 2) {
@@ -822,7 +1122,7 @@ export function migrate(raw, now = Date.now()) {
     s.collection = {};
     if (raw.collection && typeof raw.collection === 'object') for (const [k, e] of Object.entries(raw.collection)) s.collection[k] = typeof e === 'number' ? e : { count: e?.count, shiny: e?.golden ?? e?.shiny };
     s.stats = { ...base.stats, ...(raw.stats || {}), shiny: raw.stats?.golden ?? 0 };
-    s.settings = { ...base.settings, ...(raw.settings || {}) };
+    s.settings = { ...base.settings, rt: false, ...(raw.settings || {}) };
     s.activeSkin = { ...base.activeSkin, ...(raw.activeSkin || {}) };
     // Fortschritt in der Story grob übernehmen: erfahrene Spieler starten nicht bei null
     s.story = { ...base.story };
@@ -831,7 +1131,7 @@ export function migrate(raw, now = Date.now()) {
     return { state: repair(s, now), migrated: true };
   }
   if (raw.v === 3 || raw.v === 4 || raw.v === SAVE_VERSION) {
-    const s = { ...base, ...raw, settings: { ...base.settings, ...(raw.settings || {}) }, stats: { ...base.stats, ...(raw.stats || {}) }, activeSkin: { ...base.activeSkin, ...(raw.activeSkin || {}) } };
+    const s = { ...base, ...raw, settings: { ...base.settings, rt: false, ...(raw.settings || {}) }, stats: { ...base.stats, ...(raw.stats || {}) }, activeSkin: { ...base.activeSkin, ...(raw.activeSkin || {}) } };
     // Version 3 -> 4: frei verschiebbarer Garten, Deko als einzelne Teile
     if (raw.v === 3) { s.decor = undefined; s.layout = undefined; s.land = 0; }
     return { state: repair(s, now), migrated: raw.v === 3 };
@@ -907,6 +1207,15 @@ export function repair(s, now) {
   for (const k of C.ITEM_ORDER) s.items[k] = num(Number(items[k]), 0);
   const gh = obj(s.greenhouse) ? s.greenhouse : {};
   const job = obj(gh.job) && C.SEEDS[gh.job.result]?.bred ? { a: gh.job.a, b: gh.job.b, result: gh.job.result, start: num(gh.job.start, now), dur: num(gh.job.dur, 60_000, 1), chance: Math.min(1, Math.max(0, Number(gh.job.chance) || 1)), success: gh.job.success !== false, cost: num(Number(gh.job.cost), 0) } : null;
+  // Händler & Korb
+  const tr = obj(s.trader) ? s.trader : {};
+  const okOrder = (o) => obj(o) && obj(o.want) && Object.keys(o.want).every((k) => C.SEEDS[k]) && Number.isFinite(o.coins);
+  s.trader = { day: typeof tr.day === 'string' ? tr.day : '', orders: Array.isArray(tr.orders) ? tr.orders.filter(okOrder).slice(0, 8).map((o) => ({ id: String(o.id), want: Object.fromEntries(Object.entries(o.want).map(([k, q]) => [k, num(Number(q), 1, 1)])), coins: num(o.coins, 0), xp: num(Number(o.xp), 0), items: obj(o.items) ? Object.fromEntries(Object.entries(o.items).filter(([k]) => C.ITEMS[k])) : null, special: o.special === 'shiny' || o.special === 'bred' ? o.special : undefined, done: !!o.done })) : [], rep: num(Number(tr.rep), 0), gift: typeof tr.gift === 'string' ? tr.gift : '', offer: typeof tr.offer === 'string' ? tr.offer : '' };
+  for (const key of ['basket', 'basketShiny']) {
+    const b0 = obj(s[key]) ? s[key] : {};
+    s[key] = {};
+    for (const [k, n] of Object.entries(b0)) if (C.SEEDS[k] && Number.isFinite(n) && n > 0) s[key][k] = Math.min(200, Math.floor(n));
+  }
   const bf = obj(s.breedFails) ? s.breedFails : {};
   s.breedFails = {};
   for (const [k, n] of Object.entries(bf)) if (C.SEEDS[k]?.bred && Number.isFinite(n) && n > 0) s.breedFails[k] = Math.min(20, Math.floor(n));
@@ -925,6 +1234,9 @@ export function repair(s, now) {
   s.tutorial = Math.min(2, num(s.tutorial, 0));
   if (!obj(s.settings)) s.settings = { ...base.settings };
   for (const [k, rule] of Object.entries(SETTING_RULES)) if (!rule(s.settings[k])) s.settings[k] = base.settings[k];
+  // Einmalig: automatischer Zyklus wird zu Echtzeit (Tag & Nacht wie draußen)
+  if (!s.settings.rt) { if (s.settings.cycle === 'auto') s.settings.cycle = 'real'; s.settings.rt = true; }
+  if (!['real', 'auto', 'day', 'night'].includes(s.settings.cycle)) s.settings.cycle = 'real';
   if (!Number.isFinite(s.settings.cycleEpoch)) s.settings.cycleEpoch = now;
   ensureDaily(s, now);
   delete s.golden;
