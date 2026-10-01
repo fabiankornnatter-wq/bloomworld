@@ -29,10 +29,13 @@
       <button class="round" id="gearBtn" aria-label="Einstellungen"></button>
     </header>
 
+    <button class="qtrack" id="quest" hidden></button>
+
     <div id="side" hidden>
-      <button class="sidebtn" id="tasksBtn" aria-label="Tagesaufgaben"><i class="badge" id="tasksBadge" hidden></i><span>Aufgaben</span></button>
+      <button class="sidebtn" id="breedBtn" aria-label="Gewächshaus"><i class="badge" id="breedBadge" hidden></i><span>Zucht</span></button>
       <button class="sidebtn" id="centerBtn" aria-label="Ansicht zentrieren"><span>Ansicht</span></button>
     </div>
+    <div id="modeBar" hidden></div>
 
     <button class="btn gold" id="harvestAll" hidden></button>
     <div id="hint" hidden></div>
@@ -49,9 +52,11 @@
       <div id="bloomIcon"></div>
       <div class="logo">Bloom<span>World</span></div>
       <div class="sub">Dein gemütlicher Garten</div>
-      <div class="lbar"><i id="lbar"></i></div>
+      <div class="lbar" id="lbarWrap"><i id="lbar"></i></div>
       <div class="msg" id="lmsg">Garten wird vorbereitet …</div>
+      <div id="authBox" hidden></div>
       <button class="btn big" id="playBtn" hidden>Spielen</button>
+      <div class="userline" id="userLine" hidden></div>
     </div>
     <noscript><div style="position:fixed;inset:0;display:grid;place-items:center;background:#c9a4f4;font:18px sans-serif;padding:24px;text-align:center">BloomWorld braucht JavaScript. Bitte aktiviere JavaScript in deinem Browser.</div></noscript>
   </div>

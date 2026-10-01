@@ -1,9 +1,11 @@
-// BloomWorld – Start, Spielschleife, Eingabe und Spielaktionen.
+// BloomWorld – Start, Anmeldung, Spielschleife, Eingabe und Spielaktionen.
 import { World } from './world/scene.js';
 import { environment } from './world/sky.js';
 import * as G from './game.js';
 import * as C from './config.js';
-import { LocalStore, SaveManager, SAVE_KEY } from './storage.js';
+import { LocalStore, SaveManager, accountKey } from './storage.js';
+import { api as Net, CloudSync } from './account.js';
+import { showAuth } from './authui.js';
 import { Sound } from './audio.js';
 import { UI, fmtTime } from './ui.js';
 import * as Pay from './payments.js';
@@ -16,10 +18,12 @@ let timeOffset = 0;
 const now = () => Date.now() + timeOffset;
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 const coarse = matchMedia('(pointer: coarse)').matches;
+const plain = (s) => String(s).replace(/­/g, '');
 
-const store = new LocalStore();
 const sound = new Sound();
-let state, world, ui, saver, migrated = false, started = false, freshSave = false;
+const guestStore = new LocalStore();
+let store = null, state, world, ui, saver, cloud = null, user = null, icons;
+let migrated = false, started = false, freshSave = false, entered = false;
 // Zeitgesteuerte Effekte; beim Zurücksetzen werden alte verworfen
 let gen = 0;
 const later = (fn, ms) => { const g = gen; setTimeout(() => { if (g === gen) fn(); }, ms); };
@@ -28,7 +32,7 @@ const later = (fn, ms) => { const g = gen; setTimeout(() => { if (g === gen) fn(
 let lastErr = 0;
 function reportError(e) {
   console.error(e);
-  if (!ui) { showFatal('Beim Laden ist ein Fehler aufgetreten. Bitte lade die Seite neu.', e); return; }
+  if (!ui) { if (!entered) showFatal('Beim Laden ist ein Fehler aufgetreten. Bitte lade die Seite neu.', e); return; }
   if (Date.now() - lastErr > 8000) { lastErr = Date.now(); ui.toast('Ups, da hat etwas nicht geklappt. Dein Spielstand ist sicher gespeichert.', 'err'); }
 }
 addEventListener('error', (e) => reportError(e.error || e.message));
@@ -37,6 +41,7 @@ addEventListener('unhandledrejection', (e) => reportError(e.reason));
 function showFatal(text, err) {
   $('loader').hidden = false;
   $('loader').classList.remove('done');
+  $('authBox').hidden = true;
   $('lmsg').innerHTML = `<div class="err">${text}</div>`;
   $('playBtn').hidden = false;
   $('playBtn').textContent = 'Erneut versuchen';
@@ -44,50 +49,148 @@ function showFatal(text, err) {
   if (err) console.error(err);
 }
 
-function progress(p, msg) { $('lbar').style.width = p + '%'; if (msg) $('lmsg').textContent = msg; }
+function progress(p, msg) { $('lbar').style.width = p + '%'; if (msg !== undefined) $('lmsg').textContent = msg; }
 
 const resolveQuality = (q) => (q === 'auto' ? (coarse ? 'medium' : 'high') : q);
 
 // ---------- Start ----------
 async function boot() {
   $('bloomIcon').innerHTML = I.bloom;
-  progress(10, 'Spielstand wird geladen …');
-  let raw = null, loadFailed = false;
-  try { raw = await store.load(); } catch (e) { loadFailed = true; console.warn(e); }
-  const m = G.migrate(raw, now());
-  state = m.state; migrated = m.migrated; freshSave = !raw || m.migrated || !!m.discarded;
+  progress(8, 'Verbindung wird hergestellt …');
+  const mePromise = Net.me();
   await nextFrame();
-  progress(35, 'Garten wird gebaut …');
+  progress(25, 'Garten wird gebaut …');
   await nextFrame();
   try {
-    world = new World($('world'), resolveQuality(state.settings.quality));
+    world = new World($('world'), resolveQuality('auto'));
   } catch (e) {
     if (e.code === 'WEBGL_UNAVAILABLE') showFatal('Dein Browser kann die 3D-Grafik (WebGL) leider nicht anzeigen. Bitte öffne BloomWorld in einem aktuellen Chrome und prüfe, ob die Hardwarebeschleunigung aktiviert ist.', e);
     else showFatal('Die Grafik konnte nicht gestartet werden. Bitte lade die Seite neu.', e);
     return;
   }
-  progress(70, 'Blumen werden gemalt …');
+  progress(60, 'Blumen werden gemalt …');
   await nextFrame();
-  const icons = world.makeIcons();
-  ui = new UI({ state: () => state, now, icons, sound, act: actions, world });
-  ui.init();
+  icons = world.makeIcons();
+  requestAnimationFrame(loop);
+  progress(85, 'Konto wird geprüft …');
+  const me = await mePromise;
+  if (me.ok && me.user) await enter(me.user, false);
+  else askLogin(me);
+}
+
+// Zuletzt angemeldeter Spieler (nur Name und Kennung) – für Offline-Spiel mit dem Konto-Stand dieses Geräts
+const LAST_USER_KEY = 'bw_last_user';
+const lastUser = () => { try { const u = JSON.parse(localStorage.getItem(LAST_USER_KEY)); return u && /^[a-f0-9]{24}$/.test(u.id) ? u : null; } catch { return null; } };
+const setLastUser = (u) => { try { if (u) localStorage.setItem(LAST_USER_KEY, JSON.stringify({ id: u.id, name: u.name, email: u.email })); else localStorage.removeItem(LAST_USER_KEY); } catch { /* egal */ } };
+
+function askLogin(me) {
+  progress(100, '');
+  $('lbarWrap').hidden = true;
+  const offline = !me.ok && me.status !== 401;
+  const reason = me.status === 503 ? 'Die Anmeldung wird gerade eingerichtet und ist in Kürze möglich.' : me.message;
+  const last = offline ? lastUser() : null;
+  showAuth({
+    offline, reason, lastUser: last,
+    unlock: () => sound.unlock(),
+    onDone: (u, isNew) => enter(u, true, isNew),
+    onOffline: () => enter(last, true),
+  });
+}
+
+// Neu laden, ohne einen Eintrag der Zurück-Taste übrig zu lassen
+function reloadPage() {
+  if (ui?.guard) {
+    ui.ignorePop = true;
+    addEventListener('popstate', () => location.reload(), { once: true });
+    history.back();
+    setTimeout(() => location.reload(), 700);
+  } else location.reload();
+}
+
+// Spielstand für Konto (oder offline) laden und das Spiel vorbereiten
+async function enter(u, autoStart, isNew = false) {
+  if (entered) return;
+  entered = true;
+  user = u;
+  $('lbarWrap').hidden = false;
+  progress(92, 'Spielstand wird geladen …');
+  let raw = null, srvRev = 0, needPush = false, fromGuest = false, loadFailed = false, serverOk = true;
+  if (u) {
+    store = new LocalStore(null, accountKey(u.id));
+    let cached = null;
+    try { cached = await store.load(); } catch (e) { loadFailed = true; console.warn(e); }
+    const srv = await Net.load();
+    if (srv.status === 401) { entered = false; user = null; askLogin({ status: 401 }); return; }
+    serverOk = srv.ok;
+    const server = srv.ok ? srv.save : null;
+    srvRev = srv.ok ? srv.rev : 0;
+    if (server && cached) raw = newerSave(cached, server) === cached && cached.updatedAt !== server.updatedAt ? cached : server;
+    else raw = server || cached;
+    // Neues Konto: bisherigen Garten von diesem Gerät übernehmen
+    if (!raw && srv.ok) { try { const g = await guestStore.load(); if (g) { raw = g; fromGuest = true; } } catch { /* egal */ } }
+    needPush = !!raw && raw !== server;
+  } else {
+    store = guestStore;
+    try { raw = await store.load(); } catch (e) { loadFailed = true; console.warn(e); }
+  }
+  if (raw && raw.v > G.SAVE_VERSION) { showFatal('Es gibt eine neue Version von BloomWorld. Bitte lade die Seite neu.'); return; }
+  const m = G.migrate(raw, now());
+  state = m.state; migrated = m.migrated && !fromGuest;
+  if (u) setLastUser(u);
+  freshSave = !raw || m.migrated || !!m.discarded || fromGuest;
+
   saver = new SaveManager(store, () => state, {
-    onError: () => ui.toast('Speichern nicht möglich. Ist der private Modus aktiv oder der Speicher voll?', 'err'),
+    onError: () => ui?.toast('Speichern auf diesem Gerät nicht möglich. Ist der private Modus aktiv oder der Speicher voll?', 'err'),
     onConflict: () => adoptExternal(),
   });
-  saver.setKnown(raw && raw.v === G.SAVE_VERSION ? raw.updatedAt : 0);
+  saver.setKnown(store.peekUpdatedAt());
+  if (u) {
+    cloud = new CloudSync(() => state, {
+      onConflict: (server) => {
+        if (server && newerSave(state, server) === server) { adoptState(server, 'Du hast auf einem anderen Gerät weitergespielt – dieser Stand wurde übernommen.', true); return false; }
+        return true;
+      },
+      onRemote: (server) => adoptState(server, 'Dein Spielstand vom anderen Gerät wurde geladen.'),
+      onOutdated: () => ui?.toast('Es gibt eine neue Version von BloomWorld. Bitte lade die Seite neu.', 'err', { label: 'Neu laden', fn: () => reloadPage() }),
+      onAuthLost: () => ui?.toast('Deine Anmeldung ist abgelaufen. Dein Fortschritt ist auf diesem Gerät gesichert.', 'err', { label: 'Anmelden', fn: () => relogin() }),
+      onStatus: () => { if (ui?.panel === 'settings') ui.refresh(); },
+    });
+    cloud.rev = srvRev;
+  }
+  if (fromGuest) await guestStore.retire();
+
+  world.r.setQuality(resolveQuality(state.settings.quality));
   world.syncDeco(state.deco);
   world.syncSkins(state.activeSkin);
+  world.syncGreenhouse(state.greenhouse.unlocked);
+  ui = new UI({ state: () => state, now, icons, sound, act: actions, world, account: () => ({ user, status: cloud?.status, lastSaved: cloud?.lastSaved }), isNight });
+  ui.init();
   applySound();
   setupInput();
+  if (DEBUG) window.BW = { get state() { return state; }, world, ui, G, skip: (ms) => { timeOffset += ms; }, save: () => saver.flush(), actions, get cloud() { return cloud; }, get user() { return user; } };
+
+  if (needPush || freshSave) persist(false);
   progress(100, 'Bereit!');
-  requestAnimationFrame(loop);
+  const notes = [];
+  if (fromGuest) notes.push(['Dein bisheriger Garten wurde in dein Konto übernommen.', 'good']);
+  else if (migrated) notes.push(['Willkommen zurück! Dein Spielstand wurde auf die neue Version gebracht.', 'good']);
+  if (loadFailed) notes.push(['Der gespeicherte Stand auf diesem Gerät war beschädigt und wurde gesichert.', 'err']);
+  if (u && !serverOk) notes.push(['Server gerade nicht erreichbar – du spielst mit dem Stand von diesem Gerät. Er wird später hochgeladen.', 'err']);
+  if (!u && store.volatile) notes.push(['Dein Browser blockiert das Speichern. Der Fortschritt geht beim Schließen verloren.', 'err']);
+  if (isNew) notes.unshift([`Willkommen, ${escapeHtml(u.name)}! Dein Konto ist bereit.`, 'good']);
+  const showNotes = () => notes.forEach(([t, k], i) => setTimeout(() => ui.toast(t, k), 400 + i * 3000));
+
+  if (autoStart) { start(); showNotes(); return; }
+  // Angemeldet zurück: ein Tipp auf „Spielen“ schaltet auch den Ton frei
+  $('userLine').innerHTML = u ? `Angemeldet als <b>${escapeHtml(u.name)}</b> · <button class="link" id="switchUser">Abmelden</button>` : '';
+  $('userLine').hidden = !u;
   $('playBtn').hidden = false;
-  $('playBtn').onclick = start;
-  if (loadFailed) ui.toast('Der alte Spielstand konnte nicht gelesen werden. Er wurde gesichert, es beginnt ein neuer Garten.', 'err');
-  else if (store.volatile) ui.toast('Dein Browser blockiert das Speichern. Der Fortschritt geht beim Schließen verloren.', 'err');
-  if (DEBUG) window.BW = { get state() { return state; }, world, ui, G, skip: (ms) => { timeOffset += ms; }, save: () => saver.flush(), actions };
+  $('playBtn').onclick = () => { start(); showNotes(); };
+  const sw = $('switchUser');
+  if (sw) sw.onclick = () => actions.logout();
 }
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 function start() {
   if (started) return;
@@ -96,14 +199,14 @@ function start() {
   sound.play('open');
   $('loader').classList.add('done');
   setTimeout(() => { $('loader').hidden = true; }, 600);
-  if (migrated) ui.toast('Willkommen zurück! Dein bisheriger Spielstand wurde übernommen.', 'good');
-  if (freshSave) saver.request();
 }
 
 function applySound() {
   const st = state.settings;
   sound.set({ musicOn: st.music, soundOn: st.sound, musicVol: st.musicVol, soundVol: st.soundVol });
 }
+
+const isNight = () => !!state && environment(G.cyclePhase(state, now())).name === 'night';
 
 // ---------- Spielschleife ----------
 let last = performance.now(), hudTick = 1, perf = { t: 0, frames: 0, checks: 0 }, dayTime = 0;
@@ -112,6 +215,7 @@ function loop(t) {
   const real = Math.max(0, (t - last) / 1000);
   const dt = Math.min(0.05, real);
   last = t;
+  if (!state) return; // vor der Anmeldung verdeckt der Startbildschirm den Garten
   const n = now();
   G.ensureDaily(state, n);
   const infos = state.beds.map((_, i) => G.bedInfo(state, i, n));
@@ -127,10 +231,20 @@ function loop(t) {
     hudTick = 0;
     ui.setTime(env);
     sound.night = env.name === 'night';
+    storyCheck();
   }
-  // Schmetterling gilt als entdeckt, wenn man ihn eine Weile am Tag sieht
   if (started && env.name !== 'night') { dayTime += dt; if (dayTime > 12 && !state.seenAnimals.includes('butterfly')) discover('butterfly'); }
   autoQuality(dt);
+}
+
+// Neues Story-Kapitel? Ophelia stellt es vor, sobald nichts anderes offen ist
+function storyCheck() {
+  if (!started || ui.busy || ui.panel || ui.sheetBed >= 0 || ui.mode) return;
+  const st = G.storyStatus(state);
+  if (st.finished || !st.showIntro) return;
+  G.markIntroSeen(state);
+  persist(false);
+  ui.storyIntro(st);
 }
 
 function autoQuality(dt) {
@@ -181,27 +295,32 @@ function setupInput() {
   cv.addEventListener('pointercancel', end);
   cv.addEventListener('wheel', (e) => { e.preventDefault(); world.zoomBy(e.deltaY > 0 ? 1.08 : 0.93); }, { passive: false });
   cv.addEventListener('contextmenu', (e) => e.preventDefault());
-  // Wischen, das auf einer Blase beginnt, soll ebenfalls die Kamera bewegen
-  cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); saver?.flush(); showFatal('Die Grafik wurde vom Gerät kurz unterbrochen. Tippe auf „Erneut versuchen“ – dein Spielstand ist gespeichert.'); });
+  // Kein „Geister-Klick“ nach dem Tippen: sonst träfe er die gerade geöffnete Leiste
+  cv.addEventListener('touchend', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+  cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); flushAll(); showFatal('Die Grafik wurde vom Gerät kurz unterbrochen. Tippe auf „Erneut versuchen“ – dein Spielstand ist gespeichert.'); });
   addEventListener('resize', () => world.r.resize());
+  // Die Spielfläche darf nie verrutschen (z.B. durch Fokus oder scrollIntoView)
+  $('app').addEventListener('scroll', (e) => { if (e.target.scrollTop || e.target.scrollLeft) e.target.scrollTo(0, 0); });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { saver.flush(); sound.suspend(); } else if (started) sound.resume();
+    if (document.hidden) { flushAll(true); sound.suspend(); } else if (started) { sound.resume(); cloud?.checkRemote(); }
   });
-  addEventListener('pagehide', () => saver.flush());
-  // Anderes Fenster/Tab hat gespeichert -> übernehmen statt später zu überschreiben
-  addEventListener('storage', (e) => { if (e.key === SAVE_KEY && e.newValue) adoptExternal(); });
+  addEventListener('pagehide', () => flushAll(true));
+  // Anderes Fenster/Tab mit demselben Spielstand hat gespeichert -> übernehmen statt überschreiben
+  addEventListener('storage', (e) => { if (e.key === store.key && e.newValue) adoptExternal(); });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') ui.back(); });
-  // Android-Zurück-Taste schließt Menüs statt das Spiel zu verlassen
   addEventListener('popstate', () => ui.onPopState());
 }
+
+function flushAll(leaving) { saver?.flush(); cloud?.flush({ keepalive: !!leaving }); }
 
 function tap(x, y) {
   if (!started) return;
   const b = ui.bubbleAt(x, y);
-  if (b !== null) { actions.tapBed(b); return; }
+  if (b !== null) { if (b === C.BED_COUNT) actions.tapGreenhouse(); else actions.tapBed(b); return; }
   const hit = world.pick(x, y);
   if (!hit || hit.type === 'ground') { if (ui.sheetBed >= 0) ui.closeSheet(); return; }
   if (hit.type === 'bed') actions.tapBed(hit.index);
+  else if (hit.type === 'greenhouse') actions.tapGreenhouse();
   else if (hit.type === 'animal') {
     world.poke(hit.id);
     sound.play('animal');
@@ -215,8 +334,16 @@ function discover(id) {
   changed();
 }
 
-// ---------- Aktionen ----------
-function changed() { saver.request(); ui.refresh(); }
+// ---------- Speichern ----------
+function persist(countMove = true) { if (countMove) state.moves = (state.moves || 0) + 1; saver.request(); cloud?.request(); }
+
+// Welcher von zwei Spielständen ist weiter? Mehr Spielaktionen gewinnen, bei Gleichstand der neuere.
+function newerSave(a, b) {
+  const ma = a?.moves || 0, mb = b?.moves || 0;
+  if (ma !== mb) return ma > mb ? a : b;
+  return (a?.updatedAt || 0) >= (b?.updatedAt || 0) ? a : b;
+}
+function changed() { persist(); ui.refresh(); }
 function fail(r) {
   sound.play('error');
   if (r.code === 'noCoins') ui.toast(r.message, 'err', { label: 'Shop', fn: () => ui.nav('shop', 'offers') });
@@ -227,14 +354,37 @@ let pendingLevel = null, levelTimer = null;
 function afterLevelUps(ups) {
   if (!ups || !ups.length) return;
   for (const up of ups) {
-    if (!pendingLevel) pendingLevel = { level: up.level, reward: 0, unlocks: [] };
+    if (!pendingLevel) pendingLevel = { level: up.level, reward: 0, items: {}, unlocks: [] };
     pendingLevel.level = Math.max(pendingLevel.level, up.level);
     pendingLevel.reward += up.reward;
+    for (const [k, v] of Object.entries(up.items || {})) pendingLevel.items[k] = (pendingLevel.items[k] || 0) + v;
     pendingLevel.unlocks.push(...up.unlocks);
   }
   clearTimeout(levelTimer);
   const g = gen;
-  levelTimer = setTimeout(() => { if (g !== gen || !pendingLevel) return; const up = pendingLevel; pendingLevel = null; sound.play('level'); ui.levelUp(up); }, 900);
+  levelTimer = setTimeout(() => { if (g !== gen || !pendingLevel) return; const up = pendingLevel; pendingLevel = null; sound.play('level'); ui.levelUp(up); ui.refresh(); }, 900);
+}
+
+function syncWorld() {
+  world.syncDeco(state.deco);
+  world.syncSkins(state.activeSkin);
+  world.syncGreenhouse(state.greenhouse.unlocked);
+  world.r.setQuality(resolveQuality(state.settings.quality));
+  applySound();
+}
+
+function adoptState(raw, msg, backupLocal) {
+  if (raw && raw.v > G.SAVE_VERSION) { cloud?.stop(); ui.toast('Es gibt eine neue Version von BloomWorld. Bitte lade die Seite neu.', 'err', { label: 'Neu laden', fn: () => reloadPage() }); return; }
+  // Den eigenen, verworfenen Stand zur Sicherheit auf dem Gerät aufheben
+  if (backupLocal) { try { localStorage.setItem('bloomworld_conflict_backup', JSON.stringify(state)); } catch { /* egal */ } }
+  gen++;
+  state = G.migrate(raw, now()).state;
+  saver.flush(true);
+  syncWorld();
+  if (ui.mode) ui.setMode(null);
+  ui.closeSheet();
+  ui.refresh();
+  if (msg) ui.toast(msg);
 }
 
 async function adoptExternal() {
@@ -244,23 +394,40 @@ async function adoptExternal() {
     gen++;
     state = G.migrate(raw, now()).state;
     saver.setKnown(raw.updatedAt || 0);
-    world.syncDeco(state.deco);
-    world.syncSkins(state.activeSkin);
-    world.r.setQuality(resolveQuality(state.settings.quality));
-    applySound();
+    syncWorld();
     ui.refresh();
     ui.toast('Dein Spielstand wurde aus einem anderen Fenster übernommen.');
   } catch (e) { console.warn(e); }
 }
 
+function relogin() { flushAll(); setTimeout(() => reloadPage(), 300); }
+
+const eventColor = () => G.activeEvent(now())?.color;
+const firstLockedBed = () => state.beds.findIndex((b) => b.locked);
+
 const actions = {
   tapBed(i) {
     const info = G.bedInfo(state, i, now());
     if (!info) return;
+    if (ui.mode) return actions.modeTap(i, info);
     if (info.locked) { sound.play('tap'); ui.closeSheet(); ui.bedLockedDialog(i); }
-    else if (info.empty) { ui.openSeedSheet(i); }
+    else if (info.empty) ui.openSheet(i, 'seed');
     else if (info.ready) actions.harvest(i);
-    else { sound.play('tap'); ui.closeSheet(); ui.toast(`${C.SEEDS[info.seed].name} wächst noch – fertig in ${fmtTime(info.remaining)}.`); }
+    else ui.openSheet(i, 'care');
+  },
+
+  // Platzier-Modus: Bewässerung, Ausbau oder Gegenstand aufs angetippte Beet
+  modeTap(i, info) {
+    const m = ui.mode;
+    if (info.locked) { sound.play('error'); ui.toast('Dieses Beet ist noch nicht freigeschaltet.', 'err'); return; }
+    if (m.kind === 'sprinkler') {
+      if (info.sprinkler) { ui.toast('Hier ist schon eine Bewässerung installiert.'); return; }
+      if (actions.buySprinkler(i) && !state.beds.some((b) => !b.locked && !b.sprinkler)) ui.setMode(null);
+    } else if (m.kind === 'upgrade') {
+      if (actions.upgradeBed(i) && !state.beds.some((b) => !b.locked && b.lvl < C.BED_LEVELS.length)) ui.setMode(null);
+    } else if (m.kind === 'item') {
+      if (actions.useItem(m.id, i) && !state.items[m.id]) ui.setMode(null);
+    }
   },
 
   plant(i, seed) {
@@ -275,17 +442,17 @@ const actions = {
   },
 
   plantAll(seed) {
-    let n = 0, last = null;
+    let n = 0, lastErr = null;
     state.beds.forEach((b, i) => {
       if (b.locked || b.seed) return;
       const r = G.plant(state, i, seed, now());
-      if (r.ok) { n++; world.burst(i, 'plant'); } else last = r;
+      if (r.ok) { n++; world.burst(i, 'plant'); } else lastErr = r;
     });
-    if (!n) return fail(last || { message: 'Kein freies Beet.' });
+    if (!n) return fail(lastErr || { message: 'Kein freies Beet.' });
     state.selectedSeed = seed;
     sound.play('plant');
     ui.closeSheet();
-    ui.toast(last ? `${n} Beete bepflanzt – für mehr fehlen Münzen.` : `${n} Beete bepflanzt!`, 'good');
+    ui.toast(lastErr ? `${n} Beete bepflanzt – für mehr fehlen Münzen.` : `${n} Beete bepflanzt!`, 'good');
     changed();
   },
 
@@ -293,9 +460,9 @@ const actions = {
     const r = G.harvest(state, i, now());
     if (!r.ok) return fail(r);
     world.burst(i, 'harvest', r.seed);
-    sound.play(r.golden ? 'gold' : 'harvest');
-    ui.floatReward(i, r.reward, r.golden);
-    if (r.golden) ui.toast(`Goldene ${C.SEEDS[r.seed].name}! Dreifache Belohnung.`, 'good');
+    sound.play(r.shiny ? 'gold' : 'harvest');
+    ui.floatReward(i, r.reward, r.shiny, r.tokens, eventColor());
+    if (r.shiny) ui.toast(`Funkelblüte: ${plain(C.SEEDS[r.seed].name)}! Dreifache Belohnung.`, 'good');
     changed();
     afterLevelUps(r.levelUps);
   },
@@ -304,17 +471,17 @@ const actions = {
     const n = now();
     const ready = state.beds.map((_, i) => G.bedInfo(state, i, n)).filter((x) => x && x.ready).map((x) => x.i);
     if (!ready.length) return;
-    let golden = 0;
-    const ups = [];
+    let shiny = 0;
+    const ups = [], color = eventColor();
     ready.forEach((i, k) => {
       const r = G.harvest(state, i, n);
       if (!r.ok) return;
-      if (r.golden) golden++;
+      if (r.shiny) shiny++;
       ups.push(...r.levelUps);
-      later(() => { world.burst(i, 'harvest', r.seed); ui.floatReward(i, r.reward, r.golden); }, k * 140);
+      later(() => { world.burst(i, 'harvest', r.seed); ui.floatReward(i, r.reward, r.shiny, r.tokens, color); }, k * 140);
     });
-    sound.play(golden ? 'gold' : 'harvest');
-    if (golden) ui.toast(golden > 1 ? `${golden} goldene Blüten! Dreifache Belohnung.` : 'Eine goldene Blüte! Dreifache Belohnung.', 'good');
+    sound.play(shiny ? 'gold' : 'harvest');
+    if (shiny) ui.toast(shiny > 1 ? `${shiny} Funkelblüten! Dreifache Belohnung.` : 'Eine Funkelblüte! Dreifache Belohnung.', 'good');
     changed();
     afterLevelUps(ups);
   },
@@ -325,6 +492,158 @@ const actions = {
     sound.play('unlock');
     world.burst(i, 'plant');
     ui.toast('Neues Beet freigeschaltet!', 'good');
+    changed();
+  },
+
+  showNextBed() {
+    const i = firstLockedBed();
+    if (i < 0) return;
+    ui.nav('garden');
+    world.focusBed(i);
+    const u = C.BED_UNLOCK[i];
+    ui.toast(state.level < u.level ? `Dieses Beet gibt es ab Level ${u.level} für ${u.cost} Münzen.` : `Tippe auf das Beet, um es für ${u.cost} Münzen freizuschalten.`);
+  },
+
+  buySprinkler(i) {
+    const r = G.buySprinkler(state, i, now());
+    if (!r.ok) { fail(r); return false; }
+    sound.play('water');
+    world.burst(i, 'water');
+    ui.toast('Bewässerung installiert – dieses Beet wächst jetzt 30 % schneller!', 'good');
+    changed();
+    return true;
+  },
+
+  upgradeBed(i) {
+    const r = G.upgradeBed(state, i);
+    if (!r.ok) { fail(r); return false; }
+    sound.play('unlock');
+    world.burst(i, 'plant');
+    ui.toast(`Ausgebaut zum ${r.name}! Mehr Münzen pro Ernte.`, 'good');
+    changed();
+    return true;
+  },
+
+  useItem(id, i) {
+    const r = G.useItem(state, id, i, now());
+    if (!r.ok) { fail(r); return false; }
+    sound.play(id === 'lucky' ? 'magic' : 'plant');
+    world.burst(i, id === 'lucky' ? 'magic' : 'plant');
+    const msg = { fert: 'Dünger wirkt – die Blume wächst ein gutes Stück!', turbo: 'Turbo! Die Blume ist sofort erntereif.', lucky: 'Glücksdünger – diese Blume wird funkeln!' }[id];
+    ui.toast(msg, 'good');
+    changed();
+    return true;
+  },
+
+  buyAndUse(id, i) {
+    const b = G.buyItem(state, id);
+    if (!b.ok) return fail(b);
+    if (id === 'boost') return actions.boostBreed();
+    if (!actions.useItem(id, i)) changed();
+  },
+
+  buyItem(id, pack) {
+    const r = G.buyItem(state, id, pack);
+    if (!r.ok) return fail(r);
+    sound.play('buy');
+    ui.toast(`${r.n}× ${C.ITEMS[id].name} gekauft.`, 'good');
+    changed();
+  },
+
+  // ----- Gewächshaus -----
+  tapGreenhouse() {
+    const job = G.breedingInfo(state, now());
+    if (job?.ready) actions.collectBreed();
+    else { sound.play('tap'); ui.closeSheet(); ui.nav('breed'); }
+  },
+
+  restoreGreenhouse() {
+    const r = G.unlockGreenhouse(state);
+    if (!r.ok) return fail(r);
+    world.syncGreenhouse(true);
+    sound.play('unlock');
+    ui.toast('Das Gewächshaus glänzt wie neu! Jetzt kannst du Blumen kreuzen.', 'good');
+    changed();
+  },
+
+  breed(idx) {
+    const rc = C.RECIPES[idx];
+    if (!rc) return;
+    const r = G.startBreeding(state, rc.a, rc.b, now(), isNight());
+    if (!r.ok) return fail(r);
+    sound.play('magic');
+    ui.toast(`Züchtung gestartet: ${plain(C.SEEDS[r.result].name)} – fertig in ${fmtTime(rc.ms)}.`, 'good');
+    changed();
+  },
+
+  boostBreed() {
+    if (!state.items.boost) { const b = G.buyItem(state, 'boost'); if (!b.ok) return fail(b); }
+    const r = G.useItem(state, 'boost', -1, now());
+    if (!r.ok) { changed(); return fail(r); }
+    sound.play('magic');
+    ui.toast('Die Züchtung ist fertig!', 'good');
+    changed();
+  },
+
+  collectBreed() {
+    const r = G.collectBreeding(state, now());
+    if (!r.ok) return fail(r);
+    const d = C.SEEDS[r.seed];
+    sound.play('level');
+    ui.modal({ queue: true, title: 'Neue Sorte!', html: `<img class="big" alt="" src="${icons.flower[r.seed]}"><p><b>${d.name}</b> ist gezüchtet! Du kannst sie ab jetzt in jedes Beet pflanzen.</p>${ui.chips({ xp: r.xp })}`, buttons: [['Jetzt pflanzen', 'closeModal', '']] });
+    changed();
+    afterLevelUps(r.levelUps);
+  },
+
+  // ----- Story -----
+  questTracker() {
+    const st = G.storyStatus(state);
+    if (!st.finished && st.done) actions.claimQuest();
+    else ui.nav('quests', 'story');
+  },
+
+  claimQuest() {
+    const r = G.claimQuest(state);
+    if (!r.ok) return fail(r);
+    sound.play('buy');
+    ui.bumpCoins();
+    if (r.reward.deco || r.reward.skin) { world.syncDeco(state.deco); world.syncSkins(state.activeSkin); }
+    ui.owlDialog({ title: r.chapterDone ? 'Kapitel geschafft!' : 'Aufgabe erledigt!', heading: r.chapterDone ? r.chapterTitle : '', text: r.say || (r.chapterDone ? `„${r.chapterTitle}“ ist abgeschlossen. Wunderbar gemacht!` : 'Prima, weiter so! Hier ist deine Belohnung.'), reward: r.reward });
+    changed();
+    afterLevelUps(r.levelUps);
+  },
+
+  storySeen() { G.markIntroSeen(state); persist(false); },
+
+  go(target) {
+    const [a, b] = String(target).split(':');
+    if (a === 'shop') ui.nav('shop', b);
+    else if (a === 'breed') ui.nav('breed');
+    else if (a === 'bed') actions.showNextBed();
+    else if (a === 'mode') {
+      if (b === 'sprinkler' && state.level < C.SPRINKLER.level) return fail({ message: `Die Bewässerung gibt es ab Level ${C.SPRINKLER.level}.` });
+      if (b === 'upgrade' && state.level < C.BED_LEVELS[1].level) return fail({ message: `Den Beet-Ausbau gibt es ab Level ${C.BED_LEVELS[1].level}.` });
+      ui.setMode({ kind: b });
+    }
+  },
+
+  // ----- Events -----
+  claimMilestone(i) {
+    const r = G.claimEventMilestone(state, i, now());
+    if (!r.ok) return fail(r);
+    world.syncDeco(state.deco); world.syncSkins(state.activeSkin);
+    sound.play('buy');
+    ui.toast('Event-Belohnung abgeholt!', 'good');
+    changed();
+    afterLevelUps(r.levelUps);
+  },
+
+  buyEventItem(id) {
+    const r = G.buyEventItem(state, id, now());
+    if (!r.ok) return fail(r);
+    world.syncDeco(state.deco);
+    sound.play('buy');
+    ui.toast('Eingetauscht!', 'good');
     changed();
   },
 
@@ -353,7 +672,7 @@ const actions = {
     const r = G.unlockRareSeed(state, id);
     if (!r.ok) return fail(r);
     sound.play('buy');
-    ui.toast(`${C.SEEDS[id].name} freigeschaltet – jetzt im Beet pflanzbar!`, 'good');
+    ui.toast(`${plain(C.SEEDS[id].name)} freigeschaltet – jetzt im Beet pflanzbar!`, 'good');
     changed();
   },
 
@@ -362,7 +681,7 @@ const actions = {
     if (!r.ok) return fail(r);
     world.syncDeco(state.deco);
     sound.play('buy');
-    ui.toast(`${C.DECO[id].name} steht jetzt in deinem Garten!`, 'good', { label: 'Ansehen', fn: () => { ui.nav('garden'); const o = world.deco[id][0]; world.focus(o.model[12], o.model[14], 0.75); } });
+    ui.toast(`${C.DECO[id].name} steht jetzt in deinem Garten!`, 'good', { label: 'Ansehen', fn: () => { ui.nav('garden'); const o = world.deco[id]?.[0]; if (o) world.focus(o.model[12], o.model[14], 0.75); } });
     changed();
   },
 
@@ -395,7 +714,8 @@ const actions = {
 
   async share() {
     const url = location.origin + location.pathname;
-    const data = { title: 'BloomWorld', text: 'Komm mit in meinen Garten bei BloomWorld! 🌸', url };
+    const name = user ? ` – such nach ${user.name}` : '';
+    const data = { title: 'BloomWorld', text: `Komm mit in meinen Garten bei BloomWorld${name}! 🌸`, url };
     try {
       if (navigator.share) { await navigator.share(data); return; }
       await navigator.clipboard.writeText(url);
@@ -413,23 +733,50 @@ const actions = {
     if (key === 'quality') world.r.setQuality(resolveQuality(val));
     if (['music', 'sound', 'musicVol', 'soundVol'].includes(key)) { applySound(); if (key === 'sound' && val) sound.play('tap'); }
     if (!live) sound.play('tap');
-    saver.request();
+    persist(false);
     if (!live) ui.refresh();
   },
 
   reset() {
     gen++; pendingLevel = null; clearTimeout(levelTimer); dayTime = 0;
+    // Aktionszähler weiterführen, damit kein älterer Stand eines anderen Geräts den Neubeginn überschreibt
+    const moves = (state.moves || 0) + 1;
     state = G.newState(now());
-    store.clear().finally(() => saver.flush(true));
-    world.syncDeco(state.deco);
-    world.syncSkins(state.activeSkin);
-    world.r.setQuality(resolveQuality(state.settings.quality));
-    applySound();
+    state.moves = moves;
+    store.clear().finally(() => { saver.flush(true); cloud?.request(500); });
+    syncWorld();
     world.resetView();
     ui.closeModal();
     ui.nav('garden');
     ui.refresh();
-    ui.toast('Spielstand gelöscht – viel Spaß mit deinem neuen Garten!', 'good');
+    ui.toast('Neuer Garten – viel Spaß!', 'good');
+  },
+
+  // ----- Konto -----
+  login() { flushAll(); reloadPage(); },
+
+  async logout() {
+    if (cloud) {
+      for (let i = 0; i < 40 && cloud.busy; i++) await new Promise((r) => setTimeout(r, 100));
+      cloud.dirty = true; await cloud.flush(); cloud.stop();
+    }
+    saver?.flush();
+    await Net.logout();
+    setLastUser(null);
+    reloadPage();
+  },
+
+  async deleteAccount(pw) {
+    if (!pw) { ui.deleteError('Bitte gib dein Passwort ein.'); return; }
+    const r = await Net.remove(pw);
+    if (!r.ok) { ui.deleteError(r.message || 'Das hat nicht geklappt.'); return; }
+    cloud?.stop();
+    saver.stop();
+    await store.clear();
+    setLastUser(null);
+    ui.closeModal();
+    ui.toast('Dein Konto wurde gelöscht.', 'good');
+    setTimeout(() => reloadPage(), 1200);
   },
 };
 

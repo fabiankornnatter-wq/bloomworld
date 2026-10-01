@@ -1,7 +1,6 @@
-// Speicher-Adapter. Heute: Browser-Speicher (localStorage).
-// Später kann ein SupabaseStore mit derselben Schnittstelle (load/save/clear/peek) eingesetzt werden,
-// z.B. für Login und Cloud-Spielstände. Zugangsdaten gehören NICHT in den Code, sondern in
-// Vercel-Umgebungsvariablen bzw. die öffentliche Supabase-"anon"-Konfiguration mit Row Level Security.
+// Speicher im Browser (localStorage). Mit Konto ist er die schnelle Sicherung auf dem Gerät;
+// der eigentliche Spielstand liegt zusätzlich auf dem Server (siehe account.js, /api/save).
+// Jedes Konto hat einen eigenen Schlüssel, der Gast-Spielstand liegt unter SAVE_KEY.
 
 export const SAVE_KEY = 'bloomworld_save_v2';
 const LEGACY_KEY = 'bloomworld_v1';
@@ -26,8 +25,12 @@ function safeLocalStorage() {
   }
 }
 
+export const accountKey = (uid) => `bloomworld_u_${uid}`;
+export const GUEST_MOVED_KEY = 'bloomworld_guest_moved';
+
 export class LocalStore {
-  constructor(storage) {
+  constructor(storage, key = SAVE_KEY) {
+    this.key = key;
     if (storage) { this.ls = storage; this.volatile = false; }
     else ({ ls: this.ls, volatile: this.volatile } = safeLocalStorage());
   }
@@ -35,7 +38,7 @@ export class LocalStore {
   async load() {
     let raw = null;
     try {
-      raw = this.ls.getItem(SAVE_KEY) ?? this.ls.getItem(LEGACY_KEY);
+      raw = this.ls.getItem(this.key) ?? (this.key === SAVE_KEY ? this.ls.getItem(LEGACY_KEY) : null);
       return raw ? JSON.parse(raw) : null;
     } catch (e) {
       // Unlesbaren Spielstand sichern, bevor er überschrieben wird
@@ -46,12 +49,12 @@ export class LocalStore {
 
   // Zeitstempel des gespeicherten Standes (für Mehr-Tab-Schutz)
   peekUpdatedAt() {
-    try { const raw = this.ls.getItem(SAVE_KEY); return raw ? JSON.parse(raw).updatedAt || 0 : 0; } catch { return 0; }
+    try { const raw = this.ls.getItem(this.key); return raw ? JSON.parse(raw).updatedAt || 0 : 0; } catch { return 0; }
   }
 
   async save(state) {
     try {
-      this.ls.setItem(SAVE_KEY, JSON.stringify(state));
+      this.ls.setItem(this.key, JSON.stringify(state));
       return true;
     } catch (e) {
       const err = new Error('SAVE_FAILED'); err.cause = e; throw err;
@@ -59,17 +62,18 @@ export class LocalStore {
   }
 
   async clear() {
-    try { this.ls.removeItem(SAVE_KEY); this.ls.removeItem(LEGACY_KEY); } catch { /* ignorieren */ }
+    try { this.ls.removeItem(this.key); if (this.key === SAVE_KEY) this.ls.removeItem(LEGACY_KEY); } catch { /* ignorieren */ }
+  }
+
+  // Gast-Spielstand wurde in ein Konto übernommen: als Sicherung beiseitelegen
+  async retire(backupKey = GUEST_MOVED_KEY) {
+    try {
+      const raw = this.ls.getItem(this.key) ?? this.ls.getItem(LEGACY_KEY);
+      if (raw) this.ls.setItem(backupKey, raw);
+      this.ls.removeItem(this.key); this.ls.removeItem(LEGACY_KEY);
+    } catch { /* ignorieren */ }
   }
 }
-
-// Vorlage für später (nicht aktiv):
-// export class SupabaseStore {
-//   constructor(client, userId) { this.client = client; this.userId = userId; }
-//   async load() { const { data } = await this.client.from('saves').select('data').eq('user_id', this.userId).single(); return data?.data ?? null; }
-//   async save(state) { await this.client.from('saves').upsert({ user_id: this.userId, data: state, updated_at: new Date().toISOString() }); return true; }
-//   async clear() { await this.client.from('saves').delete().eq('user_id', this.userId); }
-// }
 
 // Speichert gebündelt (nicht bei jedem Klick), nur wenn sich etwas geändert hat,
 // und überschreibt nie einen neueren Stand aus einem anderen Tab/Fenster.
@@ -80,14 +84,16 @@ export class SaveManager {
     this.known = 0; // updatedAt des Standes, den dieser Tab zuletzt geladen oder gespeichert hat
   }
   setKnown(t) { this.known = t || 0; }
+  stop() { this.stopped = true; clearTimeout(this.timer); this.timer = null; }
   request() {
+    if (this.stopped) return;
     this.dirty = true;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.flush(), 400);
   }
   flush(force = false) {
     clearTimeout(this.timer); this.timer = null;
-    if (!this.dirty && !force) return;
+    if (this.stopped || (!this.dirty && !force)) return;
     const s = this.getState();
     if (!s) return;
     const stored = this.store.peekUpdatedAt ? this.store.peekUpdatedAt() : 0;

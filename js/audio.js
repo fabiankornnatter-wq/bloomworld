@@ -84,6 +84,8 @@ export class Sound {
         case 'buy': [76, 81, 88].forEach((n, i) => this.tone(NOTE(n), 0.25, { type: 'triangle', vol: 0.16, at: i * 0.08 })); break;
         case 'level': [60, 64, 67, 72, 76, 79, 84].forEach((n, i) => this.tone(NOTE(n + 12), 0.4, { type: 'triangle', vol: 0.17, at: i * 0.08 })); break;
         case 'animal': this.tone(1200, 0.12, { vol: 0.12, slide: 1.6 }); this.tone(1500, 0.14, { vol: 0.1, slide: 1.4, at: 0.13 }); break;
+        case 'water': this.noise(0.6, { vol: 0.18, freq: 3000, type: 'highpass' }); [84, 88].forEach((n, i) => this.tone(NOTE(n), 0.12, { type: 'sine', vol: 0.08, at: 0.1 + i * 0.12 })); break;
+        case 'magic': [72, 79, 84, 88, 91, 96].forEach((n, i) => this.tone(NOTE(n), 0.5, { type: 'sine', vol: 0.12, at: i * 0.09 })); this.noise(0.6, { vol: 0.05, freq: 7000, type: 'highpass', at: 0.1 }); break;
         case 'unlock': this.noise(0.3, { vol: 0.2, freq: 400 }); [67, 72, 76].forEach((n, i) => this.tone(NOTE(n + 12), 0.3, { type: 'triangle', vol: 0.15, at: 0.1 + i * 0.08 })); break;
       }
     } catch { /* Audio-Fehler nie das Spiel stören lassen */ }

@@ -224,7 +224,7 @@ export function lathe(profile, color, seg = 16) {
 
 // Flacher, beidseitiger, gebogener Streifen: Blütenblatt oder Blatt.
 // Liegt entlang +Z, Breite in X. cup = Wölbung quer, curl = Biegung nach oben entlang der Länge.
-export function petal(len, wid, color, { cup = 0.25, curl = 0.3, tip = 0.8, segL = 3, segW = 1, colorTip = null, fold = 0 } = {}) {
+export function petal(len, wid, color, { cup = 0.25, curl = 0.3, tip = 0.8, segL = 3, segW = 1, colorTip = null, fold = 0, under = 0.82 } = {}) {
   const g = new Geo(), C = asColor(color), CT = colorTip ? asColor(colorTip) : C;
   const W = (u) => wid * Math.pow(Math.sin(Math.PI * Math.min(1, u * (0.5 + tip * 0.5) + (1 - tip) * 0.25)), 0.8) * (u < 0.02 ? 0.3 : 1);
   const S = (u, v) => {
@@ -247,7 +247,7 @@ export function petal(len, wid, color, { cup = 0.25, curl = 0.3, tip = 0.8, segL
     g.triN(a, b, c, na, nb, nc, colAt(u0), colAt(u1), colAt(u1));
     g.triN(a, c, d, na, nc, nd, colAt(u0), colAt(u1), colAt(u0));
     // Unterseite (etwas dunkler)
-    const k = 0.82, neg = (n) => v3.scale(n, -1), dk = (c2) => v3.scale(c2, k);
+    const k = under, neg = (n) => v3.scale(n, -1), dk = (c2) => v3.scale(c2, k);
     g.triN(a, c, b, neg(na), neg(nc), neg(nb), dk(colAt(u0)), dk(colAt(u1)), dk(colAt(u1)));
     g.triN(a, d, c, neg(na), neg(nd), neg(nc), dk(colAt(u0)), dk(colAt(u0)), dk(colAt(u1)));
   }

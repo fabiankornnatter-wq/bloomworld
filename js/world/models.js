@@ -1,6 +1,7 @@
 // Alle 3D-Modelle von BloomWorld – aus Grundformen zusammengesetzt (keine externen Dateien).
 import { Geo, roundedBox, box, sphere, icosphere, cylinder, lathe, petal, extrude, disk, terrain, col, T } from '../engine/geo.js';
 import { rng, v3 } from '../engine/math.js';
+import { SEEDS } from '../config.js';
 
 const P = Math.PI;
 
@@ -70,21 +71,32 @@ export function steppingStones(points, seed = 3) {
 }
 
 // ---------------- Hochbeet ----------------
-export function raisedBed(locked = false) {
+// Beet-Stufen: 1 Holz, 2 Stein, 3 Pracht (weiß mit Gold)
+const BED_STYLE = [
+  { lo: PAL.woodDark, hi: PAL.wood, post: PAL.woodDark, cap: PAL.woodLight },
+  { lo: '#9c968d', hi: '#bdb6ab', post: '#857f77', cap: '#d9d3c9' },
+  { lo: '#efe4cc', hi: '#fdf7ea', post: '#e6d7b4', cap: '#ffc93a' },
+];
+export function raisedBed(locked = false, lvl = 1) {
   const g = new Geo();
-  const W = 2.3, H = 0.56, th = 0.14;
-  const plank = (len, hgt, c) => roundedBox(len, hgt, th, 0.04, c, 1);
+  const W = 2.3, H = 0.56, th = 0.14, st = BED_STYLE[(lvl || 1) - 1];
+  const plank = (len, hgt, c) => roundedBox(len, hgt, th, lvl === 2 ? 0.06 : 0.04, c, 1);
   for (let side = 0; side < 4; side++) {
     const ry = side * P / 2;
     for (let k = 0; k < 2; k++) {
-      const c = k === 0 ? PAL.woodDark : PAL.wood;
-      g.add(plank(W - 0.2, 0.25, c), mul(T(0, 0, 0, ry), T(0, 0.14 + k * 0.27, (W - th) / 2)));
+      const c = k === 0 ? st.lo : st.hi;
+      if (lvl === 2) {
+        // Steinblöcke statt durchgehender Bretter
+        for (let j = 0; j < 3; j++) g.add(plank((W - 0.3) / 3, 0.25, (j + k) % 2 ? st.lo : st.hi), mul(T(0, 0, 0, ry), T(-0.67 + j * 0.67 + (k ? 0.12 : 0), 0.14 + k * 0.27, (W - th) / 2)));
+      } else g.add(plank(W - 0.2, 0.25, c), mul(T(0, 0, 0, ry), T(0, 0.14 + k * 0.27, (W - th) / 2)));
     }
   }
   for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-    g.add(roundedBox(0.22, H + 0.12, 0.22, 0.06, PAL.woodDark, 1), T(sx * (W / 2 - 0.08), (H + 0.12) / 2, sz * (W / 2 - 0.08)));
-    g.add(roundedBox(0.26, 0.06, 0.26, 0.03, PAL.woodLight, 1), T(sx * (W / 2 - 0.08), H + 0.13, sz * (W / 2 - 0.08)));
+    g.add(roundedBox(0.22, H + 0.12, 0.22, 0.06, st.post, 1), T(sx * (W / 2 - 0.08), (H + 0.12) / 2, sz * (W / 2 - 0.08)));
+    g.add(roundedBox(0.26, 0.06, 0.26, 0.03, st.cap, 1), T(sx * (W / 2 - 0.08), H + 0.13, sz * (W / 2 - 0.08)));
+    if (lvl === 3) g.add(sphere(0.09, '#ffcf3a', 8, 6), T(sx * (W / 2 - 0.08), H + 0.24, sz * (W / 2 - 0.08)));
   }
+  if (lvl === 3) for (let side = 0; side < 4; side++) g.add(roundedBox(W - 0.3, 0.05, 0.05, 0.02, '#ffc93a', 1), mul(T(0, 0, 0, side * P / 2), T(0, H + 0.06, (W - th) / 2 + 0.07)));
   // Erde mit leichten Hügeln
   const soil = roundedBox(W - 0.3, 0.12, W - 0.3, 0.05, PAL.soil, 2).displace((p, n) => (n[1] > 0.5 ? [p[0], p[1] + Math.sin(p[0] * 7) * Math.sin(p[2] * 6) * 0.02, p[2]] : p));
   g.add(soil, T(0, H - 0.1, 0));
@@ -129,10 +141,23 @@ export const FLOWER_LOOK = {
   tulip: { petal: '#ff4d7a', tip: '#ff8fae', center: '#ffe27a' },
   sunflower: { petal: '#ffc21a', tip: '#ffdb5c', center: '#6b3a14' },
   lavender: { petal: '#9a7be8', tip: '#c3aef7', center: '#7c5cd6' },
-  rose: { petal: '#e3253f', tip: '#ff5a6c', center: '#a3122a' },
+  rose: { petal: '#cf1734', tip: '#f23a52', center: '#8e0b22' },
   orchid: { petal: '#f27ad0', tip: '#ffd3f1', center: '#fff2a8' },
 };
-const GOLD = { petal: '#ffb81c', tip: '#ffe066', center: '#d97706' };
+Object.assign(FLOWER_LOOK, {
+  rainbowTulip: { petals: ['#ff4d6d', '#ff9f1c', '#ffd23f', '#5fd35a', '#4aa3ff', '#9a7be8'], petal: '#ff4d6d', tip: '#ffffff', center: '#ffe27a' },
+  sunTulip: { petal: '#ff6a1a', tip: '#ffd23f', center: '#ffe27a' },
+  goldRose: { petal: '#f5a300', tip: '#ffd84a', center: '#d27000' },
+  moonOrchid: { petal: '#e9eeff', tip: '#c9b8ff', center: '#fff6c4', glow: 0.55 },
+  northRose: { petal: '#1fcfa8', tip: '#8f7bff', center: '#7a4dff', glow: 0.6 },
+  blackRose: { petal: '#2a0d18', tip: '#7a1634', center: '#14060b' },
+  starRose: { petal: '#1f2fa8', tip: '#5b74f0', center: '#ffcf3a', glow: 0.7 },
+});
+const brighten = (look) => {
+  const b = (c) => { const v = col(c); return v.map((x) => Math.min(1, x * 1.12 + 0.04)); };
+  return { ...look, petal: b(look.petal), tip: b(look.tip), petals: look.petals && look.petals.map(b) };
+};
+const setEmissive = (g, e) => { for (let i = 9; i < g.d.length; i += 11) g.d[i] = e; return g; };
 
 function stem(h, bend = 0.08, r = 0.022) {
   const g = new Geo();
@@ -148,12 +173,29 @@ function stem(h, bend = 0.08, r = 0.022) {
 const leaf = (len, wid, c = PAL.leaf1) => petal(len, wid, c, { cup: 0.1, curl: 0.35, tip: 0.9, fold: 0.25, colorTip: PAL.leaf3 });
 
 function head(type, look, s = 1) {
+  const g = headShape(type, look, s);
+  return look.glow ? setEmissive(g, 1 + look.glow) : g;
+}
+const mixHex = (a, b, t) => { const A = col(a), B = col(b); return '#' + A.map((v, k) => Math.round((v + (B[k] - v) * t) * 255).toString(16).padStart(2, '0')).join(''); };
+const pc = (look, i) => (look.petals ? look.petals[i % look.petals.length] : look.petal);
+function headShape(type, look, s) {
   const g = new Geo();
   if (type === 'daisy') {
     for (let i = 0; i < 13; i++) g.add(petal(0.17 * s, 0.035 * s, look.petal, { cup: 0.15, curl: 0.12, tip: 0.3, colorTip: look.tip }), T(0, 0, 0, (i / 13) * P * 2, -0.2));
     g.add(sphere(0.055 * s, look.center, 10, 7, 0.55), T(0, 0.01, 0));
   } else if (type === 'tulip') {
-    for (let i = 0; i < 6; i++) g.add(petal(0.2 * s, 0.085 * s, look.petal, { cup: 0.45, curl: 0.15, tip: 0.2, colorTip: look.tip }), T(0, 0, 0, (i / 6) * P * 2 + (i % 2) * 0.3, -1.15 - (i % 2) * 0.15));
+    // Tulpen zeigen vor allem die Außenseite: Normalen zeigen nach außen-oben, damit der Kelch hell leuchtet
+    const cup = new Geo();
+    for (let i = 0; i < 6; i++) {
+      const c = pc(look, i), tipc = look.petals ? mixHex(c, '#ffffff', 0.35) : look.tip;
+      cup.add(petal(0.2 * s, 0.085 * s, c, { cup: 0.45, curl: 0.15, tip: 0.2, colorTip: tipc, under: 1 }), T(0, 0, 0, (i / 6) * P * 2 + (i % 2) * 0.3, -1.05 - (i % 2) * 0.15));
+    }
+    for (let i = 0; i < cup.d.length; i += 11) {
+      const x = cup.d[i], z = cup.d[i + 2], l = Math.hypot(x, 0.5 * s * 0.12, z) || 1;
+      const nx = x / l, ny = (0.06 * s) / l, nz = z / l, nl = Math.hypot(nx, ny + 0.35, nz);
+      cup.d[i + 3] = nx / nl; cup.d[i + 4] = (ny + 0.35) / nl; cup.d[i + 5] = nz / nl;
+    }
+    g.add(cup);
     g.add(sphere(0.05 * s, look.center, 8, 6), T(0, 0.04, 0));
   } else if (type === 'sunflower') {
     for (let i = 0; i < 18; i++) g.add(petal(0.2 * s, 0.055 * s, look.petal, { cup: 0.2, curl: 0.1, tip: 0.5, colorTip: look.tip }), T(0, 0, 0, (i / 18) * P * 2, -0.1 - (i % 2) * 0.12));
@@ -166,9 +208,16 @@ function head(type, look, s = 1) {
     for (let k = 0; k < 4; k++) g.add(icosphere(0.022 * s, look.petal, 0, true), T(Math.cos(k * 1.6) * 0.025 * s, 0.05 * s + k * 0.045 * s, Math.sin(k * 1.6) * 0.025 * s));
   } else if (type === 'rose') {
     const rings = [[4, 0.07, -1.35, 0.5], [5, 0.1, -0.95, 0.45], [6, 0.13, -0.55, 0.35], [7, 0.15, -0.25, 0.25]];
+    const bloom = new Geo();
     rings.forEach(([n, l, tilt, cup], ri) => {
-      for (let i = 0; i < n; i++) g.add(petal(l * s, l * 0.75 * s, ri < 2 ? look.center : look.petal, { cup, curl: 0.35, tip: 0, colorTip: look.tip }), T(0, ri * 0.004, 0, (i / n) * P * 2 + ri * 0.7, tilt));
+      for (let i = 0; i < n; i++) bloom.add(petal(l * s, l * 0.75 * s, ri < 2 ? look.center : look.petal, { cup, curl: 0.35, tip: 0, colorTip: look.tip, under: 0.95 }), T(0, ri * 0.004, 0, (i / n) * P * 2 + ri * 0.7, tilt));
     });
+    // Rosenblüte wie eine Kugel beleuchten: Normalen zeigen vom Blütenkern nach außen
+    for (let i = 0; i < bloom.d.length; i += 11) {
+      const x = bloom.d[i], y = bloom.d[i + 1] + 0.06 * s, z = bloom.d[i + 2], l = Math.hypot(x, y, z) || 1;
+      bloom.d[i + 3] = x / l; bloom.d[i + 4] = y / l; bloom.d[i + 5] = z / l;
+    }
+    g.add(bloom);
   } else if (type === 'orchid') {
     for (let i = 0; i < 3; i++) g.add(petal(0.14 * s, 0.05 * s, look.petal, { cup: 0.1, curl: -0.05, tip: 0.6, colorTip: look.tip }), T(0, 0, 0, (i / 3) * P * 2 + P, -0.3, 0));
     for (let i = 0; i < 2; i++) g.add(petal(0.12 * s, 0.085 * s, look.tip, { cup: 0.15, curl: 0.05, tip: 0.1, colorTip: look.petal }), T(0, 0.005, 0, P * 0.35 + i * P * 1.3, -0.25));
@@ -185,9 +234,10 @@ function bud(look, s = 1) {
 }
 
 // Eine Pflanze in Stufe 0 (Spross) … 3 (Blüte)
-export function plant(type, stage, golden = false, seed = 1) {
+export function plant(seedId, stage, shiny = false, seed = 1) {
+  const type = SEEDS[seedId]?.model || seedId;
   const g = new Geo(), R = rng(seed * 31 + stage);
-  const look = golden ? GOLD : FLOWER_LOOK[type];
+  const look = shiny ? brighten(FLOWER_LOOK[seedId] || FLOWER_LOOK[type]) : FLOWER_LOOK[seedId] || FLOWER_LOOK[type];
   if (stage === 0) {
     g.add(icosphere(0.2, PAL.soilDark, 1, true), T(0, -0.02, 0, 0, 0, 0, 1, 0.35, 1));
     g.add(cylinder(0.02, 0.024, 0.14, PAL.stem, 5), T(0, 0, 0));
@@ -222,7 +272,7 @@ export function plant(type, stage, golden = false, seed = 1) {
     g.add(sm, T(Math.cos(a) * off, 0, Math.sin(a) * off, a));
   }
   g.windByHeight(0.05, tall * 1.1, 1);
-  const k = PLANT_SCALE[type];
+  const k = PLANT_SCALE[type] * (seedId === 'starRose' ? 1.12 : 1);
   return new Geo().add(g, T(0, 0, 0, 0, 0, 0, k));
 }
 export const PLANT_SCALE = { daisy: 2.3, tulip: 2.1, sunflower: 1.5, lavender: 1.9, rose: 2.15, orchid: 2.1 };
@@ -623,3 +673,95 @@ export function roundFlowerBed(r, seed, colors) {
   }
   return g.windByHeight(0.2, 0.55, 0.3);
 }
+
+// ---------------- Bewässerung ----------------
+export function sprinkler() {
+  const g = new Geo();
+  g.add(cylinder(0.15, 0.17, 0.07, '#2a7fd6', 12), T(0, 0, 0));
+  g.add(cylinder(0.05, 0.06, 0.8, '#ffd23f', 10), T(0, 0, 0));
+  g.add(cylinder(0.075, 0.075, 0.06, '#2a7fd6', 10), T(0, 0.4, 0));
+  g.add(cylinder(0.075, 0.075, 0.06, '#2a7fd6', 10), T(0, 0.74, 0));
+  // Schlauch zum Beet
+  g.add(cylinder(0.022, 0.022, 0.75, '#3fbe2c', 6, false), T(0.04, 0.03, 0.04, 0, 0, -1.5));
+  return g;
+}
+export function sprinklerHead() {
+  const g = new Geo();
+  g.add(sphere(0.1, '#4aa3ff', 10, 8), T(0, 0, 0));
+  g.add(sphere(0.045, '#ffffff', 6, 5), T(0, 0.08, 0));
+  for (const dir of [1, -1]) {
+    g.add(cylinder(0.026, 0.03, 0.2, '#2a7fd6', 6), T(0, 0, 0, dir > 0 ? 0 : P, P / 2 - 0.5));
+    // Wasserstrahl als glitzernder Tropfen-Bogen
+    for (let i = 1; i <= 9; i++) {
+      const t = i / 9, z = (0.2 + t * 1.05) * dir, y = 0.1 + Math.sin(t * P * 0.95) * 0.42 - t * 0.3;
+      g.add(sphere(0.05 - t * 0.022, '#aee4ff', 6, 5), T(0, y, z));
+    }
+  }
+  return g;
+}
+
+// ---------------- Gewächshaus ----------------
+export function greenhouse(restored = true) {
+  const g = new Geo(), R = rng(13);
+  const W = 4.0, D = 2.8, H = 1.9, roofH = 1.1;
+  const frame = restored ? '#fbfbf7' : '#a9a294';
+  const glass = restored ? '#bfe9f2' : '#8fa79a';
+  g.add(roundedBox(W + 0.3, 0.3, D + 0.3, 0.06, restored ? '#c9c1b5' : '#9c968d', 1), T(0, 0.15, 0));
+  // Glaswände
+  for (const [w, x, z, ry] of [[W, 0, D / 2, 0], [W, 0, -D / 2, 0], [D, W / 2, 0, P / 2], [D, -W / 2, 0, P / 2]]) {
+    g.add(roundedBox(w - 0.1, H - 0.1, 0.05, 0.02, glass, 1), T(x, 0.3 + H / 2, z, ry), { emissive: restored ? 0.55 : 0 });
+  }
+  // Rahmen
+  const post = (x, z, h = H) => g.add(roundedBox(0.09, h, 0.09, 0.02, frame, 1), T(x, 0.3 + h / 2, z));
+  for (let i = 0; i <= 4; i++) { post(-W / 2 + (i * W) / 4, D / 2); post(-W / 2 + (i * W) / 4, -D / 2); }
+  for (let i = 1; i < 3; i++) { post(W / 2, -D / 2 + (i * D) / 3); post(-W / 2, -D / 2 + (i * D) / 3); }
+  for (const z of [D / 2, -D / 2]) { g.add(roundedBox(W + 0.1, 0.08, 0.1, 0.02, frame, 1), T(0, 0.3 + H, z)); g.add(roundedBox(W + 0.1, 0.06, 0.08, 0.02, frame, 1), T(0, 0.3 + H * 0.5, z)); }
+  for (const x of [W / 2, -W / 2]) g.add(roundedBox(0.1, 0.08, D + 0.1, 0.02, frame, 1), T(x, 0.3 + H, 0));
+  // Glasdach (Giebel entlang X)
+  const slope = Math.hypot(D / 2, roofH), ang = Math.atan2(roofH, D / 2);
+  for (const sz of [-1, 1]) {
+    g.add(roundedBox(W + 0.1, 0.05, slope, 0.02, glass, 1), T(0, 0.3 + H + roofH / 2, sz * D / 4, 0, sz * ang), { emissive: restored ? 0.55 : 0 });
+    for (let i = 0; i <= 4; i++) g.add(roundedBox(0.07, 0.07, slope + 0.05, 0.02, frame, 1), T(-W / 2 + (i * W) / 4, 0.33 + H + roofH / 2, sz * D / 4, 0, sz * ang));
+  }
+  g.add(roundedBox(W + 0.2, 0.1, 0.12, 0.03, frame, 1), T(0, 0.3 + H + roofH, 0));
+  for (const x of [W / 2, -W / 2]) g.add(extrude([[-D / 2, 0], [D / 2, 0], [0, roofH]], 0.04, glass), T(x, 0.3 + H, 0, P / 2), { emissive: restored ? 0.55 : 0 });
+  // Tür
+  g.add(roundedBox(0.9, 1.6, 0.06, 0.03, restored ? '#5fae96' : '#7a7a6a', 1), T(0, 0.3 + 0.8, D / 2 + 0.04));
+  g.add(sphere(0.04, '#ffd75e', 6, 5), T(0.3, 0.3 + 0.85, D / 2 + 0.09));
+  // Pflanzen innen (durch das Glas angedeutet) und Töpfe vor der Tür
+  for (let i = 0; i < 6; i++) g.add(icosphere(0.32 + R() * 0.12, restored ? PAL.leaf1 : '#6d8a4a', 1, false, 0.15, i), T(-1.4 + i * 0.56, 0.75, -0.6 + (i % 2) * 0.5));
+  if (restored) for (const x of [-0.85, 0.85]) {
+    g.add(lathe([[0.16, 0], [0.22, 0.3], [0.25, 0.32], [0.25, 0.38], [0, 0.38]], '#d9774a', 12), T(x, 0, D / 2 + 0.45));
+    g.add(icosphere(0.2, PAL.leaf2, 1, false, 0.15, 3), T(x, 0.5, D / 2 + 0.45));
+    for (let k = 0; k < 3; k++) g.add(sphere(0.06, ['#ff6f9a', '#ffd23f', '#9a7be8'][k], 6, 5), T(x + Math.cos(k * 2) * 0.12, 0.6, D / 2 + 0.45 + Math.sin(k * 2) * 0.12));
+  } else {
+    // Verwildert: Ranken und Gras
+    const tuft = grassTuft(R, 0.6, ['#6aa83e', '#5c9a36', '#7cbf3f']);
+    for (let i = 0; i < 10; i++) g.add(tuft, T(-W / 2 + R() * W, 0.28, D / 2 + 0.1 + R() * 0.3, R() * 6));
+    for (let i = 0; i < 8; i++) g.add(icosphere(0.18, '#5c9a36', 1, false, 0.2, i), T(-W / 2 + R() * W, 0.6 + R() * 1.2, D / 2 + 0.05));
+  }
+  return g;
+}
+
+// ---------------- Event-Deko (Herbstfest) ----------------
+DECO_MODELS.pumpkinLantern = () => {
+  const g = new Geo();
+  const p = sphere(0.5, '#f28a1f', 16, 10, 0.78).displace((q) => { const a = Math.atan2(q[2], q[0]); const k = 1 + Math.cos(a * 8) * 0.06; return [q[0] * k, q[1], q[2] * k]; });
+  g.add(p, T(0, 0.4, 0));
+  g.add(cylinder(0.04, 0.06, 0.2, '#5b7a2e', 6), T(0, 0.75, 0, 0, 0.2));
+  // freundliches Lichtfenster (Blume statt Gesicht)
+  for (let i = 0; i < 6; i++) g.add(sphere(0.07, '#ffe39a', 6, 4, 0.5), T(Math.cos((i / 6) * P * 2) * 0.14, 0.45 + Math.sin((i / 6) * P * 2) * 0.14, 0.46, 0, P / 2), { emissive: 1 });
+  g.add(sphere(0.08, '#fff2c0', 6, 4, 0.5), T(0, 0.45, 0.47, 0, P / 2), { emissive: 1 });
+  g.add(leaf(0.3, 0.12, '#6aa84a'), T(0.2, 0.05, 0.3, 1.2, -0.1));
+  return g;
+};
+DECO_MODELS.leafPile = () => {
+  const g = new Geo(), R = rng(29);
+  const cs = ['#e8641f', '#ffb02e', '#c9381f', '#f2c14e', '#a85a28'];
+  g.add(icosphere(0.55, '#c9661f', 1, false, 0.2, 2), T(0, 0.05, 0, 0, 0, 0, 1.3, 0.45, 1.1));
+  for (let i = 0; i < 40; i++) {
+    const a = R() * P * 2, d = Math.sqrt(R()) * 0.7;
+    g.add(petal(0.18, 0.1, cs[i % cs.length], { cup: 0.1, curl: 0.15, tip: 0.8, colorTip: cs[(i + 2) % cs.length] }), T(Math.cos(a) * d, 0.12 + (0.7 - d) * 0.35, Math.sin(a) * d * 0.85, R() * 6, -0.3 + R() * 0.6));
+  }
+  return g;
+};

@@ -71,7 +71,12 @@ void main(){
     col = mix(col, uSkyCol * 1.15, fres * 0.45) + uSunCol * spec * 0.9;
   }
   // Leuchtende Fenster, Laternen: nachts warm
-  col = mix(col, uEmisCol * (1.0 + 0.25 * vCol.a), clamp(vCol.a * uEmis, 0.0, 1.0));
+  if (vCol.a > 1.0) {
+    float k = clamp(vCol.a - 1.0, 0.0, 1.0);
+    col = mix(col, base * (1.15 + 0.45 * uEmis) + 0.04, k * (0.2 + 0.8 * uEmis));
+  } else {
+    col = mix(col, uEmisCol * (1.0 + 0.25 * vCol.a), clamp(vCol.a * uEmis, 0.0, 1.0));
+  }
   if (uTint > 0.0) col = mix(col, col * uTintCol, uTint);
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(lum), col, uSat);

@@ -2,7 +2,7 @@
 // Alle Funktionen verändern den übergebenen Spielstand und geben ein Ergebnis-Objekt zurück.
 import * as C from './config.js';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export const ERR = {
   locked: 'Dieses Beet ist noch nicht freigeschaltet.',
@@ -14,6 +14,12 @@ export const ERR = {
   invalid: 'Ungültige Auswahl.',
   claimed: 'Belohnung bereits abgeholt.',
   notDone: 'Die Aufgabe ist noch nicht erledigt.',
+  noItem: 'Davon hast du nichts mehr. Im Shop unter „Bedarf“ gibt es Nachschub.',
+  notGrowing: 'Hier wächst gerade keine Blume.',
+  busy: 'Im Gewächshaus läuft schon eine Züchtung.',
+  noRecipe: 'Diese Kreuzung ergibt keine neue Sorte. Probier eine andere Kombination!',
+  noJob: 'Im Gewächshaus läuft gerade keine Züchtung.',
+  maxLevel: 'Dieses Beet ist schon vollständig ausgebaut.',
 };
 
 export function dayKey(now) {
@@ -21,24 +27,32 @@ export function dayKey(now) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+const newBed = (i) => ({ locked: i >= C.STARTING_BEDS, seed: null, plantedAt: 0, dur: 0, shiny: false, var: 0, lvl: 1, sprinkler: false });
+
 export function newState(now = Date.now()) {
   return {
     v: SAVE_VERSION,
     createdAt: now,
     updatedAt: now,
+    moves: 0, // Zähler für Spielaktionen (entscheidet bei Konflikten zwischen Geräten)
     coins: C.START_COINS,
     xp: 0,
     level: 1,
-    beds: Array.from({ length: C.BED_COUNT }, (_, i) => ({ locked: i >= C.STARTING_BEDS, seed: null, plantedAt: 0, golden: false, var: 0 })),
+    beds: Array.from({ length: C.BED_COUNT }, (_, i) => newBed(i)),
     rareUnlocked: [],
+    bred: [],
     selectedSeed: 'daisy',
     collection: {},
     deco: [],
     skins: [],
     activeSkin: { fox: 'default', hedgehog: 'default' },
+    items: { fert: 0, turbo: 0, lucky: 0, boost: 0 },
+    greenhouse: { unlocked: false, job: null },
+    story: { ch: 0, q: 0, count: 0, intro: -1 },
+    event: { id: null, year: 0, tokens: 0, total: 0, claimed: [] },
     tasks: { date: dayKey(now), progress: { plant: 0, harvest: 0, earn: 0 }, claimed: [] },
     dailyGift: null,
-    stats: { planted: 0, harvested: 0, earned: 0, golden: 0 },
+    stats: { planted: 0, harvested: 0, earned: 0, shiny: 0, bred: 0, itemsUsed: 0 },
     seenAnimals: [],
     tutorial: 0,
     settings: { cycle: 'auto', cycleMin: 8, cycleEpoch: now, quality: 'auto', music: true, musicVol: 0.5, sound: true, soundVol: 0.8 },
@@ -46,12 +60,13 @@ export function newState(now = Date.now()) {
 }
 
 const err = (code, extra = {}) => ({ ok: false, code, message: ERR[code] || code, ...extra });
+const needLevel = (lvl, what) => err('level', { message: `${what} gibt es ab Level ${lvl}.`, level: lvl });
 
-// ---------- Münzen & XP ----------
+// ---------- Münzen, Gegenstände & Erfahrung ----------
 export function addCoins(s, n) {
   n = Math.floor(Number(n) || 0);
   s.coins = Math.max(0, Math.floor(s.coins + n));
-  if (n > 0) { s.stats.earned += n; s.tasks.progress.earn += n; }
+  if (n > 0) { s.stats.earned += n; s.tasks.progress.earn += n; track(s, 'earn', null, n); }
   return s.coins;
 }
 
@@ -66,14 +81,45 @@ function spend(s, n) {
 
 const noCoins = (s, n, what) => err('noCoins', { message: `Dir fehlen ${n - s.coins} Münzen für ${what}.`, missing: n - s.coins });
 
+export function addItems(s, items = {}) {
+  for (const [k, n] of Object.entries(items)) if (C.ITEMS[k]) s.items[k] = (s.items[k] || 0) + Math.max(0, Math.floor(n));
+}
+
+// Belohnung gutschreiben: { coins, xp, items, deco, skin }
+export function grant(s, r = {}) {
+  if (r.coins) addCoins(s, r.coins);
+  if (r.items) addItems(s, r.items);
+  if (r.deco && C.DECO[r.deco] && !s.deco.includes(r.deco)) s.deco.push(r.deco);
+  if (r.skin && C.SKINS[r.skin] && !s.skins.includes(r.skin)) s.skins.push(r.skin);
+  return r.xp ? addXp(s, r.xp) : [];
+}
+
+export function levelUnlocks(lvl) {
+  const u = [];
+  for (const k of C.BASE_SEEDS) {
+    const d = C.SEEDS[k];
+    if (d.level === lvl) u.push({ kind: 'seed', id: k, label: d.rare ? `${d.name} (im Shop freischaltbar)` : `${d.name} pflanzbar` });
+  }
+  for (const r of C.RECIPES) if (C.SEEDS[r.result].level === lvl) u.push({ kind: 'recipe', id: r.result, label: `Züchtung: ${C.SEEDS[r.result].name}` });
+  C.BED_UNLOCK.forEach((b, i) => { if (b && b.level === lvl && lvl > 1) u.push({ kind: 'bed', id: i, label: 'Neues Beet freischaltbar' }); });
+  for (const k of C.ITEM_ORDER) if (C.ITEMS[k].level === lvl && lvl > 1) u.push({ kind: 'item', id: k, label: `${C.ITEMS[k].name} im Shop` });
+  if (C.SPRINKLER.level === lvl) u.push({ kind: 'feature', id: 'sprinkler', label: 'Automatische Bewässerung' });
+  if (C.GREENHOUSE.level === lvl) u.push({ kind: 'feature', id: 'greenhouse', label: 'Gewächshaus restaurieren' });
+  C.BED_LEVELS.forEach((b, i) => { if (b.level === lvl) u.push({ kind: 'feature', id: 'bed' + (i + 1), label: `Beet-Ausbau: ${b.name}` }); });
+  // Doppelte Beet-Hinweise zusammenfassen
+  const beds = u.filter((x) => x.kind === 'bed').length;
+  return beds > 1 ? [...u.filter((x) => x.kind !== 'bed'), { kind: 'bed', label: `${beds} neue Beete freischaltbar` }] : u;
+}
+
 export function addXp(s, n) {
   s.xp += Math.max(0, Math.floor(n));
   const ups = [];
-  while (s.level < C.LEVELS.length && s.xp >= C.LEVELS[s.level]) {
+  while (s.level < C.MAX_LEVEL && s.xp >= C.LEVELS[s.level]) {
     s.level++;
-    const reward = C.LEVEL_REWARD(s.level);
-    addCoins(s, reward);
-    ups.push({ level: s.level, reward, unlocks: Object.keys(C.SEEDS).filter((k) => !C.SEEDS[k].rare && C.SEEDS[k].level === s.level) });
+    const reward = C.levelReward(s.level);
+    addCoins(s, reward.coins);
+    addItems(s, reward.items);
+    ups.push({ level: s.level, reward: reward.coins, items: reward.items, unlocks: levelUnlocks(s.level) });
   }
   return ups;
 }
@@ -81,29 +127,105 @@ export function addXp(s, n) {
 export function xpProgress(s) {
   const cur = C.LEVELS[s.level - 1] ?? 0, next = C.LEVELS[s.level];
   if (next === undefined) return { level: s.level, frac: 1, have: s.xp - cur, need: 0, max: true };
-  return { level: s.level, frac: Math.min(1, (s.xp - cur) / (next - cur)), have: s.xp - cur, need: next - cur, max: false };
+  return { level: s.level, frac: Math.max(0, Math.min(1, (s.xp - cur) / (next - cur))), have: Math.max(0, s.xp - cur), need: next - cur, max: false };
+}
+
+export function roadmap(s) {
+  const out = [];
+  for (let l = 2; l <= C.MAX_LEVEL; l++) out.push({ level: l, reached: s.level >= l, reward: C.levelReward(l), unlocks: levelUnlocks(l) });
+  return out;
 }
 
 // ---------- Saatgut ----------
 export function seedStatus(s, id) {
   const d = C.SEEDS[id];
   if (!d) return { available: false, reason: ERR.unknown };
-  if (d.rare && !s.rareUnlocked.includes(id)) return { available: false, reason: `Im Shop freischalten (${d.unlockCoins} Münzen)`, shop: true };
+  if (d.bred) return s.bred.includes(id) ? { available: true } : { available: false, reason: 'Im Gewächshaus züchten', breed: true };
+  if (d.rare) {
+    if (s.rareUnlocked.includes(id)) return { available: true };
+    if (s.level < d.level) return { available: false, reason: `Ab Level ${d.level}`, level: d.level };
+    return { available: false, reason: `Im Shop freischalten (${d.unlockCoins} Münzen)`, shop: true };
+  }
   if (s.level < d.level) return { available: false, reason: `Ab Level ${d.level}`, level: d.level };
   return { available: true };
 }
 
+// ---------- Wochenende & Events ----------
+export const isWeekend = (now) => { const d = new Date(now).getDay(); return d === 0 || d === 6; };
+
+function eventRange(ev, year) {
+  const [sm, sd] = ev.start.split('-').map(Number), [em, ed] = ev.end.split('-').map(Number);
+  return { start: new Date(year, sm - 1, sd, 0, 0, 0).getTime(), end: new Date(year, em - 1, ed, 23, 59, 59, 999).getTime() };
+}
+
+export function activeEvent(now) {
+  const y = new Date(now).getFullYear();
+  for (const ev of C.EVENTS) { const r = eventRange(ev, y); if (now >= r.start && now <= r.end) return { ...ev, ...r, year: y }; }
+  return null;
+}
+
+export function upcomingEvents(now, n = 3) {
+  const y = new Date(now).getFullYear(), list = [];
+  for (const ev of C.EVENTS) for (const yy of [y, y + 1]) { const r = eventRange(ev, yy); if (r.start > now) { list.push({ ...ev, ...r, year: yy }); break; } }
+  return list.sort((a, b) => a.start - b.start).slice(0, n);
+}
+
+export function ensureEvent(s, now) {
+  const ev = activeEvent(now);
+  if (!ev) return null;
+  if (s.event.id !== ev.id || s.event.year !== ev.year) s.event = { id: ev.id, year: ev.year, tokens: 0, total: 0, claimed: [] };
+  return ev;
+}
+
+export function eventTokensFor(reward) { return Math.min(6, 1 + Math.floor(reward / 60)); }
+
+export function eventInfo(s, now) {
+  const ev = ensureEvent(s, now);
+  if (!ev) return { active: null, upcoming: upcomingEvents(now) };
+  const milestones = ev.milestones.map((m, i) => ({ ...m, i, reached: s.event.total >= m.at, claimed: s.event.claimed.includes(i) }));
+  return { active: ev, tokens: s.event.tokens, total: s.event.total, milestones, claimable: milestones.filter((m) => m.reached && !m.claimed).length, upcoming: upcomingEvents(now) };
+}
+
+export function claimEventMilestone(s, idx, now) {
+  const ev = ensureEvent(s, now);
+  if (!ev) return err('invalid', { message: 'Gerade läuft kein Event.' });
+  const m = ev.milestones[idx];
+  if (!m) return err('invalid');
+  if (s.event.claimed.includes(idx)) return err('claimed');
+  if (s.event.total < m.at) return err('notDone', { message: `Dafür brauchst du ${m.at} ${ev.token}.` });
+  s.event.claimed.push(idx);
+  const r = { ...m.reward };
+  if (r.skin && s.skins.includes(r.skin)) { r.coins = (r.coins || 0) + 300; delete r.skin; }
+  const levelUps = grant(s, r);
+  return { ok: true, reward: r, levelUps };
+}
+
+export function buyEventItem(s, id, now) {
+  const ev = ensureEvent(s, now);
+  if (!ev) return err('invalid', { message: 'Gerade läuft kein Event.' });
+  const it = ev.shop.find((x) => x.id === id);
+  if (!it) return err('invalid');
+  if (it.deco && s.deco.includes(it.deco)) return err('owned');
+  if (s.event.tokens < it.price) return err('noTokens', { message: `Dir fehlen ${it.price - s.event.tokens} ${ev.token}.` });
+  s.event.tokens -= it.price;
+  grant(s, { items: it.items, deco: it.deco });
+  return { ok: true };
+}
+
 // ---------- Beete ----------
+export const growTime = (b, seedId) => Math.round(C.SEEDS[seedId].growMs * (b.sprinkler ? C.SPRINKLER.speed : 1));
+
 export function bedInfo(s, i, now) {
   const b = s.beds[i];
   if (!b) return null;
-  if (b.locked) return { i, locked: true, price: C.BED_UNLOCK_COST[i] };
-  if (!b.seed) return { i, empty: true };
-  const d = C.SEEDS[b.seed];
-  const p = Math.max(0, Math.min(1, (now - b.plantedAt) / d.growMs));
+  const base = { i, lvl: b.lvl, sprinkler: b.sprinkler };
+  if (b.locked) { const u = C.BED_UNLOCK[i]; return { ...base, locked: true, price: u.cost, needLevel: s.level < u.level ? u.level : 0 }; }
+  if (!b.seed) return { ...base, empty: true };
+  const dur = b.dur || growTime(b, b.seed);
+  const p = Math.max(0, Math.min(1, (now - b.plantedAt) / dur));
   let stage = 0;
   for (let k = 0; k < C.GROWTH_STAGE_AT.length; k++) if (p >= C.GROWTH_STAGE_AT[k]) stage = k;
-  return { i, seed: b.seed, progress: p, stage, ready: p >= 1, remaining: Math.max(0, d.growMs - (now - b.plantedAt)), golden: b.golden && p >= 1, var: b.var };
+  return { ...base, seed: b.seed, progress: p, stage, ready: p >= 1, remaining: Math.max(0, dur - (now - b.plantedAt)), shiny: b.shiny && p >= 1, shinyHidden: b.shiny, var: b.var };
 }
 
 export function plant(s, i, seedId, now, rand = Math.random) {
@@ -114,10 +236,12 @@ export function plant(s, i, seedId, now, rand = Math.random) {
   const d = C.SEEDS[seedId];
   if (!d) return err('unknown');
   const st = seedStatus(s, seedId);
-  if (!st.available) return err('seedLocked', { message: `${d.name}: ${st.reason}.` });
-  if (!spend(s, d.cost)) return noCoins(s, d.cost, d.name);
-  b.seed = seedId; b.plantedAt = now; b.golden = rand() < C.GOLDEN_CHANCE; b.var = Math.floor(rand() * 1000);
+  if (!st.available) return err('seedLocked', { message: `${d.name.replace(/­/g, '')}: ${st.reason}.` });
+  if (!spend(s, d.cost)) return noCoins(s, d.cost, d.name.replace(/­/g, ''));
+  const chance = (C.SHINY_CHANCE + C.BED_LEVELS[b.lvl - 1].shiny) * (isWeekend(now) ? C.WEEKEND_BONUS.shinyFactor : 1);
+  b.seed = seedId; b.plantedAt = now; b.dur = growTime(b, seedId); b.shiny = rand() < chance; b.var = Math.floor(rand() * 1000);
   s.stats.planted++; s.tasks.progress.plant++;
+  track(s, 'plant', seedId);
   if (s.tutorial < 1) s.tutorial = 1;
   return { ok: true, seed: seedId, cost: d.cost };
 }
@@ -127,29 +251,207 @@ export function harvest(s, i, now) {
   if (!b) return err('invalid');
   if (b.locked) return err('locked');
   if (!b.seed) return err('empty');
-  const d = C.SEEDS[b.seed];
-  if (now - b.plantedAt < d.growMs) return err('notReady', { remaining: d.growMs - (now - b.plantedAt) });
-  const golden = !!b.golden, seed = b.seed;
-  const reward = d.reward * (golden ? C.GOLDEN_MULTIPLIER : 1);
-  const xp = d.xp * (golden ? 2 : 1);
-  b.seed = null; b.plantedAt = 0; b.golden = false;
+  const d = C.SEEDS[b.seed], dur = b.dur || growTime(b, b.seed);
+  if (now - b.plantedAt < dur) return err('notReady', { remaining: dur - (now - b.plantedAt) });
+  const shiny = !!b.shiny, seed = b.seed;
+  const reward = Math.round(d.reward * C.BED_LEVELS[b.lvl - 1].mult * (shiny ? C.SHINY_MULTIPLIER : 1));
+  const xp = d.xp * (shiny ? 2 : 1);
+  b.seed = null; b.plantedAt = 0; b.dur = 0; b.shiny = false;
   addCoins(s, reward);
-  const entry = (s.collection[seed] ||= { count: 0, golden: 0 });
-  entry.count++; if (golden) { entry.golden++; s.stats.golden++; }
+  const entry = (s.collection[seed] ||= { count: 0, shiny: 0 });
+  entry.count++; if (shiny) { entry.shiny++; s.stats.shiny++; track(s, 'shiny', seed); }
   s.stats.harvested++; s.tasks.progress.harvest++;
+  track(s, 'harvest', seed);
+  let tokens = 0;
+  const ev = ensureEvent(s, now);
+  if (ev) { tokens = eventTokensFor(reward); s.event.tokens += tokens; s.event.total += tokens; }
   if (s.tutorial < 2) s.tutorial = 2;
   const levelUps = addXp(s, xp);
-  return { ok: true, seed, reward, xp, golden, levelUps };
+  return { ok: true, seed, reward, xp, shiny, tokens, levelUps };
 }
 
 export function unlockBed(s, i) {
   const b = s.beds[i];
   if (!b) return err('invalid');
   if (!b.locked) return err('owned');
-  const price = C.BED_UNLOCK_COST[i];
-  if (!spend(s, price)) return noCoins(s, price, 'dieses Beet');
+  const u = C.BED_UNLOCK[i];
+  if (s.level < u.level) return needLevel(u.level, 'Dieses Beet');
+  if (!spend(s, u.cost)) return noCoins(s, u.cost, 'dieses Beet');
   b.locked = false;
-  return { ok: true, price };
+  return { ok: true, price: u.cost };
+}
+
+export function buySprinkler(s, i, now) {
+  const b = s.beds[i];
+  if (!b || b.locked) return err('locked');
+  if (b.sprinkler) return err('owned');
+  if (s.level < C.SPRINKLER.level) return needLevel(C.SPRINKLER.level, 'Die Bewässerung');
+  if (!spend(s, C.SPRINKLER.cost)) return noCoins(s, C.SPRINKLER.cost, 'die Bewässerung');
+  if (b.seed) {
+    const old = b.dur || growTime(b, b.seed), p = Math.min(1, (now - b.plantedAt) / old);
+    b.sprinkler = true;
+    b.dur = growTime(b, b.seed);
+    b.plantedAt = now - p * b.dur;
+  } else b.sprinkler = true;
+  return { ok: true };
+}
+
+export function upgradeBed(s, i) {
+  const b = s.beds[i];
+  if (!b || b.locked) return err('locked');
+  if (b.lvl >= C.BED_LEVELS.length) return err('maxLevel');
+  const next = C.BED_LEVELS[b.lvl];
+  if (s.level < next.level) return needLevel(next.level, `Das ${next.name}`);
+  if (!spend(s, next.cost)) return noCoins(s, next.cost, `das ${next.name}`);
+  b.lvl++;
+  return { ok: true, name: next.name, lvl: b.lvl };
+}
+
+// ---------- Gartenbedarf ----------
+export function buyItem(s, id, pack = false) {
+  const d = C.ITEMS[id];
+  if (!d) return err('invalid');
+  if (s.level < d.level) return needLevel(d.level, d.name);
+  const [n, price] = pack && d.pack ? d.pack : [1, d.price];
+  if (!spend(s, price)) return noCoins(s, price, d.name);
+  s.items[id] += n;
+  return { ok: true, n };
+}
+
+export function useItem(s, id, i, now) {
+  if (!C.ITEMS[id]) return err('invalid');
+  if (!s.items[id]) return err('noItem');
+  if (id === 'boost') {
+    const job = s.greenhouse.job;
+    if (!job) return err('noJob');
+    if (now - job.start >= job.dur) return err('invalid', { message: 'Die Züchtung ist schon fertig.' });
+    job.start = now - job.dur;
+  } else {
+    const b = s.beds[i];
+    if (!b || b.locked || !b.seed) return err('notGrowing');
+    const dur = b.dur || growTime(b, b.seed), done = now - b.plantedAt >= dur;
+    if (id === 'lucky') {
+      if (b.shiny) return err('invalid', { message: 'Diese Blume wird schon eine Funkelblüte.' });
+      b.shiny = true;
+    } else {
+      if (done) return err('invalid', { message: 'Die Blume ist schon erntereif.' });
+      if (id === 'fert') b.plantedAt = Math.max(now - dur, b.plantedAt - dur * 0.5);
+      if (id === 'turbo') b.plantedAt = now - dur;
+    }
+  }
+  s.items[id]--;
+  s.stats.itemsUsed++;
+  track(s, 'useItem', id);
+  return { ok: true };
+}
+
+// ---------- Gewächshaus & Zucht ----------
+export function unlockGreenhouse(s) {
+  if (s.greenhouse.unlocked) return err('owned');
+  if (s.level < C.GREENHOUSE.level) return needLevel(C.GREENHOUSE.level, 'Das Gewächshaus');
+  if (!spend(s, C.GREENHOUSE.cost)) return noCoins(s, C.GREENHOUSE.cost, 'das Gewächshaus');
+  s.greenhouse.unlocked = true;
+  return { ok: true };
+}
+
+export function findRecipe(a, b) {
+  return C.RECIPES.find((r) => (r.a === a && r.b === b) || (r.a === b && r.b === a)) || null;
+}
+
+export const discovered = (s, id) => (s.collection[id]?.count || 0) > 0;
+
+export function breedCheck(s, a, b, night) {
+  if (!s.greenhouse.unlocked) return err('invalid', { message: 'Restauriere zuerst das Gewächshaus.' });
+  if (s.greenhouse.job) return err('busy');
+  if (!a || !b) return err('invalid', { message: 'Wähle zwei Blumen aus.' });
+  if (!discovered(s, a) || !discovered(s, b)) return err('invalid', { message: 'Du kannst nur Blumen kreuzen, die du schon geerntet hast.' });
+  const r = findRecipe(a, b);
+  if (!r) return err('noRecipe');
+  const d = C.SEEDS[r.result];
+  if (s.bred.includes(r.result)) return err('owned', { message: `${d.name.replace(/­/g, '')} hast du schon gezüchtet.`, recipe: r });
+  if (s.level < d.level) return needLevel(d.level, `Die Züchtung ${d.name.replace(/­/g, '')}`);
+  if (r.night && !night) return err('night', { message: 'Diese Kreuzung gelingt nur nachts. Warte auf die Nacht oder stelle in den Einstellungen „Immer Nacht“ ein.', recipe: r });
+  return { ok: true, recipe: r };
+}
+
+export function startBreeding(s, a, b, now, night) {
+  const c = breedCheck(s, a, b, night);
+  if (!c.ok) return c;
+  const r = c.recipe;
+  if (!spend(s, r.cost)) return noCoins(s, r.cost, 'diese Züchtung');
+  s.greenhouse.job = { a, b, result: r.result, start: now, dur: r.ms };
+  return { ok: true, result: r.result };
+}
+
+export function breedingInfo(s, now) {
+  const job = s.greenhouse.job;
+  if (!job) return null;
+  const p = Math.max(0, Math.min(1, (now - job.start) / job.dur));
+  return { ...job, progress: p, ready: p >= 1, remaining: Math.max(0, job.dur - (now - job.start)) };
+}
+
+export function collectBreeding(s, now) {
+  const info = breedingInfo(s, now);
+  if (!info) return err('noJob');
+  if (!info.ready) return err('notReady', { message: 'Die Züchtung braucht noch etwas Zeit.' });
+  s.greenhouse.job = null;
+  if (!s.bred.includes(info.result)) s.bred.push(info.result);
+  s.stats.bred++;
+  const d = C.SEEDS[info.result];
+  const levelUps = addXp(s, 20 + d.xp);
+  return { ok: true, seed: info.result, xp: 20 + d.xp, levelUps };
+}
+
+// ---------- Story ----------
+function currentQuest(s) {
+  const ch = C.STORY[s.story.ch];
+  return ch ? ch.quests[s.story.q] : null;
+}
+
+function track(s, type, id, amount = 1) {
+  const q = s.story && currentQuest(s);
+  if (!q || q.goal.type !== type) return;
+  if (q.goal.seed && q.goal.seed !== id) return;
+  if (q.goal.item && q.goal.item !== id) return;
+  s.story.count += amount;
+}
+
+function questProgress(s, goal) {
+  switch (goal.type) {
+    case 'plant': case 'harvest': case 'useItem': case 'shiny': case 'earn': return [Math.min(goal.n, s.story.count), goal.n];
+    case 'level': return [Math.min(goal.n, s.level), goal.n];
+    case 'beds': return [Math.min(goal.n, s.beds.filter((b) => !b.locked).length), goal.n];
+    case 'deco': return [Math.min(goal.n, s.deco.length), goal.n];
+    case 'greenhouse': return [s.greenhouse.unlocked ? 1 : 0, 1];
+    case 'breed': return [s.bred.includes(goal.seed) ? 1 : 0, 1];
+    case 'rare': return [s.rareUnlocked.includes(goal.seed) ? 1 : 0, 1];
+    case 'sprinkler': return [Math.min(goal.n, s.beds.filter((b) => b.sprinkler).length), goal.n];
+    case 'bedLevel': return [Math.min(goal.n, s.beds.filter((b) => b.lvl >= goal.lvl).length), goal.n];
+    case 'animal': return [s.seenAnimals.includes(goal.id) ? 1 : 0, 1];
+    default: return [0, 1];
+  }
+}
+
+export function storyStatus(s) {
+  const chapter = C.STORY[s.story.ch];
+  if (!chapter) return { finished: true, chapters: C.STORY.length };
+  const quest = chapter.quests[s.story.q];
+  const [have, need] = questProgress(s, quest.goal);
+  return { finished: false, ch: s.story.ch, q: s.story.q, chapter, quest, have, need, done: have >= need, showIntro: s.story.intro < s.story.ch, chapters: C.STORY.length };
+}
+
+export function markIntroSeen(s) { s.story.intro = Math.max(s.story.intro, s.story.ch); }
+
+export function claimQuest(s) {
+  const st = storyStatus(s);
+  if (st.finished) return err('invalid', { message: 'Alle Kapitel sind abgeschlossen.' });
+  if (!st.done) return err('notDone');
+  const levelUps = grant(s, st.quest.reward);
+  s.story.q++;
+  s.story.count = 0;
+  let chapterDone = false;
+  if (s.story.q >= st.chapter.quests.length) { s.story.ch++; s.story.q = 0; chapterDone = true; }
+  return { ok: true, reward: st.quest.reward, say: st.quest.say, chapterDone, chapterTitle: st.chapter.title, levelUps };
 }
 
 // ---------- Shop (nur Spielwährung) ----------
@@ -157,6 +459,7 @@ export function unlockRareSeed(s, id) {
   const d = C.SEEDS[id];
   if (!d || !d.rare) return err('invalid');
   if (s.rareUnlocked.includes(id)) return err('owned');
+  if (s.level < d.level) return needLevel(d.level, d.name);
   if (!spend(s, d.unlockCoins)) return noCoins(s, d.unlockCoins, d.name);
   s.rareUnlocked.push(id);
   return { ok: true };
@@ -164,7 +467,7 @@ export function unlockRareSeed(s, id) {
 
 export function buyDeco(s, id) {
   const d = C.DECO[id];
-  if (!d) return err('invalid');
+  if (!d || !d.price) return err('invalid');
   if (s.deco.includes(id)) return err('owned');
   if (!spend(s, d.price)) return noCoins(s, d.price, d.name);
   s.deco.push(id);
@@ -231,10 +534,11 @@ const SETTING_RULES = {
   soundVol: (v) => Number.isFinite(v) && v >= 0 && v <= 1,
 };
 
+const CYCLE_OFFSET = 0.04; // Spiel startet am frühen Morgen
+
 export function setSetting(s, key, value, now) {
   if (!SETTING_RULES[key] || !SETTING_RULES[key](value)) return err('invalid');
   if (key === 'cycleMin') {
-    // Phase beibehalten, nur Geschwindigkeit ändern
     const p = cyclePhase(s, now);
     s.settings.cycleMin = value;
     s.settings.cycleEpoch = now - (p - CYCLE_OFFSET) * value * 60_000;
@@ -243,8 +547,6 @@ export function setSetting(s, key, value, now) {
   s.settings[key] = value;
   return { ok: true };
 }
-
-const CYCLE_OFFSET = 0.04; // Spiel startet am frühen Morgen
 
 export function cyclePhase(s, now) {
   const st = s.settings;
@@ -264,7 +566,7 @@ export function migrate(raw, now = Date.now()) {
     s.coins = Math.max(0, Math.floor(Number(raw.coins) || 0)) || base.coins;
     if (raw.col && typeof raw.col === 'object') for (const [k, n] of Object.entries(raw.col)) {
       const id = k === 'sun' ? 'sunflower' : k === 'lotus' ? 'orchid' : k;
-      if (C.SEEDS[id]) s.collection[id] = { count: Math.max(0, Math.floor(n) || 0), golden: 0 };
+      if (C.SEEDS[id]) s.collection[id] = { count: Math.max(0, Math.floor(n) || 0), shiny: 0 };
     }
     if (Array.isArray(raw.own)) { if (raw.own.includes('rose')) s.rareUnlocked.push('rose'); if (raw.own.includes('lotus')) s.rareUnlocked.push('orchid'); }
     if (Array.isArray(raw.deco) && raw.deco.includes('lantern')) s.deco.push('lantern');
@@ -275,6 +577,20 @@ export function migrate(raw, now = Date.now()) {
     }
     return { state: repair(s, now), migrated: true };
   }
+  if (raw.v === 2) {
+    // Version 2 -> 3: goldene Blüten heißen jetzt Funkelblüten, 6 neue Beete, neue Systeme
+    const s = { ...base, ...raw };
+    s.beds = Array.isArray(raw.beds) ? raw.beds.map((b) => ({ ...newBed(0), ...b, shiny: !!(b && b.golden), lvl: 1, sprinkler: false })) : base.beds;
+    s.collection = {};
+    if (raw.collection && typeof raw.collection === 'object') for (const [k, e] of Object.entries(raw.collection)) s.collection[k] = typeof e === 'number' ? e : { count: e?.count, shiny: e?.golden ?? e?.shiny };
+    s.stats = { ...base.stats, ...(raw.stats || {}), shiny: raw.stats?.golden ?? 0 };
+    s.settings = { ...base.settings, ...(raw.settings || {}) };
+    s.activeSkin = { ...base.activeSkin, ...(raw.activeSkin || {}) };
+    // Fortschritt in der Story grob übernehmen: erfahrene Spieler starten nicht bei null
+    s.story = { ...base.story };
+    s.v = SAVE_VERSION;
+    return { state: repair(s, now), migrated: true };
+  }
   if (raw.v === SAVE_VERSION) return { state: repair({ ...base, ...raw, settings: { ...base.settings, ...(raw.settings || {}) }, stats: { ...base.stats, ...(raw.stats || {}) }, activeSkin: { ...base.activeSkin, ...(raw.activeSkin || {}) } }, now), migrated: false };
   return { state: base, migrated: false, discarded: true };
 }
@@ -283,45 +599,73 @@ export function migrate(raw, now = Date.now()) {
 export function repair(s, now) {
   const base = newState(now);
   const num = (v, d, min = 0) => (Number.isFinite(v) && v >= min ? Math.floor(v) : d);
+  const obj = (v) => v && typeof v === 'object' && !Array.isArray(v);
   s.coins = num(s.coins, base.coins);
+  s.moves = num(s.moves, 0);
   s.xp = num(s.xp, 0);
-  s.level = Math.min(C.LEVELS.length, Math.max(1, num(s.level, 1, 1)));
-  if (!Array.isArray(s.beds) || s.beds.length !== C.BED_COUNT) s.beds = base.beds;
-  s.beds = s.beds.map((b, i) => {
-    const ok = b && typeof b === 'object';
+  s.level = Math.min(C.MAX_LEVEL, Math.max(1, num(s.level, 1, 1)));
+  // Level passend zur Erfahrung (z.B. nach Änderung der Levelkurve)
+  while (s.level < C.MAX_LEVEL && s.xp >= C.LEVELS[s.level]) s.level++;
+  const beds = Array.isArray(s.beds) ? s.beds.slice(0, C.BED_COUNT) : [];
+  while (beds.length < C.BED_COUNT) beds.push(newBed(beds.length));
+  s.beds = beds.map((b, i) => {
+    const ok = obj(b);
     const seed = ok && C.SEEDS[b.seed] ? b.seed : null;
-    return { locked: ok ? !!b.locked : i >= C.STARTING_BEDS, seed, plantedAt: seed ? num(b.plantedAt, now) : 0, golden: seed ? !!b.golden : false, var: ok ? num(b.var, 0) : 0 };
+    const bed = {
+      locked: i < C.STARTING_BEDS ? false : ok ? !!b.locked : true,
+      seed, plantedAt: seed ? num(b.plantedAt, now) : 0, dur: 0,
+      shiny: seed ? !!(b.shiny ?? b.golden) : false, var: ok ? num(b.var, 0) : 0,
+      lvl: ok ? Math.min(C.BED_LEVELS.length, Math.max(1, num(b.lvl, 1, 1))) : 1,
+      sprinkler: ok ? !!b.sprinkler : false,
+    };
+    if (seed) bed.dur = num(b.dur, 0, 1) || growTime(bed, seed);
+    return bed;
   });
-  for (const k of ['rareUnlocked', 'deco', 'skins', 'seenAnimals']) if (!Array.isArray(s[k])) s[k] = [];
-  s.rareUnlocked = s.rareUnlocked.filter((k) => C.SEEDS[k]?.rare);
-  s.deco = s.deco.filter((k) => C.DECO[k]);
-  s.skins = s.skins.filter((k) => C.SKINS[k]);
-  const col = s.collection && typeof s.collection === 'object' ? s.collection : {};
+  for (const k of ['rareUnlocked', 'deco', 'skins', 'seenAnimals', 'bred']) if (!Array.isArray(s[k])) s[k] = [];
+  s.rareUnlocked = [...new Set(s.rareUnlocked.filter((k) => C.SEEDS[k]?.rare))];
+  s.bred = [...new Set(s.bred.filter((k) => C.SEEDS[k]?.bred))];
+  s.deco = [...new Set(s.deco.filter((k) => C.DECO[k]))];
+  s.skins = [...new Set(s.skins.filter((k) => C.SKINS[k]))];
+  s.seenAnimals = [...new Set(s.seenAnimals.filter((k) => C.ANIMALS[k]))];
+  const col = obj(s.collection) ? s.collection : {};
   s.collection = {};
   for (const [k, e] of Object.entries(col)) {
     if (!C.SEEDS[k]) continue;
-    if (typeof e === 'number') s.collection[k] = { count: num(e, 0), golden: 0 };
-    else if (e && typeof e === 'object') s.collection[k] = { count: num(e.count, 0), golden: num(e.golden, 0) };
+    if (typeof e === 'number') s.collection[k] = { count: num(e, 0), shiny: 0 };
+    else if (obj(e)) s.collection[k] = { count: num(Number(e.count), 0), shiny: num(Number(e.shiny ?? e.golden), 0) };
   }
-  const st = s.stats && typeof s.stats === 'object' ? s.stats : {};
+  const st = obj(s.stats) ? s.stats : {};
   s.stats = {};
   for (const k of Object.keys(base.stats)) s.stats[k] = num(Number(st[k]), 0);
-  const skins = s.activeSkin && typeof s.activeSkin === 'object' ? s.activeSkin : {};
+  const skins = obj(s.activeSkin) ? s.activeSkin : {};
   s.activeSkin = {};
   for (const animal of Object.keys(base.activeSkin)) {
     const id = skins[animal];
     s.activeSkin[animal] = id && s.skins.includes(id) && C.SKINS[id]?.animal === animal ? id : 'default';
   }
+  const items = obj(s.items) ? s.items : {};
+  s.items = {};
+  for (const k of C.ITEM_ORDER) s.items[k] = num(Number(items[k]), 0);
+  const gh = obj(s.greenhouse) ? s.greenhouse : {};
+  const job = obj(gh.job) && C.SEEDS[gh.job.result]?.bred ? { a: gh.job.a, b: gh.job.b, result: gh.job.result, start: num(gh.job.start, now), dur: num(gh.job.dur, 60_000, 1) } : null;
+  s.greenhouse = { unlocked: !!gh.unlocked, job: gh.unlocked ? job : null };
+  const story = obj(s.story) ? s.story : {};
+  s.story = { ch: Math.min(C.STORY.length, num(story.ch, 0)), q: num(story.q, 0), count: num(Number(story.count), 0), intro: Number.isFinite(story.intro) ? Math.floor(story.intro) : -1 };
+  if (C.STORY[s.story.ch] && s.story.q >= C.STORY[s.story.ch].quests.length) s.story.q = 0;
+  const ev = obj(s.event) ? s.event : {};
+  s.event = { id: typeof ev.id === 'string' ? ev.id : null, year: num(ev.year, 0), tokens: num(Number(ev.tokens), 0), total: num(Number(ev.total), 0), claimed: Array.isArray(ev.claimed) ? ev.claimed.filter(Number.isInteger) : [] };
   if (!C.SEEDS[s.selectedSeed]) s.selectedSeed = 'daisy';
-  if (!s.tasks || typeof s.tasks !== 'object' || !s.tasks.progress || typeof s.tasks.progress !== 'object') s.tasks = base.tasks;
+  if (!obj(s.tasks) || !obj(s.tasks.progress)) s.tasks = base.tasks;
   for (const k of Object.keys(base.tasks.progress)) s.tasks.progress[k] = num(Number(s.tasks.progress[k]), 0);
   if (!Array.isArray(s.tasks.claimed)) s.tasks.claimed = [];
   if (typeof s.tasks.date !== 'string') s.tasks.date = base.tasks.date;
   if (s.dailyGift !== null && typeof s.dailyGift !== 'string') s.dailyGift = null;
   s.tutorial = Math.min(2, num(s.tutorial, 0));
+  if (!obj(s.settings)) s.settings = { ...base.settings };
   for (const [k, rule] of Object.entries(SETTING_RULES)) if (!rule(s.settings[k])) s.settings[k] = base.settings[k];
   if (!Number.isFinite(s.settings.cycleEpoch)) s.settings.cycleEpoch = now;
   ensureDaily(s, now);
+  delete s.golden;
   s.v = SAVE_VERSION;
   return s;
 }
