@@ -2,6 +2,10 @@
 import { kvConfigured } from './_lib/kv.js';
 import { send, fail, readJson, cookies, sameOrigin, clientIp, sessionCookie, SESSION_COOKIE } from './_lib/http.js';
 import * as A from './_lib/accounts.js';
+import { isAdmin } from './_lib/admin.js';
+import { purgeUser } from './_lib/social.js';
+
+const pub = async (uid, user) => ({ ...A.publicUser(uid, user), admin: await isAdmin(uid) });
 
 const NOT_READY = 'Der Spiel-Server ist noch nicht fertig eingerichtet. Bitte versuche es später noch einmal.';
 
@@ -16,7 +20,7 @@ export default async function handler(req, res) {
       if (!s) return send(res, 200, { ok: true, user: null });
       let renewed = false;
       try { renewed = await A.renewSession(token); } catch { /* nicht schlimm */ }
-      return send(res, 200, { ok: true, user: A.publicUser(s.uid, s.user) }, renewed ? { 'Set-Cookie': sessionCookie(req, token) } : {});
+      return send(res, 200, { ok: true, user: await pub(s.uid, s.user) }, renewed ? { 'Set-Cookie': sessionCookie(req, token) } : {});
     }
     if (req.method !== 'POST') return fail(res, 405, 'method', 'Nicht erlaubt.', {});
     if (!sameOrigin(req)) return fail(res, 403, 'origin', 'Anfrage abgelehnt.');
@@ -31,7 +35,7 @@ export default async function handler(req, res) {
         const { uid, user } = await A.register(body);
         const remember = body.remember !== false;
         const t = await A.createSession(uid, remember);
-        return send(res, 201, { ok: true, user: A.publicUser(uid, user) }, { 'Set-Cookie': sessionCookie(req, t, remember) });
+        return send(res, 201, { ok: true, user: await pub(uid, user) }, { 'Set-Cookie': sessionCookie(req, t, remember) });
       }
       case 'login': {
         await A.rateLimit('login-ip', ip, 40, 900);
@@ -46,7 +50,7 @@ export default async function handler(req, res) {
         const { uid, user } = res1;
         const remember = body.remember !== false;
         const t = await A.createSession(uid, remember);
-        return send(res, 200, { ok: true, user: A.publicUser(uid, user) }, { 'Set-Cookie': sessionCookie(req, t, remember) });
+        return send(res, 200, { ok: true, user: await pub(uid, user) }, { 'Set-Cookie': sessionCookie(req, t, remember) });
       }
       case 'logout': {
         const s = await A.sessionUser(token);
@@ -58,6 +62,7 @@ export default async function handler(req, res) {
         if (!s) return fail(res, 401, 'not_logged_in', 'Bitte melde dich zuerst an.');
         await A.rateLimit('delete', s.uid, 8, 900);
         if (!(await A.verifyPassword(String(body.password ?? ''), s.user.pw))) return fail(res, 401, 'bad_password', 'Das Passwort stimmt nicht.');
+        try { await purgeUser(s.uid); } catch (e) { console.error('purge', e); }
         await A.deleteAccount(s.uid, s.user);
         return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, null) });
       }

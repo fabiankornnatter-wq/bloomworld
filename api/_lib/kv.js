@@ -49,6 +49,10 @@ if ARGV[4] ~= '1' and cur ~= tonumber(ARGV[1]) then return {0, cur} end
 redis.call('SET', KEYS[2], ARGV[2])
 redis.call('HSET', KEYS[1], 'rev', cur + 1, 'saveAt', ARGV[3], 'sv', ARGV[5])
 return {1, cur + 1}`;
+// Liest bis zu n Einträge vom Anfang einer Liste und entfernt sie in einem Schritt (Postfach)
+const POP_SCRIPT = `local r = redis.call('LRANGE', KEYS[1], 0, tonumber(ARGV[1]) - 1)
+if #r > 0 then redis.call('LTRIM', KEYS[1], #r, -1) end
+return r`;
 
 class UpstashKV {
   async req(path, body) {
@@ -79,6 +83,7 @@ class UpstashKV {
     const r = await this.cmd('EVAL', CAS_SCRIPT, 2, userKey, saveKey, base, data, now, force ? '1' : '0', version);
     return { code: Number(r[0]), ok: Number(r[0]) === 1, rev: Number(r[1]) };
   }
+  async popList(key, n) { return (await this.cmd('EVAL', POP_SCRIPT, 1, key, n)) || []; }
 }
 
 // ---------- Redis über TCP (RESP-Protokoll), ohne zusätzliche Pakete ----------
@@ -165,6 +170,7 @@ class TcpKV {
     const r = await this.cmd('EVAL', CAS_SCRIPT, 2, userKey, saveKey, base, data, now, force ? '1' : '0', version);
     return { code: Number(r[0]), ok: Number(r[0]) === 1, rev: Number(r[1]) };
   }
+  async popList(key, n) { return (await this.cmd('EVAL', POP_SCRIPT, 1, key, n)) || []; }
 }
 
 // Kleiner Ersatz für Redis – nur für lokale Tests
@@ -200,10 +206,33 @@ class MemoryKV {
       case 'SADD': { const s = has ? this.m.get(k) : new Set(); for (const x of a.slice(1)) s.add(String(x)); this.m.set(k, s); return 1; }
       case 'SREM': { if (has) for (const x of a.slice(1)) this.m.get(k).delete(String(x)); return 1; }
       case 'SMEMBERS': return has ? [...this.m.get(k)] : [];
+      case 'SISMEMBER': return has && this.m.get(k).has(String(a[1])) ? 1 : 0;
+      case 'SCARD': return has ? this.m.get(k).size : 0;
+      case 'EXISTS': return a.filter((x) => this.alive(String(x))).length;
+      case 'MGET': return a.map((x) => (this.alive(String(x)) ? this.m.get(String(x)) : null));
+      case 'INCRBY': { const v = (has ? Number(this.m.get(k)) : 0) + Number(a[1]); this.m.set(k, String(v)); return v; }
+      case 'HSETNX': { const h = has ? this.m.get(k) : new Map(); if (h.has(String(a[1]))) return 0; h.set(String(a[1]), String(a[2])); this.m.set(k, h); return 1; }
+      case 'HDEL': { if (!has) return 0; let c = 0; for (const f of a.slice(1)) if (this.m.get(k).delete(String(f))) c++; return c; }
+      case 'HEXISTS': return has && this.m.get(k).has(String(a[1])) ? 1 : 0;
+      case 'HLEN': return has ? this.m.get(k).size : 0;
+      case 'HMGET': return a.slice(1).map((f) => (has ? this.m.get(k).get(String(f)) ?? null : null));
+      case 'HINCRBY': { const h = has ? this.m.get(k) : new Map(); const v = Number(h.get(String(a[1])) || 0) + Number(a[2]); h.set(String(a[1]), String(v)); this.m.set(k, h); return v; }
+      case 'RPUSH': case 'LPUSH': { const l = has ? this.m.get(k) : []; const vals = a.slice(1).map(String); if (n === 'RPUSH') l.push(...vals); else l.unshift(...vals.reverse()); this.m.set(k, l); return l.length; }
+      case 'LLEN': return has ? this.m.get(k).length : 0;
+      case 'LRANGE': { if (!has) return []; const l = this.m.get(k); const len = l.length; let s0 = Number(a[1]), e0 = Number(a[2]); if (s0 < 0) s0 = Math.max(0, len + s0); if (e0 < 0) e0 = len + e0; return l.slice(s0, e0 + 1); }
+      case 'LTRIM': { if (!has) return 'OK'; const l = this.m.get(k); const len = l.length; let s0 = Number(a[1]), e0 = Number(a[2]); if (s0 < 0) s0 = Math.max(0, len + s0); if (e0 < 0) e0 = len + e0; this.m.set(k, l.slice(s0, e0 + 1)); return 'OK'; }
+      case 'LREM': { if (!has) return 0; const l = this.m.get(k); const v = String(a[2]); const before = l.length; this.m.set(k, l.filter((x) => x !== v)); return before - this.m.get(k).length; }
+      case 'SCAN': {
+        const mi = a.findIndex((x) => String(x).toUpperCase() === 'MATCH');
+        const pat = mi >= 0 ? String(a[mi + 1]) : '*';
+        const re = new RegExp('^' + pat.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+        return ['0', [...this.m.keys()].filter((x) => this.alive(x) && re.test(x))];
+      }
       default: throw new Error('MemoryKV: unbekannter Befehl ' + n);
     }
   }
   async pipe(cmds) { const out = []; for (const c of cmds) out.push(await this.cmd(...c)); return out; }
+  async popList(key, n) { const r = await this.cmd('LRANGE', key, 0, Number(n) - 1); if (r.length) await this.cmd('LTRIM', key, r.length, -1); return r; }
   async casSave(userKey, saveKey, base, data, now, force, version) {
     if (!this.alive(userKey)) return { code: -1, ok: false, rev: 0 };
     const cur = Number((await this.cmd('HGET', userKey, 'rev')) || 0);

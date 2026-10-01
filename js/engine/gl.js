@@ -375,6 +375,11 @@ export class Renderer {
 
   // Rendert ausgewählte Objekte in ein Bild (für Symbole in der Oberfläche)
   renderIcon(objects, camera, env, size = 128) {
+    return this.renderCanvas(objects, camera, env, size).toDataURL('image/png');
+  }
+
+  // Wie renderIcon, liefert aber eine Canvas (für Drehansichten ohne PNG-Umweg)
+  renderCanvas(objects, camera, env, size = 128) {
     const gl = this.gl, S = size * 2;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -403,6 +408,6 @@ export class Renderer {
     const out = document.createElement('canvas'); out.width = out.height = size;
     const octx = out.getContext('2d'); octx.imageSmoothingQuality = 'high';
     octx.drawImage(big, 0, 0, size, size);
-    return out.toDataURL('image/png');
+    return out;
   }
 }

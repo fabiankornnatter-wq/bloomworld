@@ -33,6 +33,33 @@ export const SEEDS = {
 };
 export const SEED_ORDER = ['daisy', 'tulip', 'cornflower', 'sunflower', 'lavender', 'rose', 'poppy', 'orchid', 'lily', 'hydrangea',
   'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'crystalRose'];
+// Kurzbeschreibungen für die Detailansicht in der Sammlung
+export const FLOWER_INFO = {
+  daisy: 'Klein, fröhlich und unverwüstlich. Das Gänseblümchen wächst blitzschnell und braucht nie Wasser – perfekt für den Anfang.',
+  tulip: 'Ein schlanker Kelch in kräftigem Pink. Tulpen sind die Eltern vieler bunter Züchtungen.',
+  cornflower: 'Leuchtend blau mit fransigen Blütenblättern – früher wuchs sie wild zwischen den Kornfeldern.',
+  sunflower: 'Dreht ihr großes Gesicht immer zur Sonne. Sie braucht einmal Wasser, um ihre volle Größe zu erreichen.',
+  lavender: 'Duftende violette Ähren, die Bienen und Schmetterlinge anlocken. Ein Klassiker im Bauerngarten.',
+  rose: 'Die Königin der Blumen. Ophelias Lieblingsblume und Ausgangspunkt der berühmtesten Züchtungen.',
+  poppy: 'Hauchdünne rote Blütenblätter wie Seidenpapier, mit einem dunklen Herz in der Mitte.',
+  orchid: 'Exotisch und anspruchsvoll: Die Orchidee möchte zweimal gegossen werden, dankt es aber mit hohem Ertrag.',
+  lily: 'Sechs elegante Blütenblätter und lange Staubgefäße – Lilien sind die Grundlage für Eis- und Drachenlilie.',
+  hydrangea: 'Hunderte kleine Blüten bilden eine große Kugel. Durstig, aber eine der ertragreichsten Gartenblumen.',
+  rainbowTulip: 'Jedes Blütenblatt in einer anderen Farbe. Die erste Züchtung jeder Gärtnerin und jedes Gärtners.',
+  sunTulip: 'Gelb mit feurig-orangen Spitzen – als hätte die Sonne selbst die Tulpe bemalt.',
+  skyCornflower: 'So hellblau wie ein wolkenloser Sommerhimmel und kein bisschen durstig.',
+  goldRose: 'Ihre Blüten schimmern wie echtes Gold. Ein Zeichen für großes gärtnerisches Können.',
+  firePoppy: 'Glüht in Orange und Rot wie ein Lagerfeuer am Abend.',
+  moonOrchid: 'Silbrig-violett und geheimnisvoll. Man sagt, sie leuchtet in klaren Vollmondnächten.',
+  northRose: 'Violett und Rot verschwimmen wie Polarlichter am Nachthimmel.',
+  blackRose: 'Tiefdunkel, fast schwarz. Sie entsteht nur, wenn die Kreuzung bei Nacht gelingt.',
+  iceLily: 'Kühl schimmernd wie Raureif. Ihre Blütenblätter wirken wie aus Eis geschnitzt.',
+  rainbowHydrangea: 'Eine Blütenkugel in allen Farben des Regenbogens – jede Blüte ein kleines Kunstwerk.',
+  starRose: 'Golden glühend mit sternförmigem Schimmer. Nur Meistergärtner haben sie je gesehen.',
+  dragonLily: 'Feurig rot mit dunklen Spitzen – wild, stolz und nur bei Nacht zu züchten.',
+  crystalRose: 'Klar wie Kristall und funkelnd im Licht. Die Krönung jeder Sammlung.',
+};
+
 // Wann eine Blume Durst bekommt (Anteil der Wachstumszeit)
 export const WATER_AT = { 1: [0.45], 2: [0.33, 0.66] };
 export const BASE_SEEDS = SEED_ORDER.filter((k) => !SEEDS[k].bred);
@@ -55,6 +82,18 @@ export const RECIPES = [
   { a: 'starRose', b: 'iceLily', result: 'crystalRose', diff: 5, cost: 900, ms: 35 * M, hint: 'Die Krönung jeder Gärtnerin, jedes Gärtners.' },
 ];
 export const GREENHOUSE = { cost: 400, level: 4 };
+
+// ---------- Freunde ----------
+// Geschenke: einmal am Tag pro Freund, kostenlos für den Schenkenden
+export const GIFTS = {
+  rain:    { item: 'rain', n: 1, label: 'Regenwolke' },
+  fert:    { item: 'fert', n: 2, label: '2× Dünger' },
+  compost: { item: 'compost', n: 1, label: 'Kompost' },
+};
+export const GIFT_XP = 5;                 // Dank fürs Schenken
+export const HELP = { perDay: 5, coins: 5, xp: 3 };  // Blumen gießen bei Freunden: je Freund und Tag
+export const LIKE = { coins: 10 };        // „Gefällt mir“ für einen Garten: Belohnung für den Besitzer
+export const MAX_FRIENDS = 100;
 
 // Schwierigkeitsgrad der Züchtungen: Grund-Erfolgschance und wie oft jede Eltern-Blume
 // schon geerntet sein muss. Misslingt eine Kreuzung, gibt es einen Teil der Kosten zurück
@@ -178,7 +217,7 @@ export const DECO = {
   birdhouse:   { name: 'Vogelhaus',     price: 110, level: 2, size: [0.7, 0.7], desc: 'Ein Zuhause für Gartenvögel.' },
   bench:       { name: 'Gartenbank',    price: 120, level: 1, size: [1.9, 0.8], desc: 'Ein Platz zum Ausruhen.' },
   birdbath:    { name: 'Vogeltränke',   price: 150, level: 2, size: [1.2, 1.2], desc: 'Steinerne Tränke für Gartenbesucher.' },
-  beehive:     { name: 'Bienenstock',   price: 160, level: 6, size: [1.0, 1.0], desc: 'Fleißige Bienen bestäuben: +10 % Zuchterfolg.' },
+  beehive:     { name: 'Bienenstock',   price: 160, level: 6, size: [1.0, 1.0], desc: 'Fleißige Bienen summen um die Blüten.' },
   pumpkins:    { name: 'Herbstkürbisse', price: 180, level: 1, size: [1.5, 1.4], desc: 'Saison-Deko für den Herbst.', seasonal: 'autumn' },
   wheelbarrow: { name: 'Schubkarre',    price: 200, level: 3, size: [1.9, 0.8], desc: 'Voller Blumen.' },
   tableSet:    { name: 'Gartentisch',   price: 260, level: 4, size: [2.1, 2.1], desc: 'Tisch, zwei Stühle und ein Sonnenschirm.' },
@@ -188,7 +227,7 @@ export const DECO = {
   hoseReel:    { name: 'Schlauchwagen', price: 70,  level: 2, size: [0.9, 0.7], desc: 'Gartenschlauch auf der Trommel.' },
   rainBarrel:  { name: 'Regentonne',    price: 90,  level: 3, size: [0.9, 0.9], desc: 'Sammelt Regenwasser zum Gießen.' },
   compostBin:  { name: 'Kompostkiste',  price: 100, level: 4, size: [1.2, 1.2], desc: 'Aus Gartenabfällen wird gute Erde.' },
-  insectHotel: { name: 'Insektenhotel', price: 130, level: 4, size: [0.9, 0.6], desc: 'Wildbienen helfen mit: +5 % Zuchterfolg.' },
+  insectHotel: { name: 'Insektenhotel', price: 130, level: 4, size: [0.9, 0.6], desc: 'Zuhause für Wildbienen und Marienkäfer.' },
   stringLights: { name: 'Lichterkette', price: 220, level: 6, size: [2.4, 0.5], desc: 'Warme Lichter für gemütliche Abende.' },
   pumpkinLantern: { name: 'Kürbislaterne', size: [1.1, 1.1], desc: 'Exklusiv vom Herbstfest. Leuchtet nachts.', event: 'autumn' },
   leafPile:    { name: 'Laubhaufen', size: [1.6, 1.5], desc: 'Exklusiv vom Herbstfest.', event: 'autumn' },

@@ -10,7 +10,7 @@ const MSG = {
   timeout: 'Der Server antwortet gerade nicht. Bitte versuche es gleich noch einmal.',
 };
 
-async function call(path, { method = 'GET', body, keepalive = false, timeout = 15000 } = {}) {
+export async function call(path, { method = 'GET', body, keepalive = false, timeout = 15000 } = {}) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeout);
   try {

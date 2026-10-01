@@ -660,6 +660,61 @@ export class World {
     this.r.render(cam, { ...env, shadowCenter: [this.cam.target[0] * 0.5, 0, this.cam.target[2] * 0.5], shadowRadius: 17 }, this.time);
   }
 
+  // ---------- Drehansicht (Sammlung) ----------
+  // Liefert Einzelbilder einer Rundum-Ansicht; jedes Bild wird erst bei Bedarf gerendert.
+  turntable(kind, id, { shiny = false, stage = 3, frames = 48, size = 320 } = {}) {
+    const m = this.iconGeo(kind, id, { shiny, stage });
+    if (!m) return null;
+    const env = { ...environment(0.3), fogNear: 1e4, fogFar: 2e4, emis: 0, wind: 0 };
+    const b = m.geo.bounds();
+    const c = [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2];
+    // Radius so wählen, dass das Modell in jeder Drehung ins Bild passt
+    const hx = Math.max(Math.abs(b.min[0] - c[0]), Math.abs(b.max[0] - c[0]), Math.abs(b.min[2] - c[2]), Math.abs(b.max[2] - c[2]));
+    const rad = Math.max(hx * 1.42, (b.max[1] - b.min[1]) * 0.5) * 1.12;
+    const pitch = Math.min(m.pitch, 0.42), dist = rad / Math.tan(0.26);
+    const o = this.r.addObject(this.r.mesh(m.geo), m4.identity(), { iconOnly: true, visible: false });
+    const cache = [];
+    let alive = true;
+    return {
+      count: frames,
+      frame: (i) => {
+        if (!alive) return null;
+        i = ((Math.round(i) % frames) + frames) % frames;
+        if (!cache[i]) {
+          const yaw = m.yaw + (i / frames) * PI * 2;
+          const eye = [c[0] + Math.sin(yaw) * Math.cos(pitch) * dist, c[1] + Math.sin(pitch) * dist, c[2] + Math.cos(yaw) * Math.cos(pitch) * dist];
+          cache[i] = this.r.renderCanvas([o], { eye, target: c, fovy: 0.52, near: 0.05, far: 200 }, env, size);
+        }
+        return cache[i];
+      },
+      dispose: () => { if (!alive) return; alive = false; this.r.removeObject(o); this.r.freeMesh(o.mesh); cache.length = 0; },
+    };
+  }
+
+  // Modell für Symbole und Drehansicht
+  iconGeo(kind, id, { shiny = false, stage = 3 } = {}) {
+    const assemble = (rig, legs) => {
+      const g = new Geo().add(rig.body);
+      if (rig.head) g.add(rig.head, T(...rig.headPos));
+      if (rig.tail) g.add(rig.tail, T(...rig.tailPos, 0, -0.25));
+      if (legs) rig.legPos.forEach((p) => g.add(rig.leg, T(...p)));
+      if (rig.feetPos) rig.feetPos.forEach((p) => g.add(rig.foot, T(...p)));
+      return g;
+    };
+    if (kind === 'flower') {
+      if (!SEEDS[id]) return null;
+      return { geo: new Geo().add(M.plant(id, stage, shiny, 2)), yaw: PI / 4, pitch: SEEDS[id].model === 'sunflower' ? 0.3 : 0.5 };
+    }
+    if (kind === 'deco') return M.DECO_MODELS[id] ? { geo: M.DECO_MODELS[id](), yaw: PI / 4, pitch: 0.38 } : null;
+    if (kind === 'animal') {
+      if (id === 'fox' || id === 'arctic') return { geo: assemble(M.fox(id === 'arctic' ? 'arctic' : 'default'), true), yaw: PI / 3, pitch: 0.38 };
+      if (id === 'hedgehog' || id === 'autumn') return { geo: assemble(M.hedgehog(id === 'autumn' ? 'autumn' : 'default')), yaw: PI / 4, pitch: 0.38 };
+      if (id === 'owl') { const ow = M.owl(); return { geo: new Geo().add(ow.body).add(ow.head, T(...ow.headPos)), yaw: 0.2, pitch: 0.2 }; }
+      if (id === 'butterfly') { const bf = M.butterfly('#5ab4ff', '#ffd23f'); return { geo: new Geo().add(bf.body).add(bf.wingL, T(0, 0, 0, 0, 0, -0.5)).add(bf.wingR, T(0, 0, 0, 0, 0, 0.5)), yaw: 0.3, pitch: 1.0 }; }
+    }
+    return null;
+  }
+
   // ---------- Symbole für die Oberfläche ----------
   makeIcons() {
     const env = { ...environment(0.3), fogNear: 1e4, fogFar: 2e4, emis: 0, wind: 0 };

@@ -257,6 +257,36 @@ export function water(s, i, now) {
   return { ok: true };
 }
 
+// Post von Freunden anwenden: Geschenke, gegossene Blumen, „Gefällt mir“
+export function applyInbox(s, items, now) {
+  const out = [];
+  const name = (x) => String(x?.name || 'Ein Freund').slice(0, 20);
+  for (const it of Array.isArray(items) ? items : []) {
+    if (!it || typeof it !== 'object') continue;
+    if (it.k === 'gift' && C.ITEMS[it.item]) {
+      const n = Math.max(1, Math.min(5, Math.floor(Number(it.n) || 1)));
+      addItems(s, { [it.item]: n });
+      out.push({ k: 'gift', name: name(it), item: it.item, n });
+    } else if (it.k === 'help' && Array.isArray(it.beds)) {
+      const done = [];
+      for (const i of it.beds.slice(0, C.HELP.perDay)) {
+        const b = s.beds[i];
+        if (!b || b.locked || !b.seed) continue;
+        const g = growState(b, now);
+        if (!g.thirsty) continue;
+        b.plantedAt = now - g.p * g.dur; b.drinks = (b.drinks || 0) + 1;
+        done.push(i);
+      }
+      out.push({ k: 'help', name: name(it), beds: done });
+    } else if (it.k === 'like') {
+      const coins = Math.max(0, Math.min(C.LIKE.coins, Math.floor(Number(it.coins) || 0)));
+      if (coins) addCoins(s, coins);
+      out.push({ k: 'like', name: name(it), coins });
+    }
+  }
+  return out;
+}
+
 export const thirstyBeds = (s, now) => s.beds.map((b, i) => (!b.locked && b.seed && growState(b, now).thirsty ? i : -1)).filter((i) => i >= 0);
 
 export function bedInfo(s, i, now) {

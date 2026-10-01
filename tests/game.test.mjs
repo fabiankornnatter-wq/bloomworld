@@ -437,3 +437,26 @@ test('Regenwolke gießt alle, Kompost bringt +50 %, Turbo überspringt Durst', (
   assert.ok(G.useItem(s, 'turbo', 0, late).ok);
   assert.equal(G.bedInfo(s, 0, late).ready, true);
 });
+
+test('Post von Freunden: Geschenk, Gießen, Gefällt mir – mit Grenzen', () => {
+  const s = G.newState(T0);
+  s.coins = 500; s.level = 3;
+  assert.ok(G.plant(s, 0, 'sunflower', T0, never).ok);
+  const dur = s.beds[0].dur;
+  const now = T0 + dur * 0.6;
+  assert.equal(G.bedInfo(s, 0, now).thirsty, true);
+  const coins = s.coins;
+  const ev = G.applyInbox(s, [
+    { k: 'gift', item: 'fert', n: 2, name: 'Lena' },
+    { k: 'gift', item: 'gold', n: 99 },
+    { k: 'help', beds: [0, 1, 7], name: 'Ben' },
+    { k: 'like', coins: 9999, name: 'Mia' },
+    null, 'kaputt',
+  ], now);
+  assert.equal(s.items.fert, 2);
+  assert.equal(G.bedInfo(s, 0, now).thirsty, false);
+  assert.equal(s.beds[0].drinks, 1);
+  assert.equal(s.coins, coins + C.LIKE.coins);
+  assert.deepEqual(ev.map((e) => e.k), ['gift', 'help', 'like']);
+  assert.deepEqual(ev[1].beds, [0]);
+});

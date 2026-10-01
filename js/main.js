@@ -5,6 +5,7 @@ import * as G from './game.js';
 import * as C from './config.js';
 import { LocalStore, SaveManager, accountKey } from './storage.js';
 import { api as Net, CloudSync } from './account.js';
+import { SocialHub, socialApi, loadNews } from './social.js';
 import { showAuth } from './authui.js';
 import { Sound } from './audio.js';
 import { UI, fmtTime } from './ui.js';
@@ -23,6 +24,8 @@ const plain = (s) => String(s).replace(/­/g, '');
 const sound = new Sound();
 const guestStore = new LocalStore();
 let store = null, state, world, ui, saver, cloud = null, user = null, icons;
+let hub = null;    // Freunde & Chat (nur mit Konto)
+let visit = null;  // Besuch im Garten eines Freundes: { id, name, state, skew, helpLeft, liked, queued }
 let migrated = false, started = false, freshSave = false, entered = false;
 // Zeitgesteuerte Effekte; beim Zurücksetzen werden alte verworfen
 let gen = 0;
@@ -166,11 +169,18 @@ async function enter(u, autoStart, isNew = false, resumed = false) {
   world.syncLayout(state);
   world.syncSkins(state.activeSkin);
   world.syncGreenhouse(state.greenhouse.unlocked);
-  ui = new UI({ state: () => state, now, icons, sound, act: actions, world, account: () => ({ user, status: cloud?.status, lastSaved: cloud?.lastSaved }), isNight });
+  if (u && serverOk) {
+    hub = new SocialHub({
+      onChange: (kind, info) => ui?.socialChanged(kind, info),
+      onInbox: (items) => receiveInbox(items),
+      onAuthLost: () => hub?.stop(),
+    });
+  }
+  ui = new UI({ state: () => state, now, icons, sound, act: actions, world, account: () => ({ user, status: cloud?.status, lastSaved: cloud?.lastSaved }), isNight, social: () => hub, visiting: () => visit });
   ui.init();
   applySound();
   setupInput();
-  if (DEBUG) window.BW = { get state() { return state; }, world, ui, G, skip: (ms) => { timeOffset += ms; }, save: () => saver.flush(), actions, get cloud() { return cloud; }, get user() { return user; } };
+  if (DEBUG) window.BW = { get state() { return state; }, world, ui, G, skip: (ms) => { timeOffset += ms; }, save: () => saver.flush(), actions, get cloud() { return cloud; }, get user() { return user; }, get hub() { return hub; }, get visit() { return visit; } };
 
   if (needPush || freshSave) persist(false);
   progress(100, 'Bereit!');
@@ -205,6 +215,38 @@ function start() {
   sound.play('open');
   $('loader').classList.add('done');
   setTimeout(() => { $('loader').hidden = true; }, 600);
+  hub?.start();
+  showNews();
+}
+
+// Ankündigungen vom BloomWorld-Team: neue werden einmal beim Start gezeigt
+const NEWS_SEEN = 'bw_news_seen';
+async function showNews() {
+  const r = await loadNews();
+  if (!r.ok || !Array.isArray(r.news)) return;
+  ui.news = r.news;
+  if (!r.news.length) return;
+  let seen = 0; try { seen = Number(localStorage.getItem(NEWS_SEEN)) || 0; } catch { /* egal */ }
+  // Neue Spieler sehen nur die neueste Meldung, alle anderen alles seit dem letzten Besuch (höchstens 3)
+  const fresh = r.news.filter((n) => n.ts > seen).slice(0, seen ? 3 : 1);
+  try { localStorage.setItem(NEWS_SEEN, String(r.news[0].ts)); } catch { /* egal */ }
+  if (fresh.length) ui.modal({ queue: true, title: fresh.length > 1 ? 'Neuigkeiten' : 'Neuigkeit', cls: 'newsdlg', html: fresh.map((n) => ui.newsHtml(n)).join(''), buttons: [['Super!', 'closeModal', '']] });
+  if (ui.panel === 'events') ui.renderPanel(true);
+}
+
+// Post von Freunden: Geschenke, Hilfe beim Gießen, Herzen
+function receiveInbox(items) {
+  if (!state) return;
+  const ev = G.applyInbox(state, items, now());
+  if (!ev.length) return;
+  ev.forEach((e, k) => later(() => {
+    if (e.k === 'gift') { sound.play('buy'); ui.toast(`🎁 ${escapeHtml(e.name)} hat dir ${e.n}× ${C.ITEMS[e.item].name} geschenkt!`, 'good'); }
+    else if (e.k === 'help') {
+      if (!visit) e.beds.forEach((i) => world.burst(i, 'water'));
+      if (e.beds.length) { sound.play('water'); ui.toast(`💧 ${escapeHtml(e.name)} hat ${e.beds.length === 1 ? 'eine Blume' : `${e.beds.length} Blumen`} in deinem Garten gegossen!`, 'good'); }
+    } else if (e.k === 'like') { sound.play('magic'); ui.toast(`💖 ${escapeHtml(e.name)} findet deinen Garten wunderschön!${e.coins ? ` +${e.coins} Münzen` : ''}`, 'good'); ui.bumpCoins(); }
+  }, k * 3200));
+  changed();
 }
 
 function applySound() {
@@ -224,7 +266,8 @@ function loop(t) {
   if (!state) return; // vor der Anmeldung verdeckt der Startbildschirm den Garten
   const n = now();
   G.ensureDaily(state, n);
-  const infos = state.beds.map((_, i) => G.bedInfo(state, i, n));
+  const shown = visit ? visit.state : state, vn = visit ? Date.now() + visit.skew : n;
+  const infos = shown.beds.map((_, i) => G.bedInfo(shown, i, vn));
   const env = environment(G.cyclePhase(state, n));
   if (drag?.moved) dragEdgePan(dt);
   if (!ui.coveredFor(300)) {
@@ -232,7 +275,7 @@ function loop(t) {
     world.update(dt, env);
     world.render(env);
   }
-  ui.frame(infos, n);
+  ui.frame(infos, visit ? vn : n);
   hudTick += real;
   if (hudTick > 0.5) {
     hudTick = 0;
@@ -319,7 +362,10 @@ function setupInput() {
   addEventListener('pagehide', () => flushAll(true));
   // Anderes Fenster/Tab mit demselben Spielstand hat gespeichert -> übernehmen statt überschreiben
   addEventListener('storage', (e) => { if (e.key === store.key && e.newValue) adoptExternal(); });
-  addEventListener('keydown', (e) => { if (e.key === 'Escape') ui.back(); });
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') ui.back();
+    else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[role=button][data-act]')) { e.preventDefault(); e.target.click(); }
+  });
   addEventListener('popstate', () => ui.onPopState());
 }
 
@@ -410,6 +456,14 @@ function tap(x, y) {
     return;
   }
   const b = ui.bubbleAt(x, y);
+  if (visit) {
+    // Zu Besuch: nur Blumen gießen und Tiere streicheln
+    if (b !== null && b < C.BED_COUNT) { actions.visitWater(b); return; }
+    const h = world.pick(x, y);
+    if (h?.type === 'bed') actions.visitWater(h.index);
+    else if (h?.type === 'animal') { world.poke(h.id); sound.play('animal'); }
+    return;
+  }
   if (b !== null) { if (b === C.BED_COUNT) actions.tapGreenhouse(); else actions.tapBed(b); return; }
   const hit = world.pick(x, y);
   if (!hit || hit.type === 'ground') { if (ui.sheetBed >= 0) ui.closeSheet(); return; }
@@ -437,7 +491,7 @@ function newerSave(a, b) {
   if (ma !== mb) return ma > mb ? a : b;
   return (a?.updatedAt || 0) >= (b?.updatedAt || 0) ? a : b;
 }
-function changed() { persist(); world.syncLayout(state); ui.refresh(); }
+function changed() { persist(); if (!visit) world.syncLayout(state); ui.refresh(); }
 function fail(r) {
   sound.play('error');
   if (r.code === 'noCoins') ui.toast(r.message, 'err', { label: 'Shop', fn: () => ui.nav('shop', 'offers') });
@@ -460,6 +514,7 @@ function afterLevelUps(ups) {
 }
 
 function syncWorld() {
+  if (visit) { visit = null; ui.setVisit(null); }
   world.syncLayout(state);
   world.syncSkins(state.activeSkin);
   world.syncGreenhouse(state.greenhouse.unlocked);
@@ -722,6 +777,89 @@ const actions = {
     afterLevelUps(r.levelUps);
   },
 
+  // ----- Freunde -----
+  giftSent(r, name, kind) {
+    sound.play('buy');
+    const ups = G.grant(state, { xp: r.xp || 0 });
+    ui.toast(`Geschenk an ${escapeHtml(name || 'deinen Freund')} verschickt: ${C.GIFTS[kind]?.label || ''}. +${r.xp || 0} EP fürs Schenken!`, 'good');
+    changed();
+    afterLevelUps(ups);
+  },
+
+  // Garten eines Freundes besuchen (Multiplayer)
+  async visit(id) {
+    if (!hub) return fail({ message: 'Melde dich an, um Freunde zu besuchen.' });
+    if (ui.edit) actions.exitEdit(true);
+    ui.closeModal(); ui.closeSheet(); ui.nav('garden');
+    ui.toast('Garten wird geladen …');
+    const r = await socialApi.visit(id);
+    if (!r.ok) return fail(r);
+    const g = r.garden;
+    const vs = G.newState(Date.now());
+    Object.assign(vs, { level: g.level, land: g.land, layout: g.layout, beds: g.beds, decor: g.decor, greenhouse: g.greenhouse, activeSkin: g.activeSkin });
+    const fixed = G.migrate(vs, Date.now()).state;
+    visit = { id, name: g.name, level: g.level, collected: g.collected, bred: g.bred, state: fixed, skew: g.serverNow - Date.now(), helpLeft: r.helpLeft, liked: r.liked, queued: [], timer: null };
+    world.syncLayout(fixed); world.syncSkins(fixed.activeSkin); world.syncGreenhouse(fixed.greenhouse.unlocked);
+    world.resetView();
+    ui.setVisit(visit);
+    sound.play('open');
+    const thirsty = G.thirstyBeds(fixed, Date.now() + visit.skew).length;
+    ui.toast(thirsty && visit.helpLeft ? `Willkommen im Garten von ${escapeHtml(g.name)}! ${thirsty === 1 ? 'Eine Blume hat' : `${thirsty} Blumen haben`} Durst – tippe zum Gießen.` : `Willkommen im Garten von ${escapeHtml(g.name)}!`, 'good');
+  },
+
+  endVisit() {
+    if (!visit) return;
+    actions.flushHelp();
+    visit = null;
+    syncWorld();
+    world.resetView();
+    ui.setVisit(null);
+    sound.play('tap');
+  },
+
+  visitWater(i) {
+    const v = visit;
+    if (!v) return;
+    const vn = Date.now() + v.skew;
+    const info = G.bedInfo(v.state, i, vn);
+    if (!info || !info.thirsty) { if (info?.seed) ui.toast(info.ready ? 'Diese Blume ist erntereif – das macht dein Freund selbst.' : 'Diese Blume hat gerade keinen Durst.'); return; }
+    if (v.helpLeft <= 0) { sound.play('error'); ui.toast(`Du hast heute schon ${C.HELP.perDay} Blumen bei ${escapeHtml(v.name)} gegossen. Morgen wieder!`, 'err'); return; }
+    // Sofort sichtbar gießen, dann gesammelt an den Server schicken
+    const b = v.state.beds[i], g = G.growState(b, vn);
+    b.plantedAt = vn - g.p * g.dur; b.drinks = (b.drinks || 0) + 1;
+    v.helpLeft--; v.queued.push(i);
+    world.burst(i, 'water'); sound.play('water');
+    ui.setVisit(v);
+    clearTimeout(v.timer); v.timer = setTimeout(() => actions.flushHelp(), 700);
+  },
+
+  async flushHelp() {
+    const v = visit;
+    if (!v || !v.queued.length) return;
+    clearTimeout(v.timer);
+    const beds = v.queued.splice(0);
+    const r = await socialApi.help(v.id, beds);
+    if (!r.ok) { fail(r); return; }
+    if (visit === v) { v.helpLeft = r.helpLeft; ui.setVisit(v); }
+    const ups = G.grant(state, { coins: r.coins, xp: r.xp });
+    ui.toast(`Danke fürs Gießen! +${r.coins} Münzen, +${r.xp} EP`, 'good');
+    ui.bumpCoins();
+    changed();
+    afterLevelUps(ups);
+  },
+
+  async likeGarden() {
+    const v = visit;
+    if (!v || v.liked) return;
+    const r = await socialApi.like(v.id);
+    if (!r.ok) return fail(r);
+    v.liked = true;
+    if (visit === v) ui.setVisit(v);
+    sound.play('magic');
+    ui.toast(`💖 Du hast ${escapeHtml(v.name)} ein Herz geschenkt – dein Freund bekommt ${C.LIKE.coins} Münzen.`, 'good');
+    hub?.tick();
+  },
+
   // ----- Story -----
   questTracker() {
     const st = G.storyStatus(state);
@@ -815,6 +953,7 @@ const actions = {
 
   // ----- Gestalten -----
   toggleEdit(on) {
+    if (visit) return;
     if (ui.edit && on !== true) return actions.exitEdit();
     if (ui.edit) return;
     ui.closeSheet(); ui.closeModal();
@@ -927,12 +1066,12 @@ const actions = {
 
   async share() {
     const url = location.origin + location.pathname;
-    const name = user ? ` – such nach ${user.name}` : '';
-    const data = { title: 'BloomWorld', text: `Komm mit in meinen Garten bei BloomWorld${name}! 🌸`, url };
+    const name = user ? ` Mein Spielername: ${user.name}` : '';
+    const data = { title: 'BloomWorld', text: `Komm mit in meinen Garten bei BloomWorld! 🌸${name}`, url };
     try {
       if (navigator.share) { await navigator.share(data); return; }
-      await navigator.clipboard.writeText(url);
-      ui.toast('Link kopiert – schick ihn deinen Freunden!', 'good');
+      await navigator.clipboard.writeText(`${data.text} ${url}`);
+      ui.toast('Kopiert – schick es deinen Freunden!', 'good');
     } catch (e) {
       if (e && e.name === 'AbortError') return;
       ui.toast(`Teile diesen Link: ${url}`);
@@ -974,6 +1113,7 @@ const actions = {
       cloud.dirty = true; await cloud.flush(); cloud.stop();
     }
     saver?.flush();
+    hub?.stop();
     await Net.logout();
     setLastUser(null);
     reloadPage();
