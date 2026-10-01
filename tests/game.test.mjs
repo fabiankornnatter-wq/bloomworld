@@ -240,12 +240,14 @@ test('Tagesaufgaben und Tagesgeschenk', () => {
   assert.equal(s.tasks.claimed.length, 0);
 });
 
-test('Einstellungen geprüft; Zyklusgeschwindigkeit behält Tageszeit', () => {
+test('Einstellungen geprüft; Tag/Nacht-Vorschau läuft nach 10 Minuten aus', () => {
   const s = G.newState(T0);
   assert.equal(G.setSetting(s, 'cycle', 'banana', T0).code, 'invalid');
-  const t = T0 + 123_456, p1 = G.cyclePhase(s, t);
-  G.setSetting(s, 'cycleMin', 3, t);
-  assert.ok(Math.abs(G.cyclePhase(s, t) - p1) < 1e-9);
+  assert.equal(G.setSetting(s, 'cycle', 'auto', T0).code, 'invalid', 'Schnellzyklus gibt es nicht mehr');
+  assert.ok(G.setSetting(s, 'cycle', 'night', T0).ok);
+  assert.equal(G.cyclePhase(s, T0 + 60_000), 0.82);
+  assert.equal(G.cyclePhase(s, T0 + 11 * 60_000), G.realPhase(T0 + 11 * 60_000), 'danach Echtzeit');
+  assert.equal(G.migrate(JSON.parse(JSON.stringify(s)), T0 + 11 * 60_000).state.settings.cycle, 'real');
 });
 
 test('Speichern/Laden über LocalStore', async () => {
@@ -488,9 +490,7 @@ test('Echtzeit: Sonnenzeiten, Dämmerung, Tageszeiten, Mond', () => {
   // neuer Spielstand startet in Echtzeit; alte „automatisch“-Stände werden einmal umgestellt
   assert.equal(G.newState(T0).settings.cycle, 'real');
   const old = G.newState(T0); old.settings.cycle = 'auto'; delete old.settings.rt;
-  assert.equal(G.migrate(JSON.parse(JSON.stringify(old)), T0).state.settings.cycle, 'real');
-  const chosen = G.newState(T0); chosen.settings.cycle = 'auto';
-  assert.equal(G.migrate(JSON.parse(JSON.stringify(chosen)), T0).state.settings.cycle, 'auto', 'eigene Wahl bleibt');
+  assert.equal(G.migrate(JSON.parse(JSON.stringify(old)), T0).state.settings.cycle, 'real', 'alter Schnellzyklus wird Echtzeit');
   // Vollmond 2026-10-26 (ungefähr)
   assert.ok(G.isFullMoon(at('2026-10-26T12:00:00Z')));
   assert.ok(!G.isFullMoon(at('2026-10-12T12:00:00Z')));

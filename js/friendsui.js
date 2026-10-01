@@ -129,7 +129,7 @@ export function newsCard(n, full = true) {
 // ---------- Admin ----------
 export function pAdmin(ui) {
   const cur = ui.tab.admin || 'news', d = ui.adminData;
-  let h = `<div class="admtabs">${[['news', 'News'], ['gifts', 'Geschenke'], ['support', 'Spieler'], ['tools', 'Events & Wartung'], ['legal', 'Rechtliches'], ['feedback', `Feedback${d?.feedback?.length ? ` (${d.feedback.length})` : ''}`], ['reports', `Meldungen${d?.reports?.length ? ` (${d.reports.length})` : ''}`], ['players', 'Statistik'], ['log', 'Protokoll']].map(([k, l]) => `<button class="${k === cur ? 'on' : ''}" data-act="tab" data-panel="admin" data-id="${k}">${l}</button>`).join('')}</div>`;
+  let h = `<div class="admtabs">${[['news', 'News'], ['gifts', 'Geschenke'], ['support', 'Spieler'], ['tools', 'Events & Wartung'], ['legal', 'Rechtliches'], ['feedback', `Feedback${d?.feedback?.length ? ` (${d.feedback.length})` : ''}`], ['reports', `Meldungen${d?.reports?.length ? ` (${d.reports.length})` : ''}`], ['players', 'Statistik'], ['push', 'Push'], ['log', 'Protokoll']].map(([k, l]) => `<button class="${k === cur ? 'on' : ''}" data-act="tab" data-panel="admin" data-id="${k}">${l}</button>`).join('')}</div>`;
   if (!d) {
     if (!ui.adminLoading) loadAdmin(ui);
     return h + `<div class="card center"><p>${ui.adminError ? esc(ui.adminError) : 'Wird geladen …'}</p>${ui.adminError ? '<button class="btn small" data-act="adminReload">Erneut laden</button>' : ''}</div>`;
@@ -206,6 +206,18 @@ export function pAdmin(ui) {
         <textarea name="text" rows="10" maxlength="20000" placeholder="Hier den Text eintragen …">${esc(L[key] || '')}</textarea>
         <div class="btnrow"><button class="btn small" type="submit">Speichern</button>${L[key] ? '' : `<button class="btn small ghost" type="button" data-act="adminTpl" data-id="${key}">Vorlage einfügen</button>`}</div><textarea hidden class="tpl">${esc(tpl)}</textarea></form>`;
     }
+  } else if (cur === 'push') {
+    const p = d.push || {};
+    h += p.on ? `<form class="card adminform" data-form="pushAll" autocomplete="off"><h4>${svg(I.bell, 26)} Push an alle Spieler</h4><p class="small">Geht an jedes Gerät, auf dem Spieler Push eingeschaltet haben. Ankündigungen und „Geschenk an alle“ lösen automatisch eine Push aus.</p>
+        <label class="fld"><span>Titel</span><input name="title" maxlength="60" placeholder="z. B. Funkel-Wochenende!"></label>
+        <label class="fld"><span>Text</span><input name="text" maxlength="150" placeholder="Kurz und knackig"></label>
+        <button class="btn wide pink" type="submit">Jetzt senden</button></form>`
+      : `<div class="card adminform"><h4>${svg(I.bell, 26)} Push einrichten (einmalig)</h4><p class="small">Push ist noch aus. So schaltest du es ein – dauert 5 Minuten:</p>
+        <ol class="steps"><li>Öffne dein Vercel-Projekt → <b>Settings → Environment Variables</b>.</li><li>Lege diese drei Variablen an (Werte unten kopieren; beim nächsten Laden dieser Seite werden neue erzeugt, also <b>jetzt</b> kopieren):</li></ol>
+        <div class="codebox"><small>VAPID_PUBLIC_KEY</small><b class="code small">${esc(p.keys?.publicKey || '')}</b></div>
+        <div class="codebox"><small>VAPID_PRIVATE_KEY (geheim – nur in Vercel eintragen)</small><b class="code small">${esc(p.keys?.privateKey || '')}</b></div>
+        <div class="codebox"><small>VAPID_SUBJECT</small><b class="code small">mailto:deine@e-mail.de</b></div>
+        <ol class="steps" start="3"><li>Danach in Vercel auf <b>Redeploy</b> klicken (Deployments → ⋯ → Redeploy).</li><li>Fertig. Spieler schalten Push unter der Glocke ein. Erinnerungen (Durst, reif, Züchtung) verschickt ein Zeitplan alle 10 Minuten (Vercel Cron, ist schon eingerichtet).</li></ol></div>`;
   } else if (cur === 'log') {
     h += (d.logs || []).length ? `<div class="card"><table class="logtab">${d.logs.map((l) => `<tr><td><small>${new Date(l.ts).toLocaleString('de-DE')}</small></td><td><b>${esc(l.action)}</b></td><td>${esc(l.detail)}</td></tr>`).join('')}</table></div>` : '<div class="card center"><p>Noch keine Einträge.</p></div>';
   } else if (cur === 'feedback') {
@@ -374,6 +386,10 @@ export async function onSocialForm(ui, form) {
     const [k, id] = String(d.what || '').split(':');
     const r = await adminApi.traderOffer(form.dataset.clear === '1' ? { clear: true } : { kind: k, id, n: Number(d.n) || 1, off: (Number(d.off) || 30) / 100 });
     if (r.ok) { ui.api.sound.play('buy'); ui.toast('Tagesangebot gespeichert.', 'good'); await loadAdmin(ui); } else { ui.api.sound.play('error'); ui.toast(r.message || 'Fehler.', 'err'); }
+  } else if (kind === 'pushAll') {
+    const d = Object.fromEntries(new FormData(form));
+    btn.disabled = true; const r = await adminApi.pushAll(d); btn.disabled = false;
+    if (r.ok) { form.reset(); ui.api.sound.play('level'); ui.toast(`Push an ${r.sent} Geräte gesendet.`, 'good'); } else { ui.api.sound.play('error'); ui.toast(r.message || 'Fehler.', 'err'); }
   } else if (kind === 'word') {
     const w = form.querySelector('[name=word]').value.trim();
     if (!w) return;

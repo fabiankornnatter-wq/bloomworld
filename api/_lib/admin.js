@@ -6,6 +6,19 @@ import { kv, toObject } from './kv.js';
 import { K, UserError, getUser } from './accounts.js';
 import { SK, resetWords } from './social.js';
 import * as C from '../../js/config.js';
+import { subsOf, sendPush, pushConfigured } from './push.js';
+
+// Push an alle Spieler mit Abo (höchstens 2.000 je Aufruf)
+export async function pushAll(payload) {
+  if (!pushConfigured()) return 0;
+  const keys = (await scanAll('bw:push:*', 2000)).filter((k) => /^bw:push:[a-f0-9]{24}$/.test(k));
+  let n = 0;
+  for (const k of keys) {
+    const uid = k.slice(8);
+    for (const s of await subsOf(uid)) { const r = await sendPush(s, { title: 'BloomWorld', ...payload }); if (r.ok) n++; if (r.gone) await kv().cmd('HDEL', k, s.id); }
+  }
+  return n;
+}
 
 const ADMIN_KEY = 'bw:admin';
 const NEWS_KEY = 'bw:news';
@@ -62,6 +75,7 @@ export async function postNews(by, { title, text, kind }) {
   if (x.length < 2) throw new UserError(400, 'text', 'Bitte schreibe einen Text.');
   const n = { id: Date.now().toString(36), ts: Date.now(), title: t, text: x, kind: KINDS.includes(kind) ? kind : 'news', by };
   await kv().pipe([['LPUSH', NEWS_KEY, JSON.stringify(n)], ['LTRIM', NEWS_KEY, 0, 49]]);
+  n.pushed = await pushAll({ title: `📣 ${t}`, body: x.slice(0, 120), tag: 'news', url: '/?open=events' }).catch(() => 0);
   return n;
 }
 
@@ -127,6 +141,7 @@ export async function giftAll(by, b) {
   const title = String(b.title ?? '').trim().slice(0, 60) || 'Geschenk vom BloomWorld-Team';
   const g = { id: Date.now().toString(36), ts: Date.now(), title, by, ...cleanReward(b) };
   await kv().pipe([['LPUSH', GIFTALL_KEY, JSON.stringify(g)], ['LTRIM', GIFTALL_KEY, 0, 19]]);
+  g.pushed = await pushAll({ title: '🎁 Ein Geschenk wartet!', body: title, tag: 'gift', url: '/' }).catch(() => 0);
   return g;
 }
 export async function giftsAll() { return parse(await kv().cmd('LRANGE', GIFTALL_KEY, 0, 19)).map(({ raw, ...g }) => g); }

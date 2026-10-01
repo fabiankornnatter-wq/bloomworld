@@ -5,6 +5,8 @@ import { kv, toObject } from './kv.js';
 import { K, UserError, getUser, nameKey, rateLimit } from './accounts.js';
 import * as C from '../../js/config.js';
 import * as G from '../../js/game.js';
+import { notify } from './push.js';
+const ping = (uid, kind, payload, opts) => notify(uid, kind, payload, opts).catch(() => 0);
 
 const DAY = 86400;
 const CHAT_KEEP = 200;           // Nachrichten je Unterhaltung
@@ -138,6 +140,7 @@ export async function request(uid, myName, targetName) {
   if (Number(await kv().cmd('HLEN', S.inReq(target))) >= MAX_INCOMING) throw nope('Dieser Spieler hat gerade zu viele offene Anfragen. Versuche es später noch einmal.', 409, 'busy');
   const now = Date.now();
   await kv().pipe([['HSET', S.inReq(target), uid, now], ['HSET', S.outReq(uid), target, now]]);
+  await ping(target, 'friend', { title: 'Neue Freundschaftsanfrage 💌', body: `${myName} möchte mit dir befreundet sein.`, tag: 'friend', url: '/?open=friends' });
   return { ok: true, friend: false, name: await nameOf(target) };
 }
 
@@ -204,6 +207,7 @@ export async function send(uid, other, text) {
   await rateLimit('chatday', uid, 500, DAY);
   const t = cleanText(text, await loadWords());
   const m = await pushChat(uid, other, { k: 'msg', t });
+  if (Number(await kv().cmd('EXISTS', S.online(other))) !== 1) await ping(other, 'chat', { title: `Nachricht von ${await nameOf(uid)} 💬`, body: t.slice(0, 90), tag: 'chat', url: '/?open=friends' }, { cooldownSec: 900 });
   return { ok: true, message: m };
 }
 
@@ -228,6 +232,7 @@ export async function gift(uid, myName, other, kind) {
   if (!(await dayCount(S.day('giftin', other), 1, 30))) throw nope('Dein Freund hat heute schon sehr viele Geschenke bekommen. Morgen wieder!', 409, 'full');
   await kv().pipe([['SADD', sentKey, other], ['EXPIRE', sentKey, 2 * DAY]]);
   await pushInbox(other, { k: 'gift', from: uid, name: myName, item: g.item, n: g.n });
+  await ping(other, 'gift', { title: 'Ein Geschenk für dich! 🎁', body: `${myName} hat dir ${g.label} geschenkt.`, tag: 'gift', url: '/' }, { cooldownSec: 1800 });
   await pushChat(uid, other, { k: 'gift', t: `hat dir ${g.label} geschenkt.`, x: kind });
   return { ok: true, xp: C.GIFT_XP };
 }
@@ -285,6 +290,7 @@ export async function help(uid, myName, other, beds) {
   if (!(await dayCount(key, n, C.HELP.perDay))) throw nope('Für heute ist genug gegossen. Morgen wieder!', 409, 'limit');
   const done = ok.slice(0, n);
   await pushInbox(other, { k: 'help', from: uid, name: myName, beds: done });
+  await ping(other, 'help', { title: 'Besuch im Garten 💧', body: `${myName} hat ${done.length === 1 ? 'eine Blume' : `${done.length} Blumen`} bei dir gegossen.`, tag: 'help', url: '/' }, { cooldownSec: 1800 });
   await pushChat(uid, other, { k: 'help', t: `hat ${done.length === 1 ? 'eine Blume' : `${done.length} Blumen`} in deinem Garten gegossen. 💧`, x: done.length });
   return { ok: true, beds: done, coins: done.length * C.HELP.coins, xp: done.length * C.HELP.xp, helpLeft: C.HELP.perDay - used - n };
 }

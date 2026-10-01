@@ -30,7 +30,7 @@ const TIER = { selten: ['Selten', 't1'], episch: ['Episch', 't2'], legendär: ['
 const tierTag = (d) => (d.tier ? `<span class="tier ${TIER[d.tier][1]}">${TIER[d.tier][0]}</span>` : d.rare ? '<span class="tier t0">Selten</span>' : '');
 
 const NAV_ITEMS = [['garden', 'Garten'], ['quests', 'Aufgaben'], ['events', 'Events'], ['collection', 'Sammlung'], ['shop', 'Shop'], ['friends', 'Freunde']];
-const TITLES = { quests: 'Aufgaben', events: 'Events', collection: 'Sammlung', shop: 'Shop', friends: 'Freunde', settings: 'Einstellungen', breed: 'Gewächshaus', chat: 'Chat', admin: 'Admin', trader: 'Händler' };
+const TITLES = { quests: 'Aufgaben', events: 'Events', collection: 'Sammlung', shop: 'Shop', friends: 'Freunde', settings: 'Einstellungen', breed: 'Gewächshaus', chat: 'Chat', admin: 'Admin', trader: 'Händler', notify: 'Nachrichten' };
 const GH = C.BED_COUNT; // Index der Gewächshaus-Blase
 
 export class UI {
@@ -65,6 +65,8 @@ export class UI {
     $('lvl').onclick = () => this.nav('quests', 'levels');
     $('breedBtn').onclick = () => this.api.act.tapGreenhouse();
     $('traderBtn').insertAdjacentHTML('afterbegin', I.cart);
+    $('bellBtn').insertAdjacentHTML('afterbegin', I.bell);
+    $('bellBtn').onclick = () => this.nav('notify');
     $('traderBtn').onclick = () => this.nav('trader');
     $('centerBtn').onclick = () => { this.api.sound.play('tap'); this.api.world.resetView(); };
     $('harvestAll').onclick = () => (this.haRain ? this.api.act.useRain() : this.api.act.harvestAll());
@@ -273,6 +275,28 @@ export class UI {
   }
 
   // ---------- Blasen über Beeten und Gewächshaus (jedes Bild) ----------
+  // ---------- Benachrichtigungen ----------
+  notifyChanged() {
+    const n = this.api.notify?.();
+    const b = $('bellBadge'), u = n ? n.unread : 0;
+    b.textContent = u || ''; b.hidden = !u;
+    if (this.panel === 'notify' || this.panel === 'settings') this.renderPanel(true);
+  }
+
+  pNotify() {
+    const n = this.api.notify?.(), acc = this.api.account();
+    if (!n) return '<div class="card center"><p>Keine Benachrichtigungen.</p></div>';
+    const ICONS = { bell: I.bell, flower: this.icons.flower.daisy, drop: I.drop, greenhouse: I.greenhouse, cart: I.cart, gift: I.gift, chat: I.chat, friend: I.NAV.friends, news: I.megaphone };
+    const ic = (k) => (ICONS[k] || I.bell).startsWith('data:') ? `<img alt="" src="${ICONS[k]}">` : svg(ICONS[k] || I.bell, 30);
+    const fmt = (ts) => { const d = this.api.now() - ts; return d < 60_000 ? 'gerade eben' : d < 3600_000 ? `vor ${Math.floor(d / 60_000)} Min` : d < 86400_000 ? `vor ${Math.floor(d / 3600_000)} Std` : new Date(ts).toLocaleDateString('de-DE'); };
+    const p = n.push;
+    const pushCard = !acc.user ? '' : `<div class="card pushcard"><div class="row">${svg(I.bell, 40)}<div class="grow"><h4>Push aufs Handy</h4><p>${!p.supported ? 'Dein Browser unterstützt keine Push-Nachrichten. Als installierte App klappt es auf Android.' : p.server === false ? 'Auf dem Server noch nicht eingerichtet.' : p.enabled ? 'An – du bekommst Nachrichten, wenn Blumen Durst haben, reif sind, die Züchtung fertig ist, Freunde schreiben oder schenken.' : 'Erfahre auch bei geschlossenem Spiel, wenn deine Blumen Durst haben, reif sind oder Freunde dir schreiben.'}</p></div></div>
+      ${p.supported && p.server !== false ? `<div class="btnrow">${p.enabled ? '<button class="btn small ghost" data-act="pushOff">Ausschalten</button><button class="btn small" data-act="pushTest">Test senden</button>' : '<button class="btn small" data-act="pushOn">Einschalten</button>'}</div>` : ''}</div>`;
+    const list = n.items.length ? n.items.map((x) => `<button class="card note ${x.read ? '' : 'new'}" data-act="noteGo" data-id="${x.act || ''}">${ic(x.icon)}<div class="grow"><b>${esc(x.text)}</b><small>${fmt(x.ts)}</small></div></button>`).join('') : `<div class="card center">${svg(I.bell, 60)}<h4>Alles ruhig</h4><p>Hier siehst du, wenn Blumen Durst haben oder reif sind, Züchtungen fertig sind, Bestellungen warten, Freunde schreiben oder schenken.</p></div>`;
+    setTimeout(() => n.markRead(), 400);
+    return `${pushCard}<div class="sec">Zuletzt</div>${list}${n.items.length ? '<div class="btnrow center"><button class="btn small ghost" data-act="noteClear">Liste leeren</button></div>' : ''}`;
+  }
+
   // Wartungshinweis vom Team (oben im Bild)
   setMaint(m) {
     const el = $('maint');
@@ -497,7 +521,7 @@ export class UI {
     const el = $('panel');
     // Im Chat nur die Nachrichten auffrischen – das Eingabefeld bleibt unberührt
     if (soft && id === 'chat' && $('chatList')) { updateChat(this); const p = el.querySelector('.pill span'); if (p) p.textContent = num(this.s.coins); return; }
-    const body = { quests: () => this.pQuests(), events: () => this.pEvents(), collection: () => this.pCollection(), friends: () => pFriends(this), shop: () => this.pShop(), settings: () => this.pSettings(), breed: () => this.pBreed(), chat: () => pChat(this), admin: () => pAdmin(this), trader: () => pTrader(this) }[id]();
+    const body = { quests: () => this.pQuests(), events: () => this.pEvents(), collection: () => this.pCollection(), friends: () => pFriends(this), shop: () => this.pShop(), settings: () => this.pSettings(), breed: () => this.pBreed(), chat: () => pChat(this), admin: () => pAdmin(this), trader: () => pTrader(this), notify: () => this.pNotify() }[id]();
     const prevScroll = el.querySelector('.pbody')?.scrollTop || 0;
     // Eingaben (z. B. halb getippter Spielername) beim Neuzeichnen behalten
     const keep = {}; let focus = null;
@@ -519,6 +543,11 @@ export class UI {
   socialChanged(kind, info) {
     const hub = this.api.social?.();
     this.badge('friends', hub ? hub.badge : 0);
+    const n = this.api.notify?.();
+    if (n && hub?.data && kind === 'sync') {
+      for (const f of hub.data.incoming) n.add('friend', `${f.name} möchte mit dir befreundet sein.`, { icon: 'friend', act: 'friends', key: 'req' + f.id });
+      for (const f of hub.data.friends) if (f.unread && hub.chat?.id !== f.id) n.add('chat', `${f.name} hat dir geschrieben.`, { icon: 'chat', act: 'friends', key: 'chat' + f.id + f.unread });
+    }
     if (this.visit && kind === 'sync') this.setVisit(this.visit);
     if (this.panel === 'friends' && kind === 'sync') this.renderPanel(true);
     else if (this.panel === 'chat') { if (!hub?.chat) { this.toast('Dieser Chat ist nicht mehr verfügbar.', 'err'); this.nav('friends'); } else if (kind === 'chat') updateChat(this, info); }
@@ -834,7 +863,7 @@ export class UI {
     let autoOn = true; try { autoOn = localStorage.getItem('bw_autostart') !== '0'; } catch { /* egal */ }
     const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
     const seg = (key, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${st[key] === v ? 'on' : ''}" data-act="set" data-key="${key}" data-val="${v}">${l}</button>`).join('')}</div>`;
-    const LBL = { music: 'Musik', sound: 'Soundeffekte', musicVol: 'Musik-Lautstärke', soundVol: 'Effekt-Lautstärke', cycleMin: 'Länge eines Tages in Minuten' };
+    const LBL = { music: 'Musik', sound: 'Soundeffekte', musicVol: 'Musik-Lautstärke', soundVol: 'Effekt-Lautstärke' };
     const sw = (key) => `<button class="switch ${st[key] ? 'on' : ''}" role="switch" aria-checked="${!!st[key]}" data-act="toggle" data-key="${key}" aria-label="${LBL[key]}"></button>`;
     const range = (key, min, max, step, val, dis) => `<input type="range" min="${min}" max="${max}" step="${step}" value="${val}" data-key="${key}" style="--v:${((val - min) / (max - min)) * 100}%" ${dis ? 'disabled' : ''} aria-label="${LBL[key]}">`;
     const qd = { auto: 'Passt sich automatisch deinem Gerät an.', high: 'Schärfste Grafik mit weichen Schatten.', medium: 'Ausgewogen – gut für die meisten Handys.', low: 'Spart Akku: ohne Schatten, weniger Animation.' };
@@ -853,17 +882,15 @@ export class UI {
         <textarea name="text" maxlength="1000" rows="3" placeholder="Was ist dir aufgefallen? Was wünschst du dir?" aria-label="Feedback"></textarea>
         <button class="btn small" type="submit" style="align-self:flex-start">Senden</button></form>` : '';
     return `${account}${admin}${extra}
-      <div class="card set"><div class="lab">Tageszeit</div>${seg('cycle', [['real', 'Echtzeit'], ['auto', 'Schneller Zyklus'], ['day', 'Immer Tag'], ['night', 'Immer Nacht']])}
-        ${st.cycle === 'real' ? (() => { const t = G.sunTimes(this.api.now()), f = (x) => new Date(x).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); return `<p>Tag und Nacht wie draußen – mit Morgen- und Abenddämmerung. Heute: Dämmerung ab ${f(t.dawn)}, ${svg(I.sunrise, 18)} ${f(t.rise)}, ${svg(I.sunset, 18)} ${f(t.set)}, dunkel ab ${f(t.dusk)}. Nachts leuchten Laternen, Fackeln und Lichterketten.</p>`; })() : ''}
-        ${st.cycle === 'auto' ? `<div class="lab" style="margin-top:6px">Zyklusgeschwindigkeit <small>1 Tag = ${st.cycleMin} Min</small></div>${range('cycleMin', 2, 30, 1, st.cycleMin, false)}
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:-6px"><span>schnell</span><span>langsam</span></div>` : ''}</div>
+      <div class="card set"><div class="lab">Tageszeit</div>${(() => { const t = G.sunTimes(this.api.now()), f = (x) => new Date(x).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); return `<p>Tag und Nacht folgen der echten Uhrzeit – mit Morgen- und Abenddämmerung. Heute: Dämmerung ab ${f(t.dawn)}, ${svg(I.sunrise, 18)} ${f(t.rise)}, ${svg(I.sunset, 18)} ${f(t.set)}, dunkel ab ${f(t.dusk)}. Nachts leuchten Laternen, Fackeln und Lichterketten.</p>`; })()}
+        <div class="lab" style="margin-top:6px">Vorschau <small>10 Minuten, dann wieder Echtzeit</small></div>${seg('cycle', [['real', 'Aus'], ['day', 'Tag ansehen'], ['night', 'Nacht ansehen']])}</div>
       <div class="card set"><div class="lab">Grafik &amp; Leistung</div>${seg('quality', [['auto', 'Auto'], ['high', 'Hoch'], ['medium', 'Mittel'], ['low', 'Sparsam']])}<p>${qd[st.quality]}</p></div>
       <div class="card set"><div class="lab">Musik ${sw('music')}</div>${range('musicVol', 0, 1, 0.05, st.musicVol, !st.music)}
         <div class="lab" style="margin-top:6px">Soundeffekte ${sw('sound')}</div>${range('soundVol', 0, 1, 0.05, st.soundVol, !st.sound)}</div>
       <div class="card set"><div class="lab">Spielstand</div><p>Wird automatisch gespeichert${acc.user ? ' – in deinem Konto und auf diesem Gerät' : ' – auf diesem Gerät'}.</p><button class="btn red small" style="align-self:flex-start;margin-top:6px" data-act="reset">Garten neu beginnen</button></div>
       <div class="card set"><div class="lab">Als App auf dem Handy</div><p>${standalone ? 'BloomWorld läuft als App. 🌸' : 'Mit eigenem Symbol auf dem Startbildschirm, ohne Browserleiste.'}</p>${standalone ? '' : '<button class="btn small" style="align-self:flex-start;margin-top:6px" data-act="install">Zum Startbildschirm hinzufügen</button>'}</div>
       <div class="btnrow center"><button class="btn small ghost" data-act="legal" data-id="impressum">Impressum</button><button class="btn small ghost" data-act="legal" data-id="datenschutz">Datenschutz</button></div>
-      <p class="note">BloomWorld · Version 3.4<br>Schrift: Poppins (SIL Open Font License)</p>`;
+      <p class="note">BloomWorld · Version 3.5<br>Schrift: Poppins (SIL Open Font License)</p>`;
   }
 
   // ---------- Klicks in Panels, Leisten, Dialogen ----------
@@ -948,6 +975,11 @@ export class UI {
       case 'confirmDelete': { const pw = $('delPw')?.value || ''; A.deleteAccount(pw); break; }
       case 'privacy': this.modal({ title: 'Datenschutz', html: PRIVACY_HTML, buttons: [['OK', 'closeModal', '']] }); break;
       case 'legal': A.legal(id); break;
+      case 'pushOn': A.pushOn(); break;
+      case 'pushOff': A.pushOff(); break;
+      case 'pushTest': A.pushTest(); break;
+      case 'noteGo': if (id === 'garden') this.nav('garden'); else if (id) this.nav(id); break;
+      case 'noteClear': this.api.notify?.().clear(); this.renderPanel(true); break;
       case 'install': A.install(); break;
       case 'storyOk': this.closeModal(); A.storySeen(); break;
     }
@@ -958,7 +990,6 @@ export class UI {
     if (el.type !== 'range') return;
     const v = parseFloat(el.value);
     el.style.setProperty('--v', ((v - el.min) / (el.max - el.min)) * 100 + '%');
-    if (el.dataset.key === 'cycleMin') el.closest('.card').querySelector('.lab small').textContent = `1 Tag = ${v} Min`;
     this.api.act.setting(el.dataset.key, v, true);
   }
 

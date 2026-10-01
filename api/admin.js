@@ -19,7 +19,9 @@ export default async function handler(req, res) {
     switch (b.action) {
       case 'overview': {
         const [news, reports, bans, stats, gifts, codes, feedback, pub, boosts, offer, legal, logs, words] = await Promise.all([AD.news(50), AD.reports(), AD.bans(), AD.stats(), AD.giftsAll(), AD.codes(), AD.feedback(), AD.getPublic(), AD.allBoosts(), AD.getTraderOffer(), AD.getLegal(), AD.logs(), AD.words()]);
-        return send(res, 200, { ok: true, news, reports, bans, stats, gifts, codes, feedback, maint: pub.maint, boosts, offer, legal, logs, words, mail: !!process.env.RESEND_API_KEY });
+        const { pushConfigured, generateVapid } = await import('./_lib/push.js');
+        const pushStats = pushConfigured() ? { on: true } : { on: false, keys: generateVapid() };
+        return send(res, 200, { ok: true, news, reports, bans, stats, gifts, codes, feedback, maint: pub.maint, boosts, offer, legal, logs, words, mail: !!process.env.RESEND_API_KEY, push: pushStats });
       }
       case 'post': { const item = await AD.postNews(me.user.name, b); await L('Ankündigung', item.title); return send(res, 200, { ok: true, item }); }
       case 'findPlayer': return send(res, 200, { ok: true, player: await AD.findPlayer(b.q) });
@@ -30,6 +32,7 @@ export default async function handler(req, res) {
       case 'boost': { const v = await AD.setBoost(String(b.id || ''), b.hours, b.mult); await L('Event-Schalter', `${b.id} ${v ? `${b.hours}h ×${v.mult}` : 'aus'}`); return send(res, 200, { ok: true, boost: v }); }
       case 'traderOffer': { const v = await AD.setTraderOffer(b); await L('Händler-Angebot', v ? `${v.kind} ${v.id} −${Math.round(v.off * 100)} %` : 'gelöscht'); return send(res, 200, { ok: true, offer: v }); }
       case 'legal': await AD.setLegal(String(b.key || ''), b.text); await L('Rechtstext', String(b.key || '')); return send(res, 200, { ok: true });
+      case 'pushAll': { const t = String(b.title || '').trim().slice(0, 60), x = String(b.text || '').trim().slice(0, 150); if (!t || !x) return fail(res, 400, 'text', 'Titel und Text angeben.'); const n = await AD.pushAll({ title: t, body: x, tag: 'admin', url: '/' }); await L('Push an alle', `${t} (${n} Geräte)`); return send(res, 200, { ok: true, sent: n }); }
       case 'addWord': { const w = await AD.addWord(b.word); await L('Wortfilter +', w); return send(res, 200, { ok: true }); }
       case 'removeWord': await AD.removeWord(b.word); await L('Wortfilter −', String(b.word || '')); return send(res, 200, { ok: true });
       case 'deleteNews': return send(res, 200, { ok: await AD.deleteNews(String(b.id || '')) });

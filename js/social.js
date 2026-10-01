@@ -44,6 +44,7 @@ export const adminApi = {
   legal: (key, text) => call('/admin', { method: 'POST', body: { action: 'legal', key, text } }),
   addWord: (word) => call('/admin', { method: 'POST', body: { action: 'addWord', word } }),
   removeWord: (word) => call('/admin', { method: 'POST', body: { action: 'removeWord', word } }),
+  pushAll: (d) => call('/admin', { method: 'POST', body: { action: 'pushAll', ...d } }),
 };
 export const loadNews = () => call('/news', { timeout: 8000 });
 export const loadLegal = (key) => call(`/news?legal=${key}`, { timeout: 8000 });

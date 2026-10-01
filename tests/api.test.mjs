@@ -133,3 +133,23 @@ test('Angemeldet bleiben: dauerhaftes oder Sitzungs-Cookie, Verlängerung', asyn
   const me2 = await call(auth, { cookie: cookieOf(r) });
   assert.equal(me2.body.user.name, 'Merle Moos');
 });
+
+test('Push: Abo nur mit Schlüsseln, Erinnerungen planen, Cron geschützt', async () => {
+  const push = (await import('../api/push.js')).default;
+  const cron = (await import('../api/cron.js')).default;
+  const r = await call(auth, { method: 'POST', body: { action: 'register', name: 'Pusher', email: 'push@example.com', password: 'blumen123' }, ip: '7.7.7.7' });
+  const c = cookieOf(r);
+  const info = await call(push, { method: 'GET' });
+  assert.equal(info.body.enabled, false);
+  assert.equal((await call(push, { method: 'POST', cookie: c, body: { action: 'subscribe', sub: { endpoint: 'https://x', keys: { p256dh: 'a', auth: 'b' } } } })).status, 503);
+  const now = Date.now();
+  assert.equal((await call(push, { method: 'POST', cookie: c, body: { action: 'schedule', items: [{ kind: 'thirsty', at: now + 60000 }, { kind: 'hack', at: now }] } })).status, 200);
+  process.env.CRON_SECRET = 's3cret';
+  const reqNo = Readable.from([]); reqNo.method = 'GET'; reqNo.headers = { host: 'x' };
+  const noAuth = await new Promise((resolve) => cron(reqNo, { statusCode: 200, setHeader() {}, end: (t) => resolve(JSON.parse(t)) }));
+  assert.equal(noAuth.ok, false);
+  const reqOk = Readable.from([]); reqOk.method = 'GET'; reqOk.headers = { host: 'x', authorization: 'Bearer s3cret' };
+  const ok = await new Promise((resolve) => cron(reqOk, { statusCode: 200, setHeader() {}, end: (t) => resolve(JSON.parse(t)) }));
+  assert.equal(ok.ok, true);
+  assert.equal(ok.skipped, 'push_off');
+});

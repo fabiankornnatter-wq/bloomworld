@@ -791,8 +791,7 @@ export function claimDailyGift(s, now) {
 
 // ---------- Einstellungen ----------
 const SETTING_RULES = {
-  cycle: (v) => ['real', 'auto', 'day', 'night'].includes(v),
-  cycleMin: (v) => Number.isFinite(v) && v >= 2 && v <= 30,
+  cycle: (v) => ['real', 'day', 'night'].includes(v), // 'day'/'night' nur zum Ansehen (Vorschau), Echtzeit ist die Regel
   quality: (v) => ['auto', 'high', 'medium', 'low'].includes(v),
   music: (v) => typeof v === 'boolean',
   sound: (v) => typeof v === 'boolean',
@@ -800,28 +799,22 @@ const SETTING_RULES = {
   soundVol: (v) => Number.isFinite(v) && v >= 0 && v <= 1,
 };
 
-const CYCLE_OFFSET = 0.04; // Spiel startet am frühen Morgen
 
 export function setSetting(s, key, value, now) {
   if (!SETTING_RULES[key] || !SETTING_RULES[key](value)) return err('invalid');
-  if (key === 'cycleMin') {
-    const p = cyclePhase(s, now);
-    s.settings.cycleMin = value;
-    s.settings.cycleEpoch = now - (p - CYCLE_OFFSET) * value * 60_000;
-    return { ok: true };
-  }
+  if (key === 'cycle') s.settings.cycleEpoch = now;
   s.settings[key] = value;
   return { ok: true };
 }
 
 export function cyclePhase(s, now) {
   const st = s.settings;
-  if (st.cycle === 'real') return realPhase(now);
-  if (st.cycle === 'day') return 0.3;
-  if (st.cycle === 'night') return 0.82;
-  const len = st.cycleMin * 60_000;
-  return ((((now - st.cycleEpoch) / len + CYCLE_OFFSET) % 1) + 1) % 1;
+  // Vorschau „Immer Tag/Nacht“ läuft nach 10 Minuten automatisch aus – Tag und Nacht folgen der echten Zeit
+  if ((st.cycle === 'day' || st.cycle === 'night') && now - (st.cycleEpoch || 0) < PREVIEW_MS) return st.cycle === 'day' ? 0.3 : 0.82;
+  return realPhase(now);
 }
+export const PREVIEW_MS = 10 * 60_000;
+export const previewLeft = (s, now) => (s.settings.cycle === 'real' ? 0 : Math.max(0, PREVIEW_MS - (now - (s.settings.cycleEpoch || 0))));
 
 // ---------- Echte Tageszeit: Sonnenstand und Mond ----------
 const RAD = Math.PI / 180, DAY_MS = 86_400_000, J1970 = 2440587.5, J2000 = 2451545;
@@ -1235,8 +1228,9 @@ export function repair(s, now) {
   if (!obj(s.settings)) s.settings = { ...base.settings };
   for (const [k, rule] of Object.entries(SETTING_RULES)) if (!rule(s.settings[k])) s.settings[k] = base.settings[k];
   // Einmalig: automatischer Zyklus wird zu Echtzeit (Tag & Nacht wie draußen)
-  if (!s.settings.rt) { if (s.settings.cycle === 'auto') s.settings.cycle = 'real'; s.settings.rt = true; }
-  if (!['real', 'auto', 'day', 'night'].includes(s.settings.cycle)) s.settings.cycle = 'real';
+  s.settings.rt = true;
+  if (!['real', 'day', 'night'].includes(s.settings.cycle)) s.settings.cycle = 'real';
+  if (s.settings.cycle !== 'real' && now - (s.settings.cycleEpoch || 0) >= PREVIEW_MS) s.settings.cycle = 'real';
   if (!Number.isFinite(s.settings.cycleEpoch)) s.settings.cycleEpoch = now;
   ensureDaily(s, now);
   delete s.golden;

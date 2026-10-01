@@ -785,3 +785,21 @@ body.visiting #maint { display: none; }
 .logtab { width: 100%; border-collapse: collapse; font-size: 13px; }
 .logtab td { padding: 5px 4px; border-bottom: 1px solid #ece0fb; vertical-align: top; overflow-wrap: anywhere; }
 .logtab small { color: var(--muted); white-space: nowrap; }
+/* v3.5: Benachrichtigungen */
+#bellBtn { position: relative; }
+#bellBtn .badge { position: absolute; top: -4px; right: -4px; }
+.card.note { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer; }
+.card.note.new { background: linear-gradient(135deg, #fff6fb, #fff); border-color: #ffc2e0; }
+.card.note img { width: 30px; height: 30px; flex: none; }
+.card.note .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.card.note b { font-size: 14px; }
+.card.note small { font-size: 12px; color: var(--muted); }
+.card.pushcard .btnrow { margin-top: 8px; }
+.awaylist { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.awaylist div { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; background: #fff; box-shadow: 0 2px 0 #e6d6f6; text-align: left; }
+.awaylist img { width: 30px; height: 30px; }
+.steps { padding-left: 20px; font-size: 13.5px; color: var(--ink); }
+.steps li { margin: 4px 0; }
+.codebox .code.small { font-size: 12px; letter-spacing: 0; overflow-wrap: anywhere; }
+#bellBtn { background: radial-gradient(circle at 40% 35%, #ffe08a, #f0a810); }
+@media (max-width: 440px) { #hud { gap: 5px; } .lvl { min-width: 78px; padding-right: 6px; } .pill { font-size: 16px; } .round { width: 40px; height: 40px; } .round svg { width: 25px; height: 25px; } }

@@ -4,8 +4,9 @@ import { environment } from './world/sky.js';
 import * as G from './game.js';
 import * as C from './config.js';
 import { LocalStore, SaveManager, accountKey } from './storage.js';
-import { api as Net, CloudSync } from './account.js';
+import { api as Net, CloudSync, call } from './account.js';
 import { SocialHub, socialApi, loadNews, loadLegal } from './social.js';
+import { Notifier } from './notify.js';
 import { showAuth } from './authui.js';
 import { Sound } from './audio.js';
 import { UI, fmtTime } from './ui.js';
@@ -26,6 +27,7 @@ const guestStore = new LocalStore();
 let store = null, state, world, ui, saver, cloud = null, user = null, icons;
 let hub = null;    // Freunde & Chat (nur mit Konto)
 let basketWarned = false;
+let notifier = null, savedAtBefore = 0;
 let visit = null;  // Besuch im Garten eines Freundes: { id, name, state, skew, helpLeft, liked, queued }
 let migrated = false, started = false, freshSave = false, entered = false;
 // Zeitgesteuerte Effekte; beim Zurücksetzen werden alte verworfen
@@ -170,6 +172,8 @@ async function enter(u, autoStart, isNew = false, resumed = false) {
   world.syncLayout(state);
   world.syncSkins(state.activeSkin);
   world.syncGreenhouse(state.greenhouse.unlocked);
+  savedAtBefore = raw?.updatedAt || 0;
+  notifier = new Notifier({ getState: () => state, now, onChange: () => ui?.notifyChanged() });
   if (u && serverOk) {
     hub = new SocialHub({
       onChange: (kind, info) => ui?.socialChanged(kind, info),
@@ -177,7 +181,7 @@ async function enter(u, autoStart, isNew = false, resumed = false) {
       onAuthLost: () => hub?.stop(),
     });
   }
-  ui = new UI({ state: () => state, now, icons, sound, act: actions, world, account: () => ({ user, status: cloud?.status, lastSaved: cloud?.lastSaved }), isNight, breedCtx, social: () => hub, visiting: () => visit });
+  ui = new UI({ state: () => state, now, icons, sound, act: actions, world, account: () => ({ user, status: cloud?.status, lastSaved: cloud?.lastSaved }), isNight, breedCtx, social: () => hub, visiting: () => visit, notify: () => notifier });
   ui.init();
   applySound();
   setupInput();
@@ -219,6 +223,10 @@ function start() {
   setTimeout(() => { $('loader').hidden = true; }, 600);
   hub?.start();
   showNews();
+  notifier?.init(!!user && !!hub);
+  // Während du weg warst
+  const away = notifier?.awaySummary(state, savedAtBefore, now());
+  if (away && away.lines.length) setTimeout(() => ui.modal({ queue: true, title: 'Während du weg warst', cls: 'awaydlg', html: `<p class="small">Du warst ${away.away} nicht im Garten.</p><div class="awaylist">${away.lines.map((l) => `<div>${l.icon === 'flower' ? `<img alt="" src="${icons.flower.daisy}">` : I[l.icon === 'drop' ? 'drop' : l.icon === 'cart' ? 'cart' : 'greenhouse'].replace('<svg', '<svg style="width:30px;height:30px;flex:none"')}<b>${escapeHtml(l.text)}</b></div>`).join('')}</div>`, buttons: [['Los geht’s', 'closeModal', '']] }), 900);
 }
 
 // Ankündigungen, Event-Schalter und Wartungshinweise vom BloomWorld-Team (alle 5 Minuten neu)
@@ -243,6 +251,10 @@ async function showNews(first = true) {
   const fresh = r.news.filter((n) => n.ts > seen).slice(0, seen ? 3 : 1);
   try { localStorage.setItem(NEWS_SEEN, String(r.news[0].ts)); } catch { /* egal */ }
   if (fresh.length) ui.modal({ queue: true, title: fresh.length > 1 ? 'Neuigkeiten' : 'Neuigkeit', cls: 'newsdlg', html: fresh.map((n) => ui.newsHtml(n)).join(''), buttons: [['Super!', 'closeModal', '']] });
+  fresh.forEach((n) => notifier?.add('news', n.title, { icon: 'news', act: 'events', key: 'news' + n.id }));
+  // Von einer Push-Nachricht aus geöffnet? (?open=friends / events)
+  const open = new URLSearchParams(location.search).get('open');
+  if (open && ['friends', 'events', 'trader'].includes(open)) { history.replaceState(null, '', location.pathname + (DEBUG ? '?debug=1' : '')); setTimeout(() => ui.nav(open), 600); }
   if (ui.panel === 'events') ui.renderPanel(true);
 }
 export const BOOST_NAMES = { doubleXp: 'Doppelte Erfahrung', doubleCoins: 'Doppelte Münzen', shinyDay: 'Funkel-Tag', traderSale: 'Händler zahlt mehr' };
@@ -290,6 +302,12 @@ function receiveInbox(items) {
   if (!state) return;
   const ev = G.applyInbox(state, items, now());
   if (!ev.length) return;
+  ev.forEach((e) => {
+    if (e.k === 'gift') notifier?.add('gift', `${e.name} hat dir ${e.n}× ${C.ITEMS[e.item].name} geschenkt.`, { icon: 'gift', key: 'g' + Math.random() });
+    else if (e.k === 'help' && e.beds.length) notifier?.add('help', `${e.name} hat ${e.beds.length === 1 ? 'eine Blume' : `${e.beds.length} Blumen`} bei dir gegossen.`, { icon: 'drop', key: 'h' + Math.random() });
+    else if (e.k === 'like') notifier?.add('like', `${e.name} findet deinen Garten wunderschön.`, { icon: 'friend', key: 'l' + Math.random() });
+    else if (e.k === 'teamgift') notifier?.add('teamgift', `Geschenk vom Team: ${e.title}`, { icon: 'gift', key: 't' + Math.random() });
+  });
   ev.forEach((e, k) => later(() => {
     if (e.k === 'gift') { sound.play('buy'); ui.toast(`🎁 ${escapeHtml(e.name)} hat dir ${e.n}× ${C.ITEMS[e.item].name} geschenkt!`, 'good'); }
     else if (e.k === 'help') {
@@ -330,12 +348,14 @@ function loop(t) {
     world.render(env);
   }
   ui.frame(infos, visit ? vn : n);
+  if (!visit && started && notifier) { notifier.tick(infos, state, n); if (hudTick > 0.5 && document.visibilityState === 'visible') notifier.schedule(state, n); }
   hudTick += real;
   if (hudTick > 0.5) {
     hudTick = 0;
     ui.setTime(env);
     sound.night = env.name === 'night';
     if (state.trader?.day !== G.dayKey(n)) { G.ensureTrader(state, n); persist(false); ui.refresh(); }
+    if (state.settings.cycle !== 'real' && !G.previewLeft(state, n)) { state.settings.cycle = 'real'; persist(false); ui.toast('Vorschau beendet – Tag und Nacht laufen wieder nach der echten Zeit.'); ui.refresh(); }
     storyCheck();
   }
   if (started && env.name !== 'night') { dayTime += dt; if (dayTime > 12 && !state.seenAnimals.includes('butterfly')) discover('butterfly'); }
@@ -886,6 +906,9 @@ const actions = {
 
   // ----- Freunde -----
   redeemed(item) { applyRedeem(item); },
+  async pushOn() { const r = await notifier.enable(); if (r.ok) { sound.play('level'); ui.toast('Push ist an! Eine Test-Nachricht ist unterwegs.', 'good'); notifier.schedule(state, now(), true); } else { sound.play('error'); ui.toast(r.message || 'Das hat nicht geklappt.', 'err'); } ui.renderPanel(true); },
+  async pushOff() { await notifier.disable(); ui.toast('Push ist aus.'); ui.renderPanel(true); },
+  async pushTest() { const r = await call('/push', { method: 'POST', body: { action: 'test' } }); ui.toast(r.ok ? (r.sent ? 'Test-Nachricht gesendet.' : 'Keine Nachricht gesendet – vielleicht gerade erst getestet (30 Sek Pause).') : r.message || 'Fehler', r.ok ? 'good' : 'err'); },
   legal(key) { legalDialog(key); },
   async install() {
     if (!installPrompt) { ui.modal({ title: 'Als App installieren', html: '<p>Öffne das Browser-Menü (⋮ oben rechts in Chrome) und tippe auf <b>„Zum Startbildschirm hinzufügen“</b> bzw. <b>„App installieren“</b>. Auf dem iPhone: Teilen-Symbol → „Zum Home-Bildschirm“.</p>', buttons: [['OK', 'closeModal', '']] }); return; }
@@ -1196,7 +1219,7 @@ const actions = {
   },
 
   setting(key, val, live) {
-    if (['cycleMin', 'musicVol', 'soundVol'].includes(key)) val = Number(val);
+    if (['musicVol', 'soundVol'].includes(key)) val = Number(val);
     const r = G.setSetting(state, key, val, now());
     if (!r.ok) return fail({ message: 'Diese Einstellung ist ungültig.' });
     if (key === 'quality') world.r.setQuality(resolveQuality(val));

@@ -230,6 +230,9 @@ class MemoryKV {
       case 'LREM': { if (!has) return 0; const l = this.m.get(k); const v = String(a[2]); const before = l.length; this.m.set(k, l.filter((x) => x !== v)); return before - this.m.get(k).length; }
       case 'PFADD': { const s = has ? this.m.get(k) : new Set(); const n0 = s.size; for (const x of a.slice(1)) s.add(String(x)); this.m.set(k, s); return s.size > n0 ? 1 : 0; }
       case 'PFCOUNT': { const u = new Set(); for (const x of a) if (this.alive(String(x))) for (const v of this.m.get(String(x))) u.add(v); return u.size; }
+      case 'ZADD': { const z = has ? this.m.get(k) : new Map(); for (let i = 1; i < a.length; i += 2) z.set(String(a[i + 1]), Number(a[i])); this.m.set(k, z); return 1; }
+      case 'ZREM': { if (!has) return 0; let c = 0; for (const x of a.slice(1)) if (this.m.get(k).delete(String(x))) c++; return c; }
+      case 'ZRANGEBYSCORE': { if (!has) return []; const lo = a[1] === '-inf' ? -Infinity : Number(a[1]), hi = a[2] === '+inf' ? Infinity : Number(a[2]); return [...this.m.get(k)].filter(([, s]) => s >= lo && s <= hi).sort((x, y) => x[1] - y[1]).map(([m]) => m); }
       case 'SCAN': {
         const mi = a.findIndex((x) => String(x).toUpperCase() === 'MATCH');
         const pat = mi >= 0 ? String(a[mi + 1]) : '*';
