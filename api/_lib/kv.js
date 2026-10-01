@@ -26,13 +26,15 @@ const memoryMode = () => process.env.BW_DEV_MEMORY_DB === '1';
 // Klassische Redis-Verbindung (z. B. „Redis“ aus dem Vercel Marketplace): REDIS_URL = redis(s)://…
 function findTcp() {
   const env = process.env;
-  const name = Object.keys(env).filter((k) => /(^|_)(REDIS_URL|KV_URL)$/.test(k) && /^rediss?:\/\//.test(env[k] || '')).sort((a, b) => a.length - b.length)[0];
-  return name ? { url: env[name], source: name } : null;
+  const name = Object.keys(env).filter((k) => /(^|_)(REDIS_URL|KV_URL)$/.test(k) && /^rediss?:\/\//i.test(String(env[k] || '').trim())).sort((a, b) => a.length - b.length)[0];
+  return name ? { url: String(env[name]).trim(), source: name } : null;
 }
 
 export const kvConfigured = () => memoryMode() || !!findRest() || !!findTcp();
 // Nur die NAMEN der Speicher-Variablen (nie die Werte) – zur Fehlersuche
 export const kvVarNames = () => Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH|STORAGE/.test(k)).sort();
+// Nur das Schema (z. B. „rediss:“) der gefundenen Adressen – keine Zugangsdaten
+export const kvSchemes = () => Object.fromEntries(kvVarNames().map((k) => [k, (/^([a-z]+:)/i.exec(String(process.env[k] || '').trim()) || [, String(process.env[k] || '') ? 'other' : 'empty'])[1]]));
 export const kvSource = () => (memoryMode() ? 'memory' : findRest()?.source || findTcp()?.source || null);
 
 // Spielstand nur speichern, wenn das Konto noch existiert, die Revision passt (Schutz vor Überschreiben
