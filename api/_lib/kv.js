@@ -123,6 +123,12 @@ class TcpKV {
   async connect() {
     // Nach einer Pause neu verbinden (Server-Funktionen werden zwischendurch eingefroren)
     if (this.sock && !this.sock.destroyed && Date.now() - this.last < 15_000) return;
+    // Gleichzeitige Aufrufe teilen sich einen Verbindungsaufbau (sonst geraten Antworten durcheinander)
+    if (this.connecting) return this.connecting;
+    this.connecting = this._connect().finally(() => { this.connecting = null; });
+    return this.connecting;
+  }
+  async _connect() {
     if (this.sock) { try { this.sock.destroy(); } catch { /* egal */ } }
     const u = this.u, host = u.hostname, port = Number(u.port) || 6379;
     this.buf = Buffer.alloc(0); this.queue = [];
