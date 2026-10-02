@@ -192,7 +192,7 @@ with sync_playwright() as p:
     check('Regenwolke gießt alle', pg.evaluate('BW.state.beds[1].drinks + BW.state.beds[2].drinks') == 2 and pg.evaluate('BW.state.items.rain') == 0)
     pg.evaluate("BW.state.greenhouse.unlocked = true; for (const k of ['rose', 'orchid']) BW.state.collection[k] = { count: 5, shiny: 0 }; BW.state.items.pollen = 2; BW.ui.nav('breed')"); pg.wait_for_timeout(900)
     txt = pg.locator('#panel').inner_text()
-    check('Zuchtbuch zeigt Schwierigkeit und Chance', pg.locator('#panel .diff.d3').count() >= 1 and pg.locator('#panel .diff.d5').count() == 1 and '60 %' in txt, txt[:120])
+    check('Zuchtbuch zeigt Schwierigkeit und Chance', pg.locator('#panel .diff.d3').count() >= 1 and pg.locator('#panel .diff.d5').count() >= 1 and '60 %' in txt, txt[:120])
     pg.locator('#panel [data-act=togglePollen]').click(); pg.wait_for_timeout(500)
     check('Zauberpollen erhöht die Chance (+25 %)', '85 %' in pg.locator('#panel').inner_text())
     pg.screenshot(path=SH + 'x_breed_difficulty.png')

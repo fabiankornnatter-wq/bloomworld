@@ -1022,7 +1022,7 @@ export function setSetting(s, key, value, now) {
 export function cyclePhase(s, now) {
   const st = s.settings;
   // Vorschau „Immer Tag/Nacht“ läuft nach 10 Minuten automatisch aus – Tag und Nacht folgen der echten Zeit
-  if ((st.cycle === 'day' || st.cycle === 'night') && now - (st.cycleEpoch || 0) < PREVIEW_MS) return st.cycle === 'day' ? 0.3 : 0.82;
+  if ((st.cycle === 'day' || st.cycle === 'night') && now - (st.cycleEpoch || 0) < PREVIEW_MS) return st.cycle === 'day' ? 0.3 : 0.86;
   return realPhase(now);
 }
 export const PREVIEW_MS = 10 * 60_000;

@@ -232,6 +232,7 @@ export class World {
       if (d.id === 'stringLights') { const a = (d.r || 0) * PI / 2, c = Math.cos(a), s = Math.sin(a); L.push([d.x - c * 0.6, l[0], d.z + s * 0.6, l[1] * 0.75], [d.x + c * 0.6, l[0], d.z - s * 0.6, l[1] * 0.75]); }
       else L.push([d.x, l[0], d.z, l[1]]);
     });
+    for (const b of this.beds) if (b.lightCol && b.shown) L.push([b.pos[0], BED_TOP + 0.7, b.pos[1], 2.6]);
     this.lightList = L;
   }
 
@@ -344,7 +345,7 @@ export class World {
       if (key === bed.key) return;
       const wasStage = bed.stage; bed.stage = info.stage;
       // Wachstums-Sprung: Pflanzen „ploppen“ kurz, wenn sie eine Stufe weiter sind
-      if (info.seed && wasStage !== undefined && info.stage > (wasStage ?? -1) && bed.key !== 'empty') { bed.pop = 0.45; this.growRing(i); }
+      if (info.seed && wasStage !== undefined && info.stage > (wasStage ?? -1) && bed.key !== 'empty') { bed.popDur = info.stage === 3 ? 0.7 : 0.45; bed.pop = bed.popDur; this.growRing(i); if (info.stage === 3) this.burst(i, 'bloom', info.seed); }
       bed.key = key;
       const tall = info.seed && SEEDS[info.seed].model === 'sunflower';
       bed.h = !info.seed ? 0 : info.stage === 0 ? 0.35 : (tall ? 1.7 : 0.95) * (info.stage === 1 ? 0.55 : info.stage === 2 ? 0.8 : 1);
@@ -363,10 +364,18 @@ export class World {
       this.r.updateMesh(bed.plants.mesh, g);
       for (const s of bed.sparkles) this.r.removeObject(s.o);
       bed.sparkles = [];
-      if ((info.shiny || info.seed === 'starRose') && info.stage === 3) {
-        // Position relativ zum Beet – so wandern die Funken beim Verschieben mit
-        for (let k = 0; k < 4; k++) bed.sparkles.push({ o: this.r.addObject(this.goldSpark, m4.identity(), { mode: 2, shadow: false }), rel: [k % 2 ? 0.6 : -0.6, BED_TOP + 0.6 + k * 0.12, k > 1 ? 0.5 : -0.5], s: k * 1.7 });
+      const look = info.seed ? M.FLOWER_LOOK[info.seed] || M.FLOWER_LOOK[SEEDS[info.seed]?.model] : null;
+      bed.plants.glow = 0; bed.plants.glowCol = null; bed.glowing = false; bed.lightCol = null;
+      if (info.seed && info.stage === 3 && (info.shiny || (look?.glow || 0) >= 0.5)) {
+        // Funkelblüten und leuchtende Sorten: Funken in Blütenfarbe kreisen um das Beet, die Pflanzen pulsieren leicht
+        const col = info.shiny ? mixCol(look?.petal || '#ffffff', '#fff4b0', 0.5) : (look?.tip || look?.petal || '#ffffff');
+        const mesh = this.mesh('spark' + col, () => M.sparkle(col, 0.11));
+        const n = info.shiny ? 8 : 5;
+        for (let k = 0; k < n; k++) { const a = (k / n) * PI * 2; bed.sparkles.push({ o: this.r.addObject(mesh, m4.identity(), { mode: 2, shadow: false }), rel: [Math.cos(a) * 0.75 * (bed.scale || 1), BED_TOP + 0.55 + (k % 3) * 0.15, Math.sin(a) * 0.65 * (bed.scale || 1)], s: k * 1.7, a, orbit: info.shiny ? 0.6 : 0.3 }); }
+        bed.glowing = true; bed.plants.glowCol = colOf(col); bed.glowStrength = info.shiny ? 0.6 : 0.3;
+        if ((look?.glow || 0) >= 0.5) bed.lightCol = col; // nachts eine kleine Lichtquelle
       }
+      this.syncLights();
     });
   }
 
@@ -403,9 +412,9 @@ export class World {
     const key = 'p' + color;
     const mesh = kind === 'magic' ? this.goldSpark : this.mesh(key, () => (kind === 'plant' || kind === 'water' ? sphere(kind === 'water' ? 0.05 : 0.07, color, 5, 4) : petal(0.14, 0.07, color, { cup: 0.3, curl: 0.2, tip: 0.5 })));
     const R = Math.random;
-    const n = kind === 'plant' ? 10 : 16;
+    const n = kind === 'plant' ? 10 : kind === 'bloom' ? 8 : 16;
     for (let k = 0; k < n; k++) {
-      const a = R() * PI * 2, sp = kind === 'plant' ? 1.2 : 2.2;
+      const a = R() * PI * 2, sp = kind === 'plant' ? 1.2 : kind === 'bloom' ? 1.0 : 2.2;
       this.particles.push({ o: this.r.addObject(mesh, m4.identity(), { shadow: false, ...(kind === 'magic' ? { mode: 2 } : {}) }), p: [x + (R() - 0.5) * 1.2, BED_TOP + 0.3, z + (R() - 0.5) * 1.2], v: [Math.cos(a) * sp * R(), 2.5 + R() * 2.5, Math.sin(a) * sp * R()], rot: R() * 6, spin: (R() - 0.5) * 12, life: 1.1, max: 1.1, g: kind === 'plant' ? 9 : 5 });
     }
   }
@@ -533,15 +542,22 @@ export class World {
     // Funkeln (Funkelblüten, Sternenrose)
     for (const bed of this.beds) {
       if (bed.pop > 0) {
+        // Wachstums-Plopp; beim Aufblühen (0.7 s) öffnet sich die Pflanze mit kleinem Überschwingen
+        const dur = bed.popDur || 0.45;
         bed.pop -= dt;
-        const k = Math.max(0, bed.pop / 0.45), sc = 1 + Math.sin(k * PI) * 0.18;
-        const [x, z, r] = bed.pos; bed.plants.model = T(x, BED_TOP, z, (r || 0) * PI / 2, 0, 0, sc, 1 + Math.sin(k * PI) * 0.28, sc);
-        if (bed.pop <= 0) bed.plants.model = T(x, BED_TOP, z, (r || 0) * PI / 2);
+        const k = Math.max(0, bed.pop / dur), e = 1 - k, over = 1 + Math.sin(e * PI) * (dur > 0.5 ? 0.22 : 0.18);
+        const sc = dur > 0.5 ? (0.8 + 0.2 * Math.min(1, e * 1.6)) * over : over;
+        const [x, z, r] = bed.pos; bed.plants.model = T(x, BED_TOP, z, (r || 0) * PI / 2, 0, 0, sc, dur > 0.5 ? sc : 1 + Math.sin(k * PI) * 0.28, sc);
+        if (bed.pop <= 0) { bed.plants.model = T(x, BED_TOP, z, (r || 0) * PI / 2); bed.popDur = 0; }
       }
     }
-    for (const bed of this.beds) for (const s of bed.sparkles) {
-      const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 2.5 + s.s));
-      s.o.model = T(bed.pos[0] + s.rel[0], s.rel[1] + Math.sin(t * 1.5 + s.s) * 0.08, bed.pos[1] + s.rel[2], t * 0.8 + s.s, 0.5, 0, tw);
+    for (const bed of this.beds) {
+      if (bed.glowing) bed.plants.glow = bed.glowStrength * (0.55 + 0.45 * Math.sin(t * 2.2 + bed.pos[0]));
+      for (const s of bed.sparkles) {
+        const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 2.5 + s.s));
+        const a = (s.a || 0) + t * (s.orbit || 0), r = Math.hypot(s.rel[0], s.rel[2]);
+        s.o.model = T(bed.pos[0] + Math.cos(a) * r, s.rel[1] + Math.sin(t * 1.5 + s.s) * 0.1, bed.pos[1] + Math.sin(a) * r, t * 0.8 + s.s, 0.5, 0, tw);
+      }
     }
     // Partikel
     for (let k = this.particles.length - 1; k >= 0; k--) {
@@ -846,6 +862,8 @@ const ICON_BG = {
 };
 
 // ---------- Hilfsfunktionen ----------
+const colOf = (hex) => { const h = hex.replace('#', ''); return [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255]; };
+const mixCol = (a, b, t) => { const A = colOf(a), B = colOf(b); return '#' + A.map((v, k) => Math.round((v + (B[k] - v) * t) * 255).toString(16).padStart(2, '0')).join(''); };
 function mulM(a, b) { return m4.mul(a, b); }
 
 function diskGeo(rx, rz) {

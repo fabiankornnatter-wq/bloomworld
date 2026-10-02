@@ -849,3 +849,11 @@ body.visiting #maint { display: none; }
 .card.ach .prog { margin: 6px 0 2px; }
 .card.ach small { color: var(--muted); }
 .achbig { display: flex; justify-content: center; margin: 6px 0; }
+
+/* Funkelblüten im Sammelbuch glitzern */
+.shinywrap { position: relative; display: inline-block; }
+.shinywrap.on::before, .shinywrap.on::after { content: '✦'; position: absolute; color: #ffd23f; text-shadow: 0 0 6px #fff3b0; font-size: 14px; animation: twinkle 1.8s ease-in-out infinite; pointer-events: none; }
+.shinywrap.on::before { top: 4px; left: 2px; }
+.shinywrap.on::after { bottom: 8px; right: 0; animation-delay: 0.9s; font-size: 11px; }
+@keyframes twinkle { 0%, 100% { opacity: 0.15; transform: scale(0.6) rotate(0deg); } 50% { opacity: 1; transform: scale(1.2) rotate(45deg); } }
+.tile.unknown .shinywrap::before, .tile.unknown .shinywrap::after { display: none; }

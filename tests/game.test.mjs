@@ -245,7 +245,7 @@ test('Einstellungen geprüft; Tag/Nacht-Vorschau läuft nach 10 Minuten aus', ()
   assert.equal(G.setSetting(s, 'cycle', 'banana', T0).code, 'invalid');
   assert.equal(G.setSetting(s, 'cycle', 'auto', T0).code, 'invalid', 'Schnellzyklus gibt es nicht mehr');
   assert.ok(G.setSetting(s, 'cycle', 'night', T0).ok);
-  assert.equal(G.cyclePhase(s, T0 + 60_000), 0.82);
+  assert.equal(G.cyclePhase(s, T0 + 60_000), 0.86);
   assert.equal(G.cyclePhase(s, T0 + 11 * 60_000), G.realPhase(T0 + 11 * 60_000), 'danach Echtzeit');
   assert.equal(G.migrate(JSON.parse(JSON.stringify(s)), T0 + 11 * 60_000).state.settings.cycle, 'real');
 });

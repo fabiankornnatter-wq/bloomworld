@@ -33,6 +33,7 @@ uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uSkyCol; uniform vec3 u
 uniform vec3 uFogCol; uniform vec3 uCamPos; uniform vec3 uEmisCol;
 uniform float uFogNear; uniform float uFogFar; uniform float uFogAmt; uniform float uEmis; uniform float uShadowOn;
 uniform float uMode; uniform float uTint; uniform vec3 uTintCol; uniform float uSat;
+uniform float uGlow; uniform vec3 uGlowCol;
 uniform vec2 uShadowTexel; uniform sampler2D uShadow;
 uniform vec4 uPL[12]; uniform float uPLn; uniform float uPLAmt; uniform vec3 uPLCol;
 varying vec3 vNrm; varying vec3 vWorld; varying vec4 vCol; varying vec4 vLight;
@@ -90,6 +91,8 @@ void main(){
     }
     col += (base * 1.9 + 0.04) * uPLCol * min(acc, 1.8) * uPLAmt;
   }
+  // Funkelblüten: sanftes, pulsierendes Leuchten in Blütenfarbe (je Objekt)
+  if (uGlow > 0.001) { float rimg = pow(1.0 - max(dot(n, V), 0.0), 2.0); col = col * (1.0 + 0.12 * uGlow) + uGlowCol * uGlow * (0.06 + 0.35 * rimg); }
   if (uTint > 0.0) col = mix(col, col * uTintCol, uTint);
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(lum), col, uSat);
@@ -368,6 +371,7 @@ export class Renderer {
       gl.uniform1f(u.uWind, (env.wind || 0) * o.wind);
       gl.uniform1f(u.uMode, o.mode);
       gl.uniform1f(u.uFogAmt, o.fog);
+      gl.uniform1f(u.uGlow, o.glow || 0); if (o.glow) gl.uniform3fv(u.uGlowCol, o.glowCol || [1, 0.9, 0.5]);
       gl.drawArrays(gl.TRIANGLES, 0, o.mesh.count);
     }
   }

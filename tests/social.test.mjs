@@ -290,3 +290,24 @@ test('Tauschbörse: Angebot, Liste, Annehmen, Abbrechen, Samen-Geschenk', async 
   const se = (await soc(emil, { action: 'sync' })).body;
   assert.ok(se.inbox.find((x) => x.k === 'seeds' && x.seed === 'crocus' && x.n === 2));
 });
+
+test('Freund wirbt Freund: Geschenk für beide bei Level 5', async () => {
+  const fritz = await register('Fritz');
+  const r = await call(auth, { body: { action: 'register', name: 'Gerda' + tag, email: `gerda${tag}@example.com`, password: 'blumen123', ref: fritz.name }, ip: '10.0.0.77' });
+  assert.equal(r.status, 201);
+  const gerda = { cookie: (r.headers['set-cookie'] || '').split(';')[0], id: r.body.user.id };
+  const s = G.newState(Date.now()); s.level = 4;
+  let sv = await call(save, { cookie: gerda.cookie, body: { save: s, base: 0 } });
+  assert.equal(sv.status, 200, JSON.stringify(sv.body));
+  assert.ok(!(await soc(gerda, { action: 'sync' })).body.inbox.some((x) => x.k === 'teamgift'));
+  s.level = 5; s.moves = 10;
+  sv = await call(save, { cookie: gerda.cookie, body: { save: s, base: sv.body.rev } });
+  assert.equal(sv.status, 200, JSON.stringify(sv.body));
+  const g = (await soc(gerda, { action: 'sync' })).body.inbox.find((x) => x.k === 'teamgift');
+  assert.ok(g && g.coins === 300 && g.items.fert === 3, JSON.stringify(g));
+  const f = (await soc(fritz, { action: 'sync' })).body.inbox.find((x) => x.k === 'teamgift');
+  assert.ok(f && f.title.includes('Gerda'), JSON.stringify(f));
+  s.level = 6; s.moves = 20;
+  sv = await call(save, { cookie: gerda.cookie, body: { save: s, base: sv.body.rev } });
+  assert.ok(!(await soc(fritz, { action: 'sync' })).body.inbox.some((x) => x.k === 'teamgift')); // nur einmal
+});

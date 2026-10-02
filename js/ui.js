@@ -738,7 +738,7 @@ export class UI {
     } else if (cur === 'shiny') {
       const n = C.SEED_ORDER.filter((k) => s.collection[k]?.shiny).length;
       h += `<div class="card row">${svg(I.sparkle, 54)}<div class="grow"><h4>Funkelblüten: ${n} von ${C.SEED_ORDER.length}</h4><p>Mit etwas Glück blüht eine Blume funkelnd. Sie glitzert im Beet und bringt die dreifache Belohnung. Glücksdünger, Prachtbeete und das Funkel-Wochenende erhöhen die Chance.</p></div></div><div class="grid3">`;
-      h += C.SEED_ORDER.map((k) => { const e = s.collection[k]; return `<div class="tile tap ${e?.shiny ? '' : 'unknown'}" role="button" tabindex="0" data-act="detail" data-kind="flower" data-shiny="1" data-id="${k}"><img alt="" src="${this.icons.shiny[k]}" ${e?.shiny ? `style="background:${this.icons.shinyBg[k]}"` : ''}><b>${esc(C.SEEDS[k].name)}</b><small>${e?.shiny ? `${e.shiny}× gefunden` : '???'}</small></div>`; }).join('') + '</div>';
+      h += C.SEED_ORDER.map((k) => { const e = s.collection[k]; return `<div class="tile tap ${e?.shiny ? '' : 'unknown'}" role="button" tabindex="0" data-act="detail" data-kind="flower" data-shiny="1" data-id="${k}"><span class="shinywrap ${e?.shiny ? 'on' : ''}"><img alt="" src="${this.icons.shiny[k]}" ${e?.shiny ? `style="background:${this.icons.shinyBg[k]}"` : ''}></span><b>${esc(C.SEEDS[k].name)}</b><small>${e?.shiny ? `${e.shiny}× gefunden` : '???'}</small></div>`; }).join('') + '</div>';
     } else if (cur === 'album') {
       h += this.albumHtml();
     } else if (cur === 'animals') {
@@ -922,7 +922,8 @@ export class UI {
           <div class="btnrow"><button class="btn small ghost" data-act="logout">Abmelden</button><button class="btn small red" data-act="deleteAccount">Konto löschen</button></div></div>`
       : `<div class="card set"><div class="lab">Konto</div><p>Du spielst offline. Dein Garten wird nur auf diesem Gerät gespeichert. Mit einem Konto ist er auf jedem Gerät verfügbar – dein bisheriger Fortschritt wird übernommen.</p><button class="btn small" style="align-self:flex-start" data-act="login">Anmelden oder registrieren</button></div>`;
     const admin = acc.user?.admin ? `<div class="card set admincard"><div class="lab">${svg(I.shield, 28)} Admin-Bereich</div><p>Ankündigungen und Update-Hinweise für alle Spieler schreiben, gemeldete Nachrichten prüfen und Chats sperren.</p><button class="btn small" style="align-self:flex-start" data-act="openAdmin">Admin-Bereich öffnen</button></div>` : '';
-    const extra = acc.user ? `<form class="card set codeform" data-form="redeem" autocomplete="off"><div class="lab">${svg(I.gift, 26)} Gutschein einlösen</div><div class="row"><input name="code" maxlength="20" placeholder="CODE" autocapitalize="characters" spellcheck="false" aria-label="Gutscheincode"><button class="btn small" type="submit">Einlösen</button></div></form>
+    const extra = acc.user ? `<div class="card set invite"><div class="lab">${svg(I.NAV.friends, 26)} Freunde einladen</div><p>Teile deinen Einladungslink. Sobald dein Freund Level 5 erreicht, bekommt ihr <b>beide</b> 300 Münzen, 3× Dünger und 1× Turbo-Dünger.</p><button class="btn small blue" data-act="share">Link teilen</button></div>
+      <form class="card set codeform" data-form="redeem" autocomplete="off"><div class="lab">${svg(I.gift, 26)} Gutschein einlösen</div><div class="row"><input name="code" maxlength="20" placeholder="CODE" autocapitalize="characters" spellcheck="false" aria-label="Gutscheincode"><button class="btn small" type="submit">Einlösen</button></div></form>
       <form class="card set fbform" data-form="feedback" autocomplete="off"><div class="lab">${svg(I.megaphone, 26)} Feedback an das Team</div>
         <div class="seg small kinds">${[['bug', 'Fehler'], ['idea', 'Idee'], ['other', 'Sonstiges']].map(([k, l], i) => `<label><input type="radio" name="kind" value="${k}" ${i === 1 ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
         <textarea name="text" maxlength="1000" rows="3" placeholder="Was ist dir aufgefallen? Was wünschst du dir?" aria-label="Feedback"></textarea>
@@ -936,7 +937,7 @@ export class UI {
       <div class="card set"><div class="lab">Spielstand</div><p>Wird automatisch gespeichert${acc.user ? ' – in deinem Konto und auf diesem Gerät' : ' – auf diesem Gerät'}.</p><button class="btn red small" style="align-self:flex-start;margin-top:6px" data-act="reset">Garten neu beginnen</button></div>
       <div class="card set"><div class="lab">Als App auf dem Handy</div><p>${standalone ? 'BloomWorld läuft als App. 🌸' : 'Mit eigenem Symbol auf dem Startbildschirm, ohne Browserleiste.'}</p>${standalone ? '' : '<button class="btn small" style="align-self:flex-start;margin-top:6px" data-act="install">Zum Startbildschirm hinzufügen</button>'}</div>
       <div class="btnrow center"><button class="btn small ghost" data-act="legal" data-id="impressum">Impressum</button><button class="btn small ghost" data-act="legal" data-id="datenschutz">Datenschutz</button><button class="btn small ghost" data-act="legal" data-id="agb">AGB</button></div>
-      <p class="note">BloomWorld · Version 3.9<br>Schrift: Poppins (SIL Open Font License)</p>`;
+      <p class="note">BloomWorld · Version 3.10<br>Schrift: Poppins (SIL Open Font License)</p>`;
   }
 
   // ---------- Klicks in Panels, Leisten, Dialogen ----------
@@ -1031,6 +1032,7 @@ export class UI {
       case 'pushTest': A.pushTest(); break;
       case 'noteGo': if (id === 'garden') this.nav('garden'); else if (id === 'album') this.nav('collection', 'album'); else if (id) this.nav(id); break;
       case 'setTitle': A.setTitle(id); break;
+      case 'openFeedback': this.closeModal(); this.nav('settings'); setTimeout(() => { const t = document.querySelector('#panel form[data-form=feedback] textarea, #panel form[data-form=feedback] input[name=text]'); t?.scrollIntoView({ block: 'center' }); t?.focus(); }, 350); break;
       case 'noteClear': this.api.notify?.().clear(); this.renderPanel(true); break;
       case 'install': A.install(); break;
       case 'storyOk': this.closeModal(); A.storySeen(); break;
@@ -1106,6 +1108,9 @@ export class UI {
     if (s.titles.length) h += `<div class="card set"><div class="lab">${svg(I.sparkle, 24)} Dein Titel</div><div class="titles"><button class="tag ${!s.title ? 'on' : ''}" data-act="setTitle" data-id="">Kein Titel</button>${s.titles.map((t) => `<button class="tag ${s.title === t ? 'on' : ''}" data-act="setTitle" data-id="${t}">${esc(C.TITLES[t])}</button>`).join('')}</div><p class="note">Der Titel steht in der Freundesliste neben deinem Namen.</p></div>`;
     h += list.map((a) => `<div class="card ach ${a.done ? 'done' : ''}">${this.albumIcon(a)}<div class="grow"><h4>${esc(a.name)}${a.done ? ' ✓' : ''}</h4><p>${esc(a.desc)}</p><div class="prog"><i style="width:${(a.have / a.need) * 100}%"></i></div><small>${a.have} / ${a.need}</small>${this.chips({ coins: a.reward.coins, items: a.reward.items, deco: a.reward.deco, skin: a.reward.skin })}${a.reward.title ? `<span class="chip">🏷️ Titel „${esc(C.TITLES[a.reward.title])}“</span>` : ''}${a.reward.unlock ? `<span class="chip"><img alt="" src="${this.icons.flower[a.reward.unlock]}"> ${esc(plain(C.SEEDS[a.reward.unlock].name))}</span>` : ''}</div></div>`).join('');
     return h;
+  }
+  feedbackAsk() {
+    this.owlDialog({ title: 'Kurze Frage', heading: 'Wie gefällt dir BloomWorld?', text: 'Du spielst jetzt schon eine Weile – was fehlt dir, was nervt? Zwei Sätze reichen, ich lese alles.', button: 'Feedback schreiben', act: 'openFeedback', queue: true });
   }
   achievementDialog(a) {
     this.modal({ queue: true, cls: 'owl', title: 'Erfolg!', html: `<h3 class="dhead">${esc(a.name)}</h3><div class="achbig">${this.albumIcon(a, 96)}</div><p>${esc(a.desc)}</p>${this.chips({ coins: a.reward.coins, items: a.reward.items, deco: a.reward.deco, skin: a.reward.skin })}${a.reward.title ? `<p class="lvgift">🏷️ Neuer Titel: <b>${esc(C.TITLES[a.reward.title])}</b></p>` : ''}${a.reward.unlock ? `<p class="lvgift">🌸 Neue Blume: <b>${esc(plain(C.SEEDS[a.reward.unlock].name))}</b></p>` : ''}`, buttons: [['Zum Album', 'noteGo', '', 'data-id="album"'], ['Super!', 'closeModal', '']] });

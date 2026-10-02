@@ -41,6 +41,7 @@ export default async function handler(req, res) {
       case 'register': {
         await A.rateLimit('reg', ip, 8, 3600);
         const { uid, user } = await A.register(body);
+        try { await A.setReferrer(uid, body.ref); } catch { /* Einladung ist optional */ }
         try { const k = `bw:stat:reg:${new Date().toISOString().slice(0, 10)}`; await kv().pipe([['INCR', k], ['EXPIRE', k, 400 * 86400]]); } catch { /* Statistik */ }
         const remember = body.remember !== false;
         const t = await A.createSession(uid, remember);

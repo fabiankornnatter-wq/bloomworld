@@ -38,6 +38,7 @@ export default async function handler(req, res) {
       return send(res, 409, { ok: false, error: 'conflict', message: 'Auf einem anderen Gerät wurde weitergespielt.', save: cur, rev: r.rev });
     }
     // Level für die Freundesliste merken
+    if (Number.isFinite(save.level)) { try { await A.referralCheck(s.uid, Math.floor(save.level)); } catch { /* optional */ } }
     if (Number.isFinite(save.level)) { try { await kv().cmd('HSET', A.K.user(s.uid), 'lvl', Math.max(1, Math.min(999, Math.floor(save.level))), 'title', typeof save.title === 'string' ? save.title.slice(0, 24) : ''); } catch { /* nicht wichtig */ } }
     return send(res, 200, { ok: true, rev: r.rev });
   } catch (e) {

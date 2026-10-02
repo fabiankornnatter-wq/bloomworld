@@ -17,6 +17,8 @@ import * as I from './icons.js';
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
+// Einladungslink eines Freundes (?ref=Spielername) merken – wird bei der Registrierung mitgeschickt
+try { const ref = params.get('ref'); if (ref && ref.length <= 20) localStorage.setItem('bw_ref', ref); } catch { /* egal */ }
 let timeOffset = 0;
 const now = () => Date.now() + timeOffset;
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -367,6 +369,7 @@ function loop(t) {
   ui.frame(infos, visit ? vn : n);
   if (!visit && started && notifier) { notifier.tick(infos, state, n); if (hudTick > 0.5 && document.visibilityState === 'visible') notifier.schedule(state, n); }
   hudTick += real;
+  feedbackTick(real);
   if (hudTick > 0.5) {
     hudTick = 0;
     ui.setTime(env);
@@ -604,6 +607,16 @@ function newerSave(a, b) {
 }
 const seedName = (k) => (C.SEEDS[k]?.name || k).replace(/\u00ad/g, '');
 function changed() { persist(); if (!visit) { world.syncLayout(state); world.setTrader(state.level >= C.TRADER.level); } albumCheck(); ui.refresh(); }
+// Nach 20 Minuten Spielzeit einmalig nach Feedback fragen (nur mit Konto, nur wenn wirklich gespielt wurde)
+let playSec = 0, fbAsked = false;
+try { fbAsked = localStorage.getItem('bw_fbAsked') === '1'; } catch { /* egal */ }
+function feedbackTick(real) {
+  if (fbAsked || !started || visit || document.hidden) return;
+  playSec += real;
+  if (playSec < 20 * 60 || !user || state.stats.harvested < 8 || ui.modalOpen || ui.panel || tutorial?.active) return;
+  fbAsked = true; try { localStorage.setItem('bw_fbAsked', '1'); } catch { /* egal */ }
+  ui.feedbackAsk();
+}
 // Album: neue Erfolge sofort feiern
 function albumCheck() {
   if (!state || visit) return;
@@ -1301,9 +1314,9 @@ const actions = {
   },
 
   async share() {
-    const url = location.origin + location.pathname;
+    const url = location.origin + location.pathname + (user ? `?ref=${encodeURIComponent(user.name)}` : '');
     const name = user ? ` Mein Spielername: ${user.name}` : '';
-    const data = { title: 'BloomWorld', text: `Komm mit in meinen Garten bei BloomWorld! 🌸${name}`, url };
+    const data = { title: 'BloomWorld', text: `Komm mit in meinen Garten bei BloomWorld! 🌸${name}${user ? ' Über meinen Link bekommen wir beide ein Startgeschenk.' : ''}`, url };
     try {
       if (navigator.share) { await navigator.share(data); return; }
       await navigator.clipboard.writeText(`${data.text} ${url}`);

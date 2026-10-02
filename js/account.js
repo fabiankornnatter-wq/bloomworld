@@ -39,7 +39,7 @@ export async function call(path, { method = 'GET', body, keepalive = false, time
 
 export const api = {
   me: () => call('/auth', { timeout: 9000 }),
-  register: (d) => call('/auth', { method: 'POST', body: { action: 'register', name: d.name, email: d.email, password: d.password, remember: d.remember !== false } }),
+  register: (d) => { let ref = null; try { ref = localStorage.getItem('bw_ref'); } catch { /* egal */ } return call('/auth', { method: 'POST', body: { action: 'register', name: d.name, email: d.email, password: d.password, remember: d.remember !== false, ref: ref || undefined } }); },
   login: (d) => call('/auth', { method: 'POST', body: { action: 'login', login: d.login, password: d.password, remember: d.remember !== false } }),
   logout: () => call('/auth', { method: 'POST', body: { action: 'logout' } }),
   rename: (name) => call('/auth', { method: 'POST', body: { action: 'rename', name } }),

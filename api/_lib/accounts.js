@@ -177,3 +177,29 @@ export async function deleteAccount(uid, u) {
   const sessions = await db.cmd('SMEMBERS', K.userSessions(uid));
   await db.cmd('DEL', K.user(uid), K.save(uid), K.userSessions(uid), K.email(u.email), K.name(nameKey(u.name)), ...(sessions || []).map(K.sess));
 }
+
+// ---------- Freund wirbt Freund ----------
+// Der Geworbene registriert sich über ?ref=Spielername; sobald er Level 5 erreicht, bekommen beide ein Geschenk (einmalig).
+export const REFERRAL = { level: 5, coins: 300, items: { fert: 3, turbo: 1 }, maxPerDay: 20 };
+export async function setReferrer(uid, refName) {
+  const t = String(refName ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
+  if (t.length < 3 || t.length > 20) return false;
+  const ref = await kv().cmd('GET', K.name(nameKey(t)));
+  if (!ref || ref === uid) return false;
+  await kv().cmd('HSET', K.user(uid), 'ref', ref);
+  return true;
+}
+// Wird beim Speichern aufgerufen; liefert true, wenn gerade belohnt wurde
+export async function referralCheck(uid, level) {
+  if (!(level >= REFERRAL.level)) return false;
+  const [ref, done] = await kv().cmd('HMGET', K.user(uid), 'ref', 'refDone');
+  if (!ref || done) return false;
+  if (Number(await kv().cmd('HSETNX', K.user(uid), 'refDone', '1')) !== 1) return false;
+  const day = new Date().toISOString().slice(0, 10), key = `bw:d:${day}:refs:${ref}`;
+  const n = Number(await kv().cmd('INCR', key)); await kv().cmd('EXPIRE', key, 2 * 86400);
+  const [myName, refName] = await Promise.all([kv().cmd('HGET', K.user(uid), 'name'), kv().cmd('HGET', K.user(ref), 'name')]);
+  const gift = (to, title) => kv().pipe([['RPUSH', `bw:inbox:${to}`, JSON.stringify({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ts: Date.now(), k: 'teamgift', title, coins: REFERRAL.coins, items: REFERRAL.items })], ['LTRIM', `bw:inbox:${to}`, -100, -1], ['EXPIRE', `bw:inbox:${to}`, 30 * 86400]]);
+  await gift(uid, `Willkommensgeschenk – du bist über ${refName || 'einen Freund'} dazugekommen!`);
+  if (n <= REFERRAL.maxPerDay) await gift(ref, `${myName || 'Ein Freund'} ist über deinen Link dabei und hat Level ${REFERRAL.level} erreicht!`);
+  return true;
+}
