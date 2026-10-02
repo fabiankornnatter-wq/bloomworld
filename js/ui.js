@@ -446,14 +446,14 @@ export class UI {
 
   seedHtml() {
     const s = this.s, i = this.sheetBed;
-    const order = [...C.SEED_ORDER].sort((a, b) => (G.seedStatus(s, b).available ? 1 : 0) - (G.seedStatus(s, a).available ? 1 : 0));
+    const order = C.SEED_ORDER.filter((id) => !C.SEEDS[id].event || G.seedStatus(s, id).available).sort((a, b) => (G.seedStatus(s, b).available ? 1 : 0) - (G.seedStatus(s, a).available ? 1 : 0));
     const cards = order.map((id) => {
       const d = C.SEEDS[id], st = G.seedStatus(s, id), afford = s.coins >= d.cost;
       const label = st.available ? `${I.coin()} ${d.cost}` : `${I.lock} ${esc(st.reason)}`;
       const act = st.available ? 'plant' : st.shop ? 'gotoShop' : st.breed ? 'gotoBreed' : 'seedLocked';
       const nightLock = d.nightOnly && this.api.breedCtx?.().time !== 'night';
-      return `<button class="seed ${st.available ? '' : 'lock'} ${d.rare || d.bred ? 'rare' : ''} ${d.slow ? 'slow' : ''}" data-act="${act}" data-id="${id}" aria-label="${esc(plain(d.name))}">
-        ${tierTag(d)}${d.slow ? `<span class="tier tslow">${nightLock ? '🌙 nachts' : '⏳ Geduld'}</span>` : ''}<img alt="" src="${this.icons.flower[id]}"><b>${esc(d.name)}</b>
+      return `<button class="seed ${st.available ? '' : 'lock'} ${d.rare || d.bred ? 'rare' : ''} ${d.slow ? 'slow' : ''} ${d.event ? 'evseed' : ''}" data-act="${act}" data-id="${id}" aria-label="${esc(plain(d.name))}">
+        ${tierTag(d)}${d.event ? '<span class="tier tev">🎉 Event ×2</span>' : ''}${d.slow ? `<span class="tier tslow">${nightLock ? '🌙 nachts' : '⏳ Geduld'}</span>` : ''}<img alt="" src="${this.icons.flower[id]}" style="background:${this.icons.flowerBg[id]}"><b>${esc(d.name)}</b>
         <span class="meta"><span>⏱ ${growLabel(G.growTime(s.beds[i] || {}, id))}</span><span>${I.coin()}${Math.round(d.reward * C.BED_LEVELS[(s.beds[i]?.lvl || 1) - 1].mult)}</span>${d.water && !s.beds[i]?.sprinkler ? `<span class="wneed" title="Muss ${d.water}× gegossen werden">${I.drop}${d.water}</span>` : ''}</span>
         <span class="price ${st.available && !afford ? 'poor' : ''}">${label}</span></button>`;
     }).join('');
@@ -687,6 +687,8 @@ export class UI {
       h += `<div class="evbanner" style="--ev:${a.color}"><div class="evtop"><b>${esc(a.name)}</b><span>${daysLeft(a.end - now)}</span></div><p>${esc(a.desc)}</p>
         <div class="evtok">${svg(I.leaf(a.color), 44)}<div><b>${num(ev.tokens)}</b><small>${esc(a.token)} zum Ausgeben</small></div><div><b>${num(ev.total)}</b><small>insgesamt gesammelt</small></div></div>
         ${next ? `<div class="prog"><i style="width:${Math.min(100, (ev.total / next.at) * 100)}%"></i></div><small>Nächste Belohnung bei ${next.at} ${esc(a.token)}</small>` : '<small>Alle Belohnungen erreicht!</small>'}</div>`;
+      const evSeed = C.EVENT_SEEDS.find((k) => C.SEEDS[k].event === a.id);
+      if (evSeed) { const d = C.SEEDS[evSeed], st = G.seedStatus(s, evSeed, now); h += `<div class="sec">Event-Blume</div><div class="card row glow"><img alt="" src="${this.icons.flower[evSeed]}" style="width:72px;height:72px;background:${this.icons.flowerBg[evSeed]}"><div class="grow"><h4>${esc(d.name)} <span class="tier tev">×2 ${esc(a.token)}</span></h4><p>Nur während „${esc(a.name)}“ zu säen (${I.coin()} ${d.cost}, ${growLabel(d.growMs)}). Jede Ernte bringt doppelt so viele ${esc(a.token)} – und die Blume bleibt für immer in deiner Sammlung.</p>${st.available ? '' : `<p class="note">${esc(st.reason)}</p>`}</div></div>`; }
       h += `<div class="sec">Belohnungen</div>` + ev.milestones.map((m) => `<div class="card row ms ${m.claimed ? 'done' : m.reached ? 'ready' : ''}"><div class="msat">${svg(I.leaf(a.color), 26)}<b>${m.at}</b></div><div class="grow">${this.chips(m.reward)}</div>
         ${m.claimed ? '<button class="btn small off" disabled>✓</button>' : `<button class="btn small" data-act="milestone" data-id="${m.i}" ${m.reached ? '' : 'disabled'}>Abholen</button>`}</div>`).join('');
       h += `<div class="sec">Event-Shop</div><div class="grid2">` + a.shop.map((it) => {
@@ -719,15 +721,19 @@ export class UI {
       const tile = (k) => {
         const e = s.collection[k], d = C.SEEDS[k];
         const sub = e?.count ? `${num(e.count)}× geerntet` : d.bred ? (s.bred.includes(k) ? 'Gezüchtet!' : 'Im Gewächshaus züchten') : 'Noch nicht geerntet';
-        return `<div class="tile tap ${e?.count || s.bred.includes(k) ? '' : 'unknown'}" role="button" tabindex="0" data-act="detail" data-kind="flower" data-id="${k}">${tierTag(d)}<img alt="" src="${this.icons.flower[k]}"><b>${esc(d.name)}</b><small>${sub}</small></div>`;
+        const known = e?.count || s.bred.includes(k);
+        return `<div class="tile tap ${known ? '' : 'unknown'}" role="button" tabindex="0" data-act="detail" data-kind="flower" data-id="${k}">${tierTag(d)}<img alt="" src="${this.icons.flower[k]}" ${known ? `style="background:${this.icons.flowerBg[k]}"` : ''}><b>${esc(d.name)}</b><small>${sub}</small></div>`;
       };
       h += `<p class="hintline">${svg(I.eye, 18)} Tippe eine Blume an, um sie dir in 3D genauer anzusehen.</p><div class="sec">Gartenblumen</div><div class="grid3">${C.BASE_SEEDS.map(tile).join('')}</div>`;
       h += `<div class="sec">Züchtungen</div><div class="grid3">${C.BRED_SEEDS.map(tile).join('')}</div>`;
+      const evName = (k) => C.EVENTS.find((e) => e.id === C.SEEDS[k].event)?.name || '';
+      const evTile = (k) => tile(k).replace('<small>Noch nicht geerntet</small>', `<small>Nur beim Event „${esc(evName(k))}“</small>`);
+      h += `<div class="sec">Event-Blumen</div><p class="hintline">Jede Jahreszeit und jeder Anlass hat eine eigene Blume. Sie lässt sich nur während des Events säen, bringt dort doppelte Event-Währung und bleibt für immer in deiner Sammlung.</p><div class="grid3">${C.EVENT_SEEDS.map(evTile).join('')}</div>`;
       h += `<button class="btn wide" style="margin-top:14px" data-act="openBreed">${svg(I.greenhouse, 28)} Zum Gewächshaus</button>`;
     } else if (cur === 'shiny') {
       const n = C.SEED_ORDER.filter((k) => s.collection[k]?.shiny).length;
       h += `<div class="card row">${svg(I.sparkle, 54)}<div class="grow"><h4>Funkelblüten: ${n} von ${C.SEED_ORDER.length}</h4><p>Mit etwas Glück blüht eine Blume funkelnd. Sie glitzert im Beet und bringt die dreifache Belohnung. Glücksdünger, Prachtbeete und das Funkel-Wochenende erhöhen die Chance.</p></div></div><div class="grid3">`;
-      h += C.SEED_ORDER.map((k) => { const e = s.collection[k]; return `<div class="tile tap ${e?.shiny ? '' : 'unknown'}" role="button" tabindex="0" data-act="detail" data-kind="flower" data-shiny="1" data-id="${k}"><img alt="" src="${this.icons.shiny[k]}"><b>${esc(C.SEEDS[k].name)}</b><small>${e?.shiny ? `${e.shiny}× gefunden` : '???'}</small></div>`; }).join('') + '</div>';
+      h += C.SEED_ORDER.map((k) => { const e = s.collection[k]; return `<div class="tile tap ${e?.shiny ? '' : 'unknown'}" role="button" tabindex="0" data-act="detail" data-kind="flower" data-shiny="1" data-id="${k}"><img alt="" src="${this.icons.shiny[k]}" ${e?.shiny ? `style="background:${this.icons.shinyBg[k]}"` : ''}><b>${esc(C.SEEDS[k].name)}</b><small>${e?.shiny ? `${e.shiny}× gefunden` : '???'}</small></div>`; }).join('') + '</div>';
     } else if (cur === 'animals') {
       h += Object.entries(C.ANIMALS).map(([k, d]) => {
         const seen = s.seenAnimals.includes(k);

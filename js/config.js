@@ -36,9 +36,22 @@ export const SEEDS = {
   dragonLily:       { name: 'Drachen­lilie',        cost: 160, growMs: 18 * M,  reward: 640,  xp: 70,  level: 13, model: 'lily', bred: true, tier: 'legendär', water: 2 },
   moonRose:         { name: 'Mondschein­rose',     cost: 200, growMs: 22 * M,  reward: 900,  xp: 95,  level: 12, model: 'rose', bred: true, tier: 'legendär', water: 2 },
   crystalRose:      { name: 'Kristall­rose',        cost: 320, growMs: 30 * M,  reward: 1500, xp: 160, level: 16, model: 'rose', bred: true, tier: 'legendär', water: 2 },
+  // Event-Blumen: nur während „ihres“ Events pflanzbar, bringen doppelte Event-Währung, bleiben für immer in der Sammlung
+  heartRose:     { name: 'Herz­rose',           cost: 45,  growMs: 5 * M,   reward: 140,  xp: 18, level: 3, model: 'rose',        event: 'valentine', water: 1 },
+  daffodil:      { name: 'Oster­glocke',        cost: 20,  growMs: 2 * M,   reward: 60,   xp: 9,  level: 2, model: 'daffodil',    event: 'easter',    water: 0 },
+  lilac:         { name: 'Flieder',                 cost: 60,  growMs: 8 * M,   reward: 220,  xp: 28, level: 4, model: 'hydrangea',   event: 'mothers',   water: 1 },
+  hibiscus:      { name: 'Hibiskus',                cost: 40,  growMs: 4 * M,   reward: 110,  xp: 16, level: 3, model: 'poppy',       event: 'summer',    water: 1, dayOnly: true },
+  chrysanthemum: { name: 'Chrysan­theme',      cost: 70,  growMs: 9 * M,   reward: 250,  xp: 32, level: 5, model: 'dahlia',      event: 'autumn',    water: 1 },
+  marigold:      { name: 'Tagetes',                 cost: 35,  growMs: 3 * M,   reward: 90,   xp: 13, level: 2, model: 'dahlia',      event: 'halloween', water: 0 },
+  poinsettia:    { name: 'Weihnachts­stern',   cost: 80,  growMs: 12 * M,  reward: 320,  xp: 38, level: 5, model: 'poinsettia',  event: 'winter',    water: 1 },
+  sparkler:      { name: 'Funken­blume',        cost: 90,  growMs: 10 * M,  reward: 300,  xp: 36, level: 6, model: 'daisy',       event: 'newyear',   water: 1 },
+  crocus:        { name: 'Krokus',                  cost: 12,  growMs: 40 * S,  reward: 30,   xp: 5,  level: 1, model: 'tulip',       event: 'spring',    water: 0 },
 };
 export const SEED_ORDER = ['daisy', 'tulip', 'cornflower', 'sunflower', 'lavender', 'rose', 'poppy', 'orchid', 'lily', 'hydrangea', 'dahlia', 'peony', 'magnolia', 'moonflower',
-  'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'moonRose', 'crystalRose'];
+  'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'moonRose', 'crystalRose',
+  'crocus', 'daffodil', 'lilac', 'hibiscus', 'chrysanthemum', 'marigold', 'poinsettia', 'sparkler', 'heartRose'];
+export const EVENT_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].event);
+export const EVENT_TOKEN_MULT = 2; // Event-Blumen bringen doppelte Event-Währung
 // Kurzbeschreibungen für die Detailansicht in der Sammlung
 export const FLOWER_INFO = {
   daisy: 'Klein, fröhlich und unverwüstlich. Das Gänseblümchen wächst blitzschnell und braucht nie Wasser – perfekt für den Anfang.',
@@ -55,6 +68,15 @@ export const FLOWER_INFO = {
   peony: 'Vier Stunden Geduld, dann öffnet sich eine Blüte wie aus Seide. Die Pfingstrose ist die Lieblingsblume aller, die tagsüber arbeiten.',
   magnolia: 'Pflanz sie vor dem Schlafengehen: Die Magnolie blüht nach acht Stunden – und zahlt dafür wie ein ganzer Tag Gartenarbeit.',
   moonflower: 'Sie öffnet sich nur, wenn sie nachts gepflanzt wurde, und braucht zehn Stunden. Dafür braucht sie nie Wasser und leuchtet im Dunkeln.',
+  heartRose: 'Tiefrot mit weißem Rand – die Rose der Herzblüte. Nur im Februar zu säen; verschenkt sie an Freunde, und sie bringt doppelt so viele Herzen.',
+  daffodil: 'Die gelbe Trompete der Osterwiese. Wächst schnell, braucht kein Wasser und versteckt beim Ernten doppelt so viele Ostereier.',
+  lilac: 'Duftende lila Rispen zum Muttertag. Wächst nur in der Muttertagswoche und bringt doppelt so viele Sträuße.',
+  hibiscus: 'Die Blume der Tropen für das Sommerfest – leuchtend rot mit langem Stempel. Blüht nur tagsüber und sammelt doppelt Sonnenstrahlen.',
+  chrysanthemum: 'Bronzefarbene Pompons für das Herbstfest. Jede Ernte bringt doppelt so viele Herbstblätter.',
+  marigold: 'Orangefarbene Tagetes, die Blume der Gruselnacht – ihr Duft hält Geister fern. Doppelte Geisterlichter beim Ernten.',
+  poinsettia: 'Der Weihnachtsstern des Wintermarkts: rote Sternblätter über dunklem Grün. Bringt doppelt so viele Schneeflocken.',
+  sparkler: 'Die Funkenblume der Silvesterfunken: jedes Blütenblatt hat eine andere Farbe und glüht nachts. Doppelte Funken beim Ernten.',
+  crocus: 'Der erste Bote des Frühlings – kleine lila Kelche, die schon nach 40 Sekunden blühen und doppelt so viele Knospen bringen.',
   rainbowTulip: 'Jedes Blütenblatt in einer anderen Farbe. Die erste Züchtung jeder Gärtnerin und jedes Gärtners.',
   sunTulip: 'Gelb mit feurig-orangen Spitzen – als hätte die Sonne selbst die Tulpe bemalt.',
   skyCornflower: 'So hellblau wie ein wolkenloser Sommerhimmel und kein bisschen durstig.',
@@ -73,7 +95,7 @@ export const FLOWER_INFO = {
 
 // Wann eine Blume Durst bekommt (Anteil der Wachstumszeit)
 export const WATER_AT = { 1: [0.45], 2: [0.33, 0.66] };
-export const BASE_SEEDS = SEED_ORDER.filter((k) => !SEEDS[k].bred);
+export const BASE_SEEDS = SEED_ORDER.filter((k) => !SEEDS[k].bred && !SEEDS[k].event);
 export const BRED_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].bred);
 
 // Kreuzungen im Gewächshaus. Eltern müssen schon einmal geerntet worden sein.

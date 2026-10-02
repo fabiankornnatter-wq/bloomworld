@@ -147,7 +147,7 @@ export const FLOWER_LOOK = {
 Object.assign(FLOWER_LOOK, {
   rainbowTulip: { petals: ['#ff4d6d', '#ff9f1c', '#ffd23f', '#5fd35a', '#4aa3ff', '#9a7be8'], petal: '#ff4d6d', tip: '#ffffff', center: '#ffe27a' },
   sunTulip: { petal: '#ff6a1a', tip: '#ffd23f', center: '#ffe27a' },
-  goldRose: { petal: '#f5a300', tip: '#ffd84a', center: '#d27000' },
+  goldRose: { petal: '#d28c08', tip: '#ffdf6a', center: '#8f5200', glow: 0.25 },
   moonOrchid: { petal: '#e9eeff', tip: '#c9b8ff', center: '#fff6c4', glow: 0.55 },
   northRose: { petal: '#1fcfa8', tip: '#8f7bff', center: '#7a4dff', glow: 0.6 },
   blackRose: { petal: '#2a0d18', tip: '#7a1634', center: '#14060b' },
@@ -169,6 +169,16 @@ Object.assign(FLOWER_LOOK, {
   peony: { petal: '#ffb3c6', tip: '#fff0f3', center: '#ffd6e0' },
   magnolia: { petal: '#f7e6f2', tip: '#ffffff', center: '#e8a0c8' },
   moonflower: { petal: '#b4c2ff', tip: '#e4e9ff', center: '#7f97ff', glow: 1.0 },
+  // Event-Blumen
+  heartRose: { petal: '#e0163f', tip: '#ffd5de', center: '#8c0a26' },
+  daffodil: { petal: '#ffe14a', tip: '#fff6b0', center: '#ff9e1a' },
+  lilac: { petal: '#b07ee8', tip: '#d9bdf7', center: '#f3e8ff', petals: ['#b07ee8', '#c89cf2', '#9d66dd'] },
+  hibiscus: { petal: '#ff2d55', tip: '#ff7a95', center: '#ffd23f' },
+  chrysanthemum: { petal: '#d8782a', tip: '#ffc45c', center: '#a44d12' },
+  marigold: { petal: '#ff8a1a', tip: '#ffc23a', center: '#c9540a' },
+  poinsettia: { petal: '#e0202e', tip: '#ff4a55', center: '#ffd23f' },
+  sparkler: { petals: ['#ff3d6e', '#ffd23f', '#4aa3ff', '#5fd35a', '#ff9f1c', '#b48cff'], petal: '#ff3d6e', tip: '#ffffff', center: '#fff2a8', glow: 0.5 },
+  crocus: { petal: '#8f5fd9', tip: '#b99af0', center: '#ffb81c' },
 });
 const brighten = (look) => {
   const b = (c) => { const v = col(c); return v.map((x) => Math.min(1, x * 1.12 + 0.04)); };
@@ -283,7 +293,8 @@ function headShape(type, look, s) {
     const bloom = new Geo();
     rings.forEach(([n, l, tilt, cup], ri) => {
       const c = ri < 2 ? look.center : ri === 2 ? mixHex(look.center, look.petal, 0.5) : look.petal;
-      for (let i = 0; i < n; i++) bloom.add(petal(l * s, l * 0.78 * s, c, { cup, curl: 0.38, tip: 0.05, colorTip: look.tip, under: 0.95, fold: 0.05 }), T(0, ri * 0.004, 0, (i / n) * P * 2 + ri * 0.7, tilt));
+      const tipc = mixHex(c, look.tip, ri >= 3 ? 0.45 : 0.3); // Spitzen nur leicht aufgehellt, damit die Grundfarbe (z. B. Gold) sichtbar bleibt
+      for (let i = 0; i < n; i++) bloom.add(petal(l * s, l * 0.78 * s, c, { cup, curl: 0.38, tip: 0.05, colorTip: tipc, under: 0.95, fold: 0.05 }), T(0, ri * 0.004, 0, (i / n) * P * 2 + ri * 0.7, tilt));
     });
     roundNormals(bloom, 0.06 * s);
     g.add(bloom);
@@ -372,6 +383,21 @@ function headShape(type, look, s) {
     g.add(cylinder(0.012 * s, 0.02 * s, 0.07 * s, '#e3b3c8', 7), T(0, 0.02 * s, 0));
     spiral(g, 12, 0.02, 0.085, 0.008, ['#d9a0be', '#f2c6da'], s);
     g.add(calyx(s, 3, 0.05, -1.1));
+  } else if (type === 'daffodil') {
+    // Narzisse: sechs flache Blätter, davor die Trompete mit gewelltem Rand
+    ring(g, 6, 0.15, 0.07, look.tip, { cup: 0.1, curl: 0.05, tip: 0.5, colorTip: look.petal }, -0.2, 0, 0, s);
+    const prof = [[0.02, 0], [0.045, 0.02], [0.05, 0.08], [0.062, 0.11], [0.075, 0.125]].map(([r, y]) => [r * s, y * s]);
+    const tr = lathe(prof, look.center, hi(16, 10)).paint((p, n, c) => (p[1] > 0.1 * s ? col(mixHex(look.center, '#ffffff', 0.25)) : c));
+    for (let i = 0; i < tr.d.length; i += 11) { const l = Math.hypot(tr.d[i + 3], tr.d[i + 4] + 1.4, tr.d[i + 5]); tr.d[i + 3] /= l; tr.d[i + 4] = (tr.d[i + 4] + 1.4) / l; tr.d[i + 5] /= l; }
+    g.add(tr, T(0, 0.01 * s, 0));
+    stamens(g, 4, 0.07, '#e6c23a', '#ff9e1a', s, 0.15);
+    g.add(calyx(s, 3, 0.05, -0.9));
+  } else if (type === 'poinsettia') {
+    // Weihnachtsstern: grüne Blätter unten, rote Hochblätter als Stern, gelbe Knöpfchen in der Mitte
+    ring(g, 6, 0.2, 0.08, PAL.leaf2, { cup: 0.1, curl: 0.05, tip: 0.8, colorTip: PAL.leaf1 }, -0.1, -0.01, 0.3, s);
+    ring(g, 7, 0.18, 0.07, look.petal, { cup: 0.12, curl: 0.08, tip: 0.8, colorTip: look.tip }, -0.15, 0.005, 0, s);
+    ring(g, 5, 0.12, 0.055, look.tip, { cup: 0.15, curl: 0.15, tip: 0.8, colorTip: look.petal }, -0.4, 0.012, 0.5, s);
+    for (let i = 0; i < hi(7, 5); i++) { const a = i * GOLD, r = (i ? 0.02 : 0) * s; g.add(sphere(0.011 * s, i % 2 ? look.center : '#8fd34f', 5, 4), T(Math.cos(a) * r, 0.025 * s, Math.sin(a) * r)); }
   } else if (type === 'moonflower') {
     // Trichterblüte wie eine Winde: Röhre, darüber fünf breite Blätter zu einem Stern, heller Schlund
     const prof = [[0.015, 0], [0.03, 0.04], [0.05, 0.08], [0.08, 0.1]].map(([r, y]) => [r * s, y * s]);
@@ -394,10 +420,10 @@ function bud(look, s = 1) {
   return g;
 }
 
-const TALL = { daisy: 0.32, tulip: 0.52, sunflower: 1.05, lavender: 0.5, rose: 0.46, orchid: 0.55, cornflower: 0.46, poppy: 0.5, lily: 0.6, hydrangea: 0.42, dahlia: 0.55, peony: 0.5, magnolia: 0.68, moonflower: 0.58 };
-const STEMS = { daisy: 3, cornflower: 3, rose: 3, lavender: 5, poppy: 2, hydrangea: 2, dahlia: 2, peony: 2, moonflower: 3 };
-const STEMS_LOW = { daisy: 2, cornflower: 2, rose: 2, lavender: 4, poppy: 2, hydrangea: 1, dahlia: 1, peony: 1, moonflower: 2 };
-const HEAD_TILT = { sunflower: -0.55, lavender: 0, magnolia: -0.3, moonflower: -0.6, lily: -0.35, orchid: -0.2 };
+const TALL = { daisy: 0.32, tulip: 0.52, sunflower: 1.05, lavender: 0.5, rose: 0.46, orchid: 0.55, cornflower: 0.46, poppy: 0.5, lily: 0.6, hydrangea: 0.42, dahlia: 0.55, peony: 0.5, magnolia: 0.68, moonflower: 0.58, daffodil: 0.4, poinsettia: 0.38 };
+const STEMS = { daisy: 3, cornflower: 3, rose: 3, lavender: 5, poppy: 2, hydrangea: 2, dahlia: 2, peony: 2, moonflower: 3, daffodil: 3 };
+const STEMS_LOW = { daisy: 2, cornflower: 2, rose: 2, lavender: 4, poppy: 2, hydrangea: 1, dahlia: 1, peony: 1, moonflower: 2, daffodil: 2 };
+const HEAD_TILT = { sunflower: -0.55, lavender: 0, magnolia: -0.3, moonflower: -0.6, lily: -0.35, orchid: -0.2, daffodil: -0.45 };
 
 // Eine Pflanze in Stufe 0 (Spross) … 3 (Blüte)
 export function plant(seedId, stage, shiny = false, seed = 1, lod = 0) {
@@ -447,10 +473,10 @@ export function plant(seedId, stage, shiny = false, seed = 1, lod = 0) {
   const k = PLANT_SCALE[type] * (['starRose', 'crystalRose', 'dragonLily', 'moonRose'].includes(seedId) ? 1.12 : SEEDS[seedId]?.slow ? 1.22 : 1);
   return new Geo().add(g, T(0, 0, 0, 0, 0, 0, k));
 }
-export const PLANT_SCALE = { daisy: 2.3, tulip: 2.1, sunflower: 1.5, lavender: 1.9, rose: 2.15, orchid: 2.1, cornflower: 2.1, poppy: 2.0, lily: 1.9, hydrangea: 1.9, dahlia: 2.0, peony: 2.0, magnolia: 1.75, moonflower: 1.5 };
+export const PLANT_SCALE = { daisy: 2.3, tulip: 2.1, sunflower: 1.5, lavender: 1.9, rose: 2.15, orchid: 2.1, cornflower: 2.1, poppy: 2.0, lily: 1.9, hydrangea: 1.9, dahlia: 2.0, peony: 2.0, magnolia: 1.75, moonflower: 1.5, daffodil: 2.0, poinsettia: 2.1 };
 
 // Porträt für Sammlung und Saatgut: die Blüte groß im Bild, kurzer Stiel mit zwei Blättern
-const FACE_UP = { daisy: 0.55, sunflower: 0.5, cornflower: 0.4, poppy: 0.45, lily: 0.4, orchid: 0.35, moonflower: 0.15 };
+const FACE_UP = { daisy: 0.55, sunflower: 0.5, cornflower: 0.4, poppy: 0.45, lily: 0.4, orchid: 0.35, moonflower: 0.15, daffodil: 0.4, poinsettia: 0.5 };
 export function portrait(seedId, shiny = false) {
   const type = SEEDS[seedId]?.model || seedId;
   const base = shiny ? brighten(FLOWER_LOOK[seedId] || FLOWER_LOOK[type]) : FLOWER_LOOK[seedId] || FLOWER_LOOK[type];

@@ -160,9 +160,15 @@ export function roadmap(s) {
 }
 
 // ---------- Saatgut ----------
-export function seedStatus(s, id) {
+export function seedStatus(s, id, now = Date.now()) {
   const d = C.SEEDS[id];
   if (!d) return { available: false, reason: ERR.unknown };
+  if (d.event) {
+    const ev = activeEvent(now);
+    if (!ev || ev.id !== d.event) { const name = C.EVENTS.find((e) => e.id === d.event)?.name || 'Event'; return { available: false, reason: `Nur beim Event „${name}“`, event: d.event }; }
+    if (s.level < d.level) return { available: false, reason: `Ab Level ${d.level}`, level: d.level };
+    return { available: true, event: d.event };
+  }
   if (d.bred) return s.bred.includes(id) ? { available: true } : { available: false, reason: 'Im Gewächshaus züchten', breed: true };
   if (d.rare) {
     if (s.rareUnlocked.includes(id)) return { available: true };
@@ -344,9 +350,10 @@ export function plant(s, i, seedId, now, rand = Math.random) {
   if (b.seed) return err('occupied');
   const d = C.SEEDS[seedId];
   if (!d) return err('unknown');
-  const st = seedStatus(s, seedId);
+  const st = seedStatus(s, seedId, now);
   if (!st.available) return err('seedLocked', { message: `${d.name.replace(/­/g, '')}: ${st.reason}.` });
   if (d.nightOnly && timeOfDay(cyclePhase(s, now)) !== 'night') return err('invalid', { message: `${d.name.replace(/­/g, '')} lässt sich nur nachts pflanzen.` });
+  if (d.dayOnly && timeOfDay(cyclePhase(s, now)) === 'night') return err('invalid', { message: `${d.name.replace(/­/g, '')} lässt sich nur tagsüber pflanzen.` });
   if (!spend(s, d.cost)) return noCoins(s, d.cost, d.name.replace(/­/g, ''));
   const chance = (C.SHINY_CHANCE + C.BED_LEVELS[b.lvl - 1].shiny) * (isWeekend(now) ? C.WEEKEND_BONUS.shinyFactor : 1) * boost('shinyDay') + (s.pets?.butterfly === dayKey(now) ? C.BUTTERFLY_SHINY : 0);
   b.seed = seedId; b.plantedAt = now; b.dur = growTime(b, seedId); b.shiny = rand() < chance; b.var = Math.floor(rand() * 1000); b.drinks = 0;
@@ -375,7 +382,7 @@ export function harvest(s, i, now) {
   track(s, 'harvest', seed);
   let tokens = 0;
   const ev = ensureEvent(s, now);
-  if (ev) { tokens = eventTokensFor(reward); s.event.tokens += tokens; s.event.total += tokens; }
+  if (ev) { tokens = eventTokensFor(reward) * (d.event === ev.id ? C.EVENT_TOKEN_MULT : 1); s.event.tokens += tokens; s.event.total += tokens; }
   if (s.tutorial < 2) s.tutorial = 2;
   const basket = toBasket(s, seed, shiny);
   const levelUps = addXp(s, xp);
@@ -1011,7 +1018,7 @@ export const basketCount = (s) => Object.values(s.basket || {}).reduce((a, b) =>
 
 // Sorten, die der Spieler gerade anbauen kann
 function growable(s) {
-  return C.SEED_ORDER.filter((k) => { const d = C.SEEDS[k]; return d.bred ? s.bred.includes(k) : d.level <= s.level && (!d.rare || s.rareUnlocked.includes(k)); });
+  return C.SEED_ORDER.filter((k) => { const d = C.SEEDS[k]; if (d.event) return false; return d.bred ? s.bred.includes(k) : d.level <= s.level && (!d.rare || s.rareUnlocked.includes(k)); });
 }
 
 // Tagesblume: wird heute doppelt bezahlt

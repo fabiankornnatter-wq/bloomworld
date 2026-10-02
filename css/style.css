@@ -118,7 +118,7 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .seeds { display: flex; gap: 10px; overflow-x: auto; padding: 4px 16px 10px; scroll-snap-type: x proximity; scrollbar-width: none; }
 .seeds::-webkit-scrollbar { display: none; }
 .seed { flex: 0 0 auto; width: 126px; scroll-snap-align: start; border-radius: 20px; padding: 8px 6px 10px; background: linear-gradient(#fffef6, #ffeec4); border: 2px solid #fff; box-shadow: 0 4px 0 #e8cf7c, 0 6px 10px rgba(0, 0, 0, 0.15); text-align: center; color: var(--blue); }
-.seed img { width: 74px; height: 74px; display: block; margin: -4px auto -2px; }
+.seed img { width: 74px; height: 74px; display: block; margin: -4px auto -2px; border-radius: 50%; }
 .seed b { display: block; font-size: 13px; line-height: 1.15; hyphens: manual; -webkit-hyphens: manual; }
 .seed .meta { display: flex; justify-content: center; gap: 6px; font-size: 12px; color: var(--muted); margin: 3px 0 6px; }
 .seed .price { display: inline-flex; align-items: center; gap: 4px; font-size: 15px; color: #fff; padding: 2px 10px; border-radius: 12px; background: linear-gradient(#5fd847, #2c9d1f); border: 1.5px solid var(--green-d); }
@@ -152,7 +152,7 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .tile { background: #fff; border-radius: 18px; padding: 8px 6px 10px; text-align: center; border: 2px solid #fff; box-shadow: 0 4px 0 #d8c7ee, 0 6px 10px rgba(0, 0, 0, 0.12); color: var(--blue); display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.tile img { width: 72px; height: 72px; }
+.tile img { width: 72px; height: 72px; border-radius: 50%; }
 .tile b { font-size: 13.5px; line-height: 1.2; hyphens: manual; -webkit-hyphens: manual; max-width: 100%; }
 .bigstar { position: relative; display: block; width: 58px; height: 58px; }
 .bigstar .star { position: absolute; inset: 0; }
@@ -819,3 +819,5 @@ body.visiting #maint { display: none; }
 
 .lvgift { margin: 6px 0 0; font-weight: 700; color: var(--pink, #e0407a); }
 .lvgift .chips { display: inline-flex; margin-left: 4px; }
+.tier.tev { background: #ffe9a8; color: #8a5a00; }
+.seed.evseed { border-color: #ffd23f; }

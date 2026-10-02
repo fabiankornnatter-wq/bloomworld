@@ -802,14 +802,17 @@ export class World {
       this.r.removeObject(o); this.r.freeMesh(o.mesh);
       return url;
     };
-    const icons = { flower: {}, shiny: {}, deco: {}, animal: {}, skin: {}, bedLvl: {} };
+    const icons = { flower: {}, shiny: {}, flowerBg: {}, shinyBg: {}, deco: {}, animal: {}, skin: {}, bedLvl: {} };
     for (const id of Object.keys(SEEDS)) {
       // Porträt: Blüte groß, leicht von vorn-oben
       const cup = ['tulip', 'rose', 'peony', 'dahlia', 'magnolia', 'hydrangea', 'lavender'].includes(SEEDS[id].model);
-      const bg = ICON_BG[SEEDS[id].tier || (SEEDS[id].rare ? 'selten' : SEEDS[id].slow ? 'slow' : 'normal')];
-      const o = { yaw: 0.35, pitch: cup ? 0.42 : 0.62, pad: 0.92, size: 160, bg };
+      const bg = ICON_BG[SEEDS[id].tier || (SEEDS[id].event ? 'event' : SEEDS[id].rare ? 'selten' : SEEDS[id].slow ? 'slow' : 'normal')];
+      const o = { yaw: 0.35, pitch: cup ? 0.42 : 0.62, pad: 0.92, size: 160 };
       icons.flower[id] = shot(new Geo().add(M.portrait(id, false)), o);
-      icons.shiny[id] = shot(new Geo().add(M.portrait(id, true)), { ...o, bg: ICON_BG.shiny });
+      icons.shiny[id] = shot(new Geo().add(M.portrait(id, true)), o);
+      // weicher Farbkreis als Hintergrund (per CSS, damit Silhouetten unbekannter Blumen sauber bleiben)
+      icons.flowerBg[id] = `radial-gradient(circle at 50% 48%, ${bg[0]} 4%, ${bg[1]} 72%, transparent 92%)`;
+      icons.shinyBg[id] = `radial-gradient(circle at 50% 48%, ${ICON_BG.shiny[0]} 4%, ${ICON_BG.shiny[1]} 72%, transparent 92%)`;
     }
     for (const id of Object.keys(M.DECO_MODELS)) icons.deco[id] = shot(M.DECO_MODELS[id]());
     const assemble = (rig, legs) => {
@@ -838,7 +841,7 @@ export class World {
 
 // Hintergrundfarben der Blumen-Symbole nach Seltenheit
 const ICON_BG = {
-  normal: ['#ffffff', '#e4f6d6'], slow: ['#ffffff', '#fdebc8'], selten: ['#ffffff', '#ffe0ec'],
+  normal: ['#ffffff', '#e4f6d6'], slow: ['#ffffff', '#fdebc8'], event: ['#ffffff', '#ffe6a8'], selten: ['#ffffff', '#ffe0ec'],
   episch: ['#ffffff', '#e6dcff'], 'legendär': ['#fff9e0', '#ffe39a'], shiny: ['#ffffff', '#fff3b8'],
 };
 

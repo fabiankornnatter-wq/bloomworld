@@ -645,3 +645,20 @@ test('Level-Belohnungen: Deko und Skins als Geschenk', () => {
   assert.ok(ups.find((u) => u.level === 5).deco === 'lantern');
   for (let l = 2; l <= C.MAX_LEVEL; l++) { const r = C.levelReward(l); assert.ok(r.coins > 0); if (r.deco) assert.ok(C.DECO[r.deco]); if (r.skin) assert.ok(C.SKINS[r.skin]); }
 });
+
+test('Event-Blumen: nur während des Events säbar, doppelte Event-Währung, nicht beim Händler', () => {
+  const s = G.newState(T0); s.coins = 5000; s.level = 10;
+  assert.equal(G.seedStatus(s, 'chrysanthemum', T0).available, false);
+  assert.ok(G.seedStatus(s, 'chrysanthemum', T0).reason.includes('Herbstfest'));
+  assert.equal(G.plant(s, 0, 'chrysanthemum', T0, never).ok, false);
+  assert.ok(G.seedStatus(s, 'chrysanthemum', OCT).available);
+  assert.ok(G.plant(s, 0, 'chrysanthemum', OCT, never).ok);
+  G.plant(s, 1, 'daisy', OCT, never);
+  const r1 = G.harvest(s, 1, OCT + 30_000);
+  s.beds[0].drinks = 9;
+  const r0 = G.harvest(s, 0, OCT + 60 * 60_000);
+  assert.ok(r0.tokens >= 2 * r1.tokens, `${r0.tokens} vs ${r1.tokens}`);
+  assert.ok(s.collection.chrysanthemum.count === 1);
+  for (const k of C.EVENT_SEEDS) { assert.ok(C.EVENTS.find((e) => e.id === C.SEEDS[k].event), k); assert.ok(C.FLOWER_INFO[k], 'Info ' + k); }
+  assert.equal(C.EVENT_SEEDS.length, C.EVENTS.length);
+});
