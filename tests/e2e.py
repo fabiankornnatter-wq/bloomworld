@@ -203,7 +203,7 @@ with sync_playwright() as p:
     check('Züchtung läuft', ev('BW.state.greenhouse.job && BW.state.greenhouse.job.result') == 'rainbowTulip')
     click('#panel .x', 500)
     ev('BW.skip(200000)')
-    pg.wait_for_timeout(900)
+    pg.wait_for_timeout(2500)
     check('Gewächshaus-Blase zeigt fertige Züchtung', pg.locator(f'#bub24.ready').count() == 1)
     shot('11_breed_ready')
     tap_at(*ev("(() => { const r = document.querySelector('#bub24 .b').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()"))
@@ -223,6 +223,14 @@ with sync_playwright() as p:
     pg.mouse.move(src[0], src[1]); pg.mouse.down(); pg.wait_for_timeout(120)
     for k in range(1, 21):
         pg.mouse.move(src[0] + (dst[0] - src[0]) * k / 20, src[1] + (dst[1] - src[1]) * k / 20); pg.wait_for_timeout(30)
+    # Perspektive: nachjustieren, bis die Vorschau auf dem Ziel liegt (so wie ein Spieler es am Bildschirm sieht)
+    mx, my = dst
+    for _ in range(8):
+        pos = ev('BW.ui.edit && BW.ui.edit.pos')
+        if not pos or (abs(pos[0] - target[0]) < 0.3 and abs(pos[1] - target[1]) < 0.3): break
+        a = ev(f'BW.world.screenOf([{pos[0]}, 0, {pos[1]}])'); bq = ev(f'BW.world.screenOf([{target[0]}, 0, {target[1]}])')
+        mx += bq[0] - a[0]; my += bq[1] - a[1]
+        pg.mouse.move(mx, my); pg.wait_for_timeout(120)
     shot('12b_drag')
     pg.mouse.up(); pg.wait_for_timeout(600)
     moved = ev('BW.state.layout.beds[0]')

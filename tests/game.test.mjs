@@ -65,16 +65,16 @@ test('Funkelblüte bringt dreifache Belohnung', () => {
 
 test('Level 1–30 mit Belohnungen und Freischaltungen', () => {
   const s = G.newState(T0);
-  assert.equal(C.LEVELS.length, 30);
+  assert.equal(C.LEVELS.length, C.MAX_LEVEL);
   assert.equal(G.plant(s, 0, 'sunflower', T0, never).code, 'seedLocked');
   const ups = G.addXp(s, C.LEVELS[1]);
   assert.equal(s.level, 2);
   assert.ok(ups[0].unlocks.some((u) => u.id === 'sunflower'));
   assert.ok(G.plant(s, 0, 'sunflower', T0, never).ok);
   G.addXp(s, 1e9);
-  assert.equal(s.level, 30);
+  assert.equal(s.level, C.MAX_LEVEL);
   assert.equal(G.xpProgress(s).max, true);
-  assert.equal(G.roadmap(s).length, 29);
+  assert.equal(G.roadmap(s).length, C.MAX_LEVEL - 1);
 });
 
 test('Beete: Level-Grenze, Ausbau (mehr Münzen), Bewässerung (schneller)', () => {
@@ -293,7 +293,7 @@ test('kaputter Spielstand wird repariert statt abzustürzen', () => {
   const { state } = G.migrate(bad, T0);
   assert.equal(state.coins, 50);
   assert.equal(state.beds.length, 24);
-  assert.equal(state.level, 30);
+  assert.equal(state.level, C.MAX_LEVEL);
   assert.deepEqual(state.items, { fert: 0, turbo: 0, lucky: 0, boost: 0, rain: 0, compost: 0, pollen: 0 });
   assert.equal(state.greenhouse.job, null);
   assert.equal(G.storyStatus(state).finished, true);
@@ -349,15 +349,16 @@ test('Deko mehrfach kaufen, einlagern, aufstellen, verkaufen', () => {
   s.coins = 5000; s.level = 10;
   const a = G.buyDeco(s, 'lantern'), b = G.buyDeco(s, 'lantern'), c = G.buyDeco(s, 'fountain');
   assert.ok(a.ok && b.ok && c.ok);
-  assert.equal(s.decor.length, 3);
-  assert.deepEqual(s.deco.sort(), ['fountain', 'lantern']);
+  const n0 = C.LEGACY_DECOR.length;
+  assert.equal(s.decor.length, n0 + 3);
+  assert.ok(s.deco.includes('fountain') && s.deco.includes('lantern'));
   assert.deepEqual(allValid(s), []);
-  assert.ok(G.storeDeco(s, 2).ok);
-  assert.equal(s.decor[2].stored, true);
-  assert.ok(G.placeDeco(s, 2, [0, 6]).ok);
+  assert.ok(G.storeDeco(s, n0 + 2).ok);
+  assert.equal(s.decor[n0 + 2].stored, true);
+  assert.ok(G.placeDeco(s, n0 + 2, [0, 6]).ok);
   assert.deepEqual(allValid(s), []);
   const coins = s.coins;
-  assert.equal(G.sellDeco(s, 2).coins, 300);
+  assert.equal(G.sellDeco(s, n0 + 2).coins, 300);
   assert.equal(s.coins, coins + 300);
   s.level = 1;
   assert.equal(G.buyDeco(s, 'fountain').code, 'level');
@@ -702,4 +703,32 @@ test('Album: Erfolge, Titel, exklusive Blume', () => {
   assert.ok(G.seedStatus(s, 'opheliaBloom', T0).available);
   assert.ok(G.setTitle(s, 'jahresgaertner').ok); assert.equal(G.setTitle(s, 'meisterzuechter').ok, false);
   assert.ok(G.achievementList(s).every((a) => a.need > 0));
+});
+
+test('Tropenhaus: bauen, Töpfe freischalten, tropische Blumen nur drinnen, kein Durst, schneller', () => {
+  const s = G.newState(T0); s.coins = 20000; s.level = 10;
+  assert.equal(G.plant(s, 0, 'frangipani', T0, never).ok, false);
+  assert.equal(G.bedInfo(s, C.POT_INDEX(0), T0).hidden, true);
+  assert.ok(G.buildTropic(s).ok); assert.equal(s.tropic.open, 4);
+  assert.equal(G.buildTropic(s).code, 'owned');
+  assert.ok(G.bedInfo(s, C.POT_INDEX(0), T0).empty);
+  assert.equal(G.bedInfo(s, C.POT_INDEX(4), T0).locked, true);
+  assert.equal(G.unlockPot(s, 5).ok, false); assert.ok(G.unlockPot(s, 4).ok); assert.equal(s.tropic.open, 5);
+  // Tropische Blume nur im Topf
+  assert.equal(G.seedStatus(s, 'frangipani', T0).available, false);
+  assert.ok(G.seedStatus(s, 'frangipani', T0, true).available);
+  assert.ok(G.plant(s, C.POT_INDEX(0), 'frangipani', T0, never).ok);
+  // Nachtblume drinnen auch tagsüber, Rose drinnen ohne Durst und 20 % schneller
+  s.level = 14; assert.ok(G.plant(s, C.POT_INDEX(1), 'moonflower', T0, never).ok);
+  assert.ok(G.plant(s, C.POT_INDEX(2), 'tulip', T0, never).ok);
+  const pot = G.bedOf(s, C.POT_INDEX(2));
+  assert.equal(pot.dur, Math.round(C.SEEDS.tulip.growMs * 0.8));
+  const mid = G.bedInfo(s, C.POT_INDEX(2), T0 + pot.dur * 0.5);
+  assert.equal(mid.thirsty, false);
+  const r = G.harvest(s, C.POT_INDEX(2), T0 + pot.dur + 1);
+  assert.ok(r.ok && r.seed === 'tulip');
+  assert.equal(G.upgradeBed(s, C.POT_INDEX(0)).ok, false);
+  assert.equal(G.allBedInfos(s, T0).length, C.BED_COUNT + C.TROPIC.pots);
+  const rep = G.repair(JSON.parse(JSON.stringify(s)), T0);
+  assert.equal(rep.tropic.open, 5); assert.equal(rep.tropic.pots[0].seed, 'frangipani');
 });

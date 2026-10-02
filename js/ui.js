@@ -33,6 +33,10 @@ const tierTag = (d) => (d.tier ? `<span class="tier ${TIER[d.tier][1]}">${TIER[d
 const NAV_ITEMS = [['garden', 'Garten'], ['quests', 'Aufgaben'], ['events', 'Events'], ['collection', 'Sammlung'], ['shop', 'Shop'], ['friends', 'Freunde']];
 const TITLES = { quests: 'Aufgaben', events: 'Events', collection: 'Sammlung', shop: 'Shop', friends: 'Freunde', settings: 'Einstellungen', breed: 'Gewächshaus', chat: 'Chat', admin: 'Admin', trader: 'Händler', notify: 'Nachrichten', trade: 'Tauschbörse' };
 const GH = C.BED_COUNT; // Index der Gewächshaus-Blase
+const TH = C.BED_COUNT + 1 + C.TROPIC.pots; // Index der Tropenhaus-Blase
+// Blasen-Index eines Beets/Topfs (Töpfe liegen hinter der Gewächshaus-Blase)
+const bubIdx = (i) => (i < C.BED_COUNT ? i : i + 1);
+export const bedIdxOfBubble = (b) => (b > GH ? b - 1 : b);
 
 export class UI {
   constructor(api) {
@@ -57,8 +61,9 @@ export class UI {
     $('editBtn').onclick = () => this.api.act.toggleEdit();
     $('centerBtn').insertAdjacentHTML('afterbegin', I.target);
     $('nav').innerHTML = NAV_ITEMS.map(([id, label]) => `<button data-nav="${id}" class="${id === 'garden' ? 'on' : ''}" aria-label="${label}">${I.NAV[id]}<span>${label}</span><i class="badge" id="badge-${id}" hidden></i></button>`).join('');
-    $('bubbles').innerHTML = Array.from({ length: C.BED_COUNT + 1 }, (_, i) => `<div class="bub" id="bub${i}" hidden></div>`).join('');
-    this.bubbles = Array.from({ length: C.BED_COUNT + 1 }, (_, i) => $('bub' + i));
+    const nb = C.BED_COUNT + 2 + C.TROPIC.pots;
+    $('bubbles').innerHTML = Array.from({ length: nb }, (_, i) => `<div class="bub" id="bub${i}" hidden></div>`).join('');
+    this.bubbles = Array.from({ length: nb }, (_, i) => $('bub' + i));
 
     $('nav').addEventListener('click', (e) => { const b = e.target.closest('[data-nav]'); if (b) this.nav(b.dataset.nav); });
     $('gearBtn').onclick = () => this.nav('settings');
@@ -72,7 +77,7 @@ export class UI {
     $('centerBtn').onclick = () => { this.api.sound.play('tap'); this.api.world.resetView(); };
     $('harvestAll').onclick = () => (this.haRain ? this.api.act.useRain() : this.api.act.harvestAll());
     $('quest').onclick = () => this.api.act.questTracker();
-    for (const el of [$('panel'), $('sheet'), $('modal'), $('toast'), $('modeBar'), $('editBar'), $('visitBar')]) el.addEventListener('click', (e) => this.onAct(e));
+    for (const el of [$('panel'), $('sheet'), $('modal'), $('toast'), $('modeBar'), $('editBar'), $('visitBar'), $('tropicBar')]) el.addEventListener('click', (e) => this.onAct(e));
     document.addEventListener('submit', (e) => { const f = e.target.closest?.('form[data-form]'); if (!f) return; e.preventDefault(); const sb = e.submitter; if (sb?.name) f.dataset[sb.name] = sb.value; else { delete f.dataset.on; delete f.dataset.stop; delete f.dataset.clear; } if (f.dataset.form === 'tradeOffer') onTradeForm(this, f); else onSocialForm(this, f); });
     $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') this.closeModal(); });
     $('panel').addEventListener('input', (e) => this.onInput(e));
@@ -352,12 +357,14 @@ export class UI {
     const hide = !!this.panel || !!this.edit, s = this.s, m = this.mode;
     let ready = 0, thirsty = 0;
     // Gesperrte Beete: Preis nur bei den nächsten freischaltbaren zeigen
-    const firstLevelLocked = infos.find((x) => x.locked && x.needLevel);
+    const firstLevelLocked = infos.find((x) => x.locked && x.needLevel && !x.inside);
+    const inside = !!this.api.world.inside;
     infos.forEach((info, i) => {
-      const el = this.bubbles[i];
+      const el = this.bubbles[bubIdx(i)];
+      if (!el) return;
       if (info.ready) ready++;
       let key = null, html, cls;
-      if (info.hidden) { /* Beet auf noch nicht gekauftem Land */ }
+      if (info.hidden || !!info.inside !== inside) { /* Beet auf noch nicht gekauftem Land – oder gerade nicht in dieser Ansicht */ }
       else if (m) {
         if (!info.locked) {
           if (m.kind === 'sprinkler' && !info.sprinkler) { key = 'MS'; cls = 'mode'; html = `<div class="b">${I.drop}${C.SPRINKLER.cost}</div>`; }
@@ -366,16 +373,18 @@ export class UI {
           else if (m.kind === 'item' && info.seed && (m.id === 'compost' ? !info.compost : !info.ready && !(m.id === 'lucky' && info.shinyHidden) && !(m.id === 'fert' && info.thirsty))) { key = 'MI' + m.id; cls = 'mode'; html = `<div class="b">${I.ITEM[m.id]}</div>`; }
         }
       } else if (info.locked) {
-        if (!info.needLevel || info === firstLevelLocked) { key = 'L' + info.price + '|' + info.needLevel; cls = 'locked'; html = `<div class="b">${I.lock}${info.needLevel ? `Lv ${info.needLevel}` : num(info.price)}</div>`; }
+        if (info.inside ? i === C.BED_COUNT + s.tropic.open : (!info.needLevel || info === firstLevelLocked)) { key = 'L' + info.price + '|' + info.needLevel; cls = 'locked'; html = `<div class="b">${I.lock}${info.needLevel ? `Lv ${info.needLevel}` : num(info.price)}</div>`; }
       } else if (info.empty) { key = 'E'; cls = 'empty'; html = '<div class="b">+</div>'; }
       else if (info.ready) { key = 'R' + info.seed + info.shiny; cls = 'ready' + (info.shiny ? ' gold' : ''); html = `<div class="b"><img alt="${esc(plain(C.SEEDS[info.seed].name))} ernten" src="${info.shiny ? this.icons.shiny[info.seed] : this.icons.flower[info.seed]}"></div>`; }
       else if (info.thirsty) { thirsty++; key = 'T'; cls = 'thirsty'; html = `<div class="b">${I.drop}Gießen</div>`; }
       else { const sec = Math.ceil(info.remaining / 1000); key = 'G' + sec + '|' + Math.round(info.progress * 40); cls = 'grow'; html = `<div class="b">${I.ring(info.progress)}${fmtTime(info.remaining)}</div>`; }
-      this.placeBubble(el, i, key, cls, html, hide ? null : key && this.api.world.bedScreen(i, info.ready));
+      this.placeBubble(el, bubIdx(i), key, cls, html, hide ? null : key && this.api.world.bedScreen(i, info.ready));
     });
-    // Gewächshaus
-    const gh = this.ghBubble(now, hide || !!m);
+    // Gewächshaus und Tropenhaus (nur draußen)
+    const gh = inside ? null : this.ghBubble(now, hide || !!m);
     this.placeBubble(this.bubbles[GH], GH, gh?.key, gh?.cls, gh?.html, gh && this.api.world.greenhouseScreen());
+    const th = inside ? null : this.tropicBubble(infos, hide || !!m);
+    this.placeBubble(this.bubbles[TH], TH, th?.key, th?.cls, th?.html, th && this.api.world.tropicScreen());
 
     const ha = $('harvestAll');
     const free = !hide && this.sheetBed < 0 && !m;
@@ -397,6 +406,22 @@ export class UI {
     el.style.transform = `translate(${p[0].toFixed(1)}px, ${p[1].toFixed(1)}px) translate(-50%, -100%)`;
   }
 
+  tropicDialog() {
+    const s = this.s, t = s.tropic, ok = s.coins >= C.TROPIC.cost;
+    if (t.built) { this.api.act.enterTropic(); return; }
+    if (s.level < C.TROPIC.level) { this.modal({ title: C.TROPIC.name, html: `<p>🌴 Vor dem Zaun steht ein verfallenes Glashaus. Ab <b>Level ${C.TROPIC.level}</b> kannst du es als ${C.TROPIC.name} wieder aufbauen – mit Pflanztöpfen, in denen Blumen nie Durst haben, Tag und Nacht wachsen und 20 % schneller sind. Nur dort gedeihen tropische Blumen wie Lotus, Frangipani und Protea.</p>`, buttons: [['OK', 'closeModal', '']] }); return; }
+    this.modal({ title: `${C.TROPIC.name} bauen`, html: `<p>🌴 Repariere das alte Glashaus und mach ein ${C.TROPIC.name} daraus:</p><ul class="unl"><li>🌺 6 tropische Blumen, die nur dort wachsen</li><li>💧 Blumen haben drinnen nie Durst</li><li>🌙 Nachtblumen wachsen auch tagsüber (Kunstlicht)</li><li>⏱ 20 % schnelleres Wachstum</li><li>🪴 ${C.TROPIC.start} Töpfe zum Start, bis zu ${C.TROPIC.pots} ausbaubar</li></ul><div class="big-num">${I.coin()} ${num(C.TROPIC.cost)}</div>${ok ? '' : `<p style="color:#b3123a">Dir fehlen noch ${num(C.TROPIC.cost - s.coins)} Münzen.</p>`}`, buttons: ok ? [['Bauen', 'buildTropic', '']] : [['Zum Händler', 'openTrader', 'pink'], ['OK', 'closeModal', 'ghost']] });
+  }
+
+  tropicBubble(infos, hide) {
+    if (hide) return null;
+    const s = this.s, t = s.tropic;
+    if (!t.built) return s.level >= C.TROPIC.level ? { key: 'TB', cls: 'gh alert', html: `<div class="b">🌴 ${C.TROPIC.name} bauen</div>` } : { key: 'TL', cls: 'locked', html: `<div class="b">${I.lock}Lv ${C.TROPIC.level}</div>` };
+    const ready = infos.filter((x) => x.inside && x.ready).length;
+    if (ready) return { key: 'TR' + ready, cls: 'ready gold', html: `<div class="b">🌴 ${ready} reif</div>` };
+    return { key: 'TI', cls: 'gh', html: `<div class="b">🌴 Betreten</div>` };
+  }
+
   ghBubble(now, hide) {
     if (hide) return null;
     const s = this.s;
@@ -411,6 +436,7 @@ export class UI {
   updateHint(infos, hide) {
     const s = this.s, h = $('hint');
     let text = '';
+    if (this.api.world.inside) hide = true;
     if (s.tutorial === 0) text = 'Tippe auf ein Beet mit <b>+</b>, um Blumen zu pflanzen.';
     else if (!s.stats.watered && infos.some((x) => x.thirsty)) text = 'Eine Blume hat <b>Durst</b>! Tippe auf den Tropfen über dem Beet, um sie zu gießen. Mit Sprinkler gießt sich ein Beet von selbst.';
     else if (s.tutorial === 1) text = infos.some((x) => x.ready) ? 'Deine Blumen blühen! Tippe auf die Blüte über dem Beet, um zu ernten.' : 'Super! Die Blumen wachsen jetzt – auch wenn du das Spiel schließt. Tippe auf ein wachsendes Beet für Dünger.';
@@ -447,20 +473,20 @@ export class UI {
   }
 
   seedHtml() {
-    const s = this.s, i = this.sheetBed;
-    const order = C.SEED_ORDER.filter((id) => !C.SEEDS[id].event || G.seedStatus(s, id).available).sort((a, b) => (G.seedStatus(s, b).available ? 1 : 0) - (G.seedStatus(s, a).available ? 1 : 0));
+    const s = this.s, i = this.sheetBed, bed = G.bedOf(s, i) || {}, inside = !!bed.inside, nowT = this.api.now();
+    const order = C.SEED_ORDER.filter((id) => (!C.SEEDS[id].event || G.seedStatus(s, id, nowT, inside).available) && (!C.SEEDS[id].tropic || inside)).sort((a, b) => (G.seedStatus(s, b, nowT, inside).available ? 1 : 0) - (G.seedStatus(s, a, nowT, inside).available ? 1 : 0) || (inside ? (C.SEEDS[b].tropic ? 1 : 0) - (C.SEEDS[a].tropic ? 1 : 0) : 0));
     const cards = order.map((id) => {
-      const d = C.SEEDS[id], st = G.seedStatus(s, id), afford = s.coins >= d.cost;
+      const d = C.SEEDS[id], st = G.seedStatus(s, id, nowT, inside), afford = s.coins >= d.cost;
       const label = st.available ? `${I.coin()} ${d.cost}` : `${I.lock} ${esc(st.reason)}`;
       const act = st.available ? 'plant' : st.shop ? 'gotoShop' : st.breed ? 'gotoBreed' : 'seedLocked';
       const nightLock = d.nightOnly && this.api.breedCtx?.().time !== 'night';
       return `<button class="seed ${st.available ? '' : 'lock'} ${d.rare || d.bred ? 'rare' : ''} ${d.slow ? 'slow' : ''} ${d.event ? 'evseed' : ''}" data-act="${act}" data-id="${id}" aria-label="${esc(plain(d.name))}">
-        ${tierTag(d)}${d.event ? (st.useSeed ? `<span class="tier tev">🌱 ${st.seeds} Samen</span>` : `<span class="tier tev">🎉 Event ×2${st.seeds ? ` · ${st.seeds} 🌱` : ''}</span>`) : ''}${d.slow ? `<span class="tier tslow">${nightLock ? '🌙 nachts' : '⏳ Geduld'}</span>` : ''}<img alt="" src="${this.icons.flower[id]}" style="background:${this.icons.flowerBg[id]}"><b>${esc(d.name)}</b>
-        <span class="meta"><span>⏱ ${growLabel(G.growTime(s.beds[i] || {}, id))}</span><span>${I.coin()}${Math.round(d.reward * C.BED_LEVELS[(s.beds[i]?.lvl || 1) - 1].mult)}</span>${d.water && !s.beds[i]?.sprinkler ? `<span class="wneed" title="Muss ${d.water}× gegossen werden">${I.drop}${d.water}</span>` : ''}</span>
+        ${tierTag(d)}${d.tropic ? '<span class="tier tev">🌴 Tropen</span>' : ''}${d.event ? (st.useSeed ? `<span class="tier tev">🌱 ${st.seeds} Samen</span>` : `<span class="tier tev">🎉 Event ×2${st.seeds ? ` · ${st.seeds} 🌱` : ''}</span>`) : ''}${d.slow ? `<span class="tier tslow">${nightLock && !inside ? '🌙 nachts' : '⏳ Geduld'}</span>` : ''}<img alt="" src="${this.icons.flower[id]}" style="background:${this.icons.flowerBg[id]}"><b>${esc(d.name)}</b>
+        <span class="meta"><span>⏱ ${growLabel(G.growTime(bed, id))}</span><span>${I.coin()}${Math.round(d.reward * C.BED_LEVELS[(bed.lvl || 1) - 1].mult)}</span>${d.water && !bed.sprinkler && !inside ? `<span class="wneed" title="Muss ${d.water}× gegossen werden">${I.drop}${d.water}</span>` : ''}</span>
         <span class="price ${st.available && !afford ? 'poor' : ''}">${label}</span></button>`;
     }).join('');
-    const empty = s.beds.filter((b) => !b.locked && !b.seed).length;
-    const sel = C.SEEDS[s.selectedSeed] && G.seedStatus(s, s.selectedSeed).available ? s.selectedSeed : 'daisy';
+    const empty = inside ? s.tropic.pots.slice(0, s.tropic.open).filter((b) => !b.seed).length : s.beds.filter((b) => !b.locked && !b.seed).length;
+    const sel = C.SEEDS[s.selectedSeed] && G.seedStatus(s, s.selectedSeed, nowT, inside).available && !(C.SEEDS[s.selectedSeed].tropic && !inside) ? s.selectedSeed : 'daisy';
     const allBtn = empty > 1 ? `<div class="all"><button class="btn small blue wide" data-act="plantAll" data-id="${sel}"><img alt="" src="${this.icons.flower[sel]}" style="width:28px;height:28px;margin:-4px 0"> Alle ${empty} freien Beete · ${I.coin()} ${C.SEEDS[sel].cost * empty}</button></div>` : '';
     const weekend = G.isWeekend(this.api.now()) ? `<div class="wknd">${svg(I.sparkle, 18)} Funkel-Wochenende: doppelte Chance auf Funkelblüten!</div>` : '';
     return `<div class="inner"><h3>Was möchtest du pflanzen? <button class="x" data-act="closeSheet" aria-label="Schließen">✕</button></h3>${weekend}<div class="seeds">${cards}</div>${allBtn}${this.bedTools(i)}</div>`;
@@ -468,7 +494,7 @@ export class UI {
 
   // Bewässerung und Ausbau für ein Beet
   bedTools(i) {
-    const s = this.s, b = s.beds[i];
+    const s = this.s, b = G.bedOf(s, i);
     if (!b || b.locked) return '';
     const L = C.BED_LEVELS[b.lvl - 1];
     let spr;
@@ -581,6 +607,8 @@ export class UI {
     if (r.deco) out.push(`<span class="chip"><img alt="" src="${this.icons.deco[r.deco]}"> ${esc(C.DECO[r.deco].name)}</span>`);
     if (r.skin) out.push(`<span class="chip"><img alt="" src="${this.icons.skin[r.skin]}"> ${esc(C.SKINS[r.skin].name)}</span>`);
     if (r.tokens) out.push(`<span class="chip">${I.leaf()} ${r.tokens} ${esc(tokenName || '')}</span>`);
+    for (const [k, n] of Object.entries(r.seeds || {})) if (n && C.SEEDS[k]) out.push(`<span class="chip"><img alt="" src="${this.icons.flower[k]}"> ${n}× ${esc(plain(C.SEEDS[k].name))}-Samen</span>`);
+    if (r.title && C.TITLES[r.title]) out.push(`<span class="chip">🏷️ Titel „${esc(C.TITLES[r.title])}“</span>`);
     return `<div class="chips">${out.join('')}</div>`;
   }
 
@@ -937,7 +965,7 @@ export class UI {
       <div class="card set"><div class="lab">Spielstand</div><p>Wird automatisch gespeichert${acc.user ? ' – in deinem Konto und auf diesem Gerät' : ' – auf diesem Gerät'}.</p><button class="btn red small" style="align-self:flex-start;margin-top:6px" data-act="reset">Garten neu beginnen</button></div>
       <div class="card set"><div class="lab">Als App auf dem Handy</div><p>${standalone ? 'BloomWorld läuft als App. 🌸' : 'Mit eigenem Symbol auf dem Startbildschirm, ohne Browserleiste.'}</p>${standalone ? '' : '<button class="btn small" style="align-self:flex-start;margin-top:6px" data-act="install">Zum Startbildschirm hinzufügen</button>'}</div>
       <div class="btnrow center"><button class="btn small ghost" data-act="legal" data-id="impressum">Impressum</button><button class="btn small ghost" data-act="legal" data-id="datenschutz">Datenschutz</button><button class="btn small ghost" data-act="legal" data-id="agb">AGB</button></div>
-      <p class="note">BloomWorld · Version 3.10<br>Schrift: Poppins (SIL Open Font License)</p>`;
+      <p class="note">BloomWorld · Version 3.11<br>Schrift: Poppins (SIL Open Font License)</p>`;
   }
 
   // ---------- Klicks in Panels, Leisten, Dialogen ----------
@@ -1019,6 +1047,10 @@ export class UI {
       case 'reset': this.confirm({ title: 'Neu beginnen?', text: 'Dein ganzer Garten, alle Münzen, Züchtungen und die Sammlung werden gelöscht. Das kann nicht rückgängig gemacht werden.', ok: 'Ja, neu beginnen', okClass: 'red', onOk: () => A.reset() }); break;
       case 'info': this.modal({ title: 'Saisonpass', html: `${svg(I.pass, 96)}<p>Der Saisonpass kommt mit einem der nächsten Saison-Events. Er wird freiwillig sein und nur Deko und Komfort enthalten – kein Pay-to-win.</p>`, buttons: [['OK', 'closeModal', '']] }); break;
       case 'unlockBed': this.closeModal(); A.unlockBed(+id); break;
+      case 'unlockPot': this.closeModal(); A.unlockPot(+id); break;
+      case 'buildTropic': this.closeModal(); A.buildTropic(); break;
+      case 'enterTropic': this.closeModal(); A.enterTropic(); break;
+      case 'exitTropic': A.exitTropic(); break;
       case 'modalOk': { const f = this._onOk; this.closeModal(); f?.(); break; }
       case 'toastAct': this.hideToast(); this._toastAction?.(); break;
       case 'login': A.login(); break;
@@ -1080,7 +1112,15 @@ export class UI {
   deleteError(msg) { const e = $('delErr'); if (e) e.textContent = msg; }
 
   bedLockedDialog(i) {
-    const s = this.s, u = C.BED_UNLOCK[i];
+    const s = this.s;
+    if (i >= C.BED_COUNT) {
+      const k = i - C.BED_COUNT, cost = C.TROPIC.potCost[k], lvl = C.TROPIC.potLevel[k], ok = s.coins >= cost;
+      if (k !== s.tropic.open) { this.toast('Schalte die Töpfe der Reihe nach frei.', ''); return; }
+      if (s.level < lvl) { this.modal({ title: 'Neuer Topf', html: `<p>Diesen Pflanztopf kannst du ab <b>Level ${lvl}</b> freischalten.</p><div class="big-num">${I.coin()} ${num(cost)}</div>`, buttons: [['OK', 'closeModal', 'ghost']] }); return; }
+      this.modal({ title: 'Neuer Topf', html: `<p>Noch ein Pflanztopf im ${C.TROPIC.name}: nie Durst, Tag und Nacht, 20 % schneller.</p><div class="big-num">${I.coin()} ${num(cost)}</div>${ok ? '' : `<p style="color:#b3123a">Dir fehlen noch ${num(cost - s.coins)} Münzen.</p>`}`, buttons: ok ? [['Freischalten', 'unlockPot', '', `data-id="${k}"`]] : [['Zum Händler', 'openTrader', 'pink'], ['OK', 'closeModal', 'ghost']] });
+      return;
+    }
+    const u = C.BED_UNLOCK[i];
     if (s.level < u.level) {
       this.modal({ title: 'Neues Beet', html: `<img class="big" alt="" src="${this.icons.bed}"><p>Dieses Beet kannst du ab <b>Level ${u.level}</b> freischalten. Ernte Blumen und erledige Aufgaben, um aufzusteigen.</p><div class="big-num">${I.coin()} ${num(u.cost)}</div>`, buttons: [['Zu den Aufgaben', 'tab', 'blue', 'data-panel="quests" data-id="story"'], ['OK', 'closeModal', 'ghost']] });
       return;

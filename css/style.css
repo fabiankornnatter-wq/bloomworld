@@ -857,3 +857,6 @@ body.visiting #maint { display: none; }
 .shinywrap.on::after { bottom: 8px; right: 0; animation-delay: 0.9s; font-size: 11px; }
 @keyframes twinkle { 0%, 100% { opacity: 0.15; transform: scale(0.6) rotate(0deg); } 50% { opacity: 1; transform: scale(1.2) rotate(45deg); } }
 .tile.unknown .shinywrap::before, .tile.unknown .shinywrap::after { display: none; }
+
+#tropicBar { position: absolute; z-index: 18; left: calc(10px + var(--safe-l)); right: calc(10px + var(--safe-r)); bottom: calc(var(--nav-h) + 18px + var(--safe-b)); max-width: 520px; margin: 0 auto; background: rgba(47, 143, 74, 0.92); color: #fff; border-radius: 18px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
+#tropicBar .btn { background: #fff; color: #2f8f4a; }

@@ -183,6 +183,12 @@ Object.assign(FLOWER_LOOK, {
   lavaHibiscus: { petal: '#ff3b1f', tip: '#ffc93a', center: '#ffe27a', glow: 0.45 },
   frostStar: { petal: '#cfeaff', tip: '#f6fbff', center: '#7fcfff', glow: 0.45 },
   queenRose: { petal: '#c2102e', tip: '#ffd25a', center: '#6e0618', glow: 0.3 },
+  frangipani: { petal: '#fff6e0', tip: '#ffffff', center: '#ffd23f' },
+  strelitzia: { petal: '#ff8a1a', tip: '#ffb84a', center: '#3b5bff' },
+  lotus: { petal: '#ffb3c6', tip: '#fff5f8', center: '#ffe27a' },
+  passionflower: { petal: '#b48cff', tip: '#ffffff', center: '#5a2d9c' },
+  protea: { petal: '#ff8fa8', tip: '#fff0d6', center: '#b6476a' },
+  cactusFlower: { petal: '#ff2d8a', tip: '#ff8fc2', center: '#ffe27a', glow: 0.2 },
   opheliaBloom: { petals: ['#ffd1dc', '#fff0b3', '#d4f5d0', '#cfe6ff', '#e6d6ff'], petal: '#ffd1dc', tip: '#ffffff', center: '#ffe27a', glow: 0.5 },
 });
 const brighten = (look) => {
@@ -1060,9 +1066,10 @@ DECO_MODELS.planter = () => {
 };
 DECO_MODELS.pathStone = () => steppingStones([[-0.32, -0.08], [0.32, 0.1]], 11);
 DECO_MODELS.hedgeBlock = () => {
+  // 2 m lang mit geraden Enden, damit mehrere Stücke nahtlos eine Hecke bilden
   const g = new Geo(), R = rng(5);
-  g.add(roundedBox(1.6, 0.85, 0.7, 0.28, PAL.leaf2, 2).shadeByHeight(0, 0.85, 0.7, 1.05), T(0, 0.43, 0));
-  for (let x = -0.55; x <= 0.56; x += 0.55) {
+  g.add(roundedBox(2.0, 0.85, 0.72, 0.1, PAL.leaf2, 2).shadeByHeight(0, 0.85, 0.7, 1.05), T(0, 0.43, 0));
+  for (let x = -0.75; x <= 0.76; x += 0.5) {
     const b = icosphere(0.33 + R() * 0.08, R() > 0.4 ? PAL.leaf2 : PAL.leaf1, 1, false, 0.12, Math.round(x * 10) + 3);
     b.paint((p, n, c) => v3.scale(c, 0.8 + 0.3 * (n[1] * 0.5 + 0.5)));
     g.add(b, T(x, 0.75 + R() * 0.08, (R() - 0.5) * 0.15));
@@ -1399,3 +1406,97 @@ DECO_MODELS.flowerPress = () => {
   for (let i = 0; i < 5; i++) g.add(petal(0.09, 0.04, ['#ff6f9a', '#ffd23f', '#9a7be8', '#4aa3ff', '#ff5a3c'][i], { cup: 0, curl: 0, tip: 0.5 }), T(-0.2 + i * 0.1, 0.265, 0.05, i * 1.2));
   return g;
 };
+
+// ---------------- Tropenhaus (zweites Gewächshaus) ----------------
+// Außenansicht: größeres Glashaus mit Rundbogendach und Palmen davor
+export function tropicHouse(built = true) {
+  const g = new Geo(), R = rng(21);
+  const W = 5.2, D = 3.6, H = 2.2;
+  const frame = built ? '#f4efe4' : '#a9a294', glass = built ? '#bfe9f2' : '#8fa79a', e = built ? 0.5 : 0;
+  g.add(roundedBox(W + 0.4, 0.3, D + 0.4, 0.06, built ? '#cdbfae' : '#9c968d', 1), T(0, 0.15, 0));
+  for (const [w, x, z, ry] of [[W, 0, D / 2, 0], [W, 0, -D / 2, 0], [D, W / 2, 0, P / 2], [D, -W / 2, 0, P / 2]]) g.add(roundedBox(w - 0.1, H - 0.1, 0.05, 0.02, glass, 1), T(x, 0.3 + H / 2, z, ry), { emissive: e });
+  const post = (x, z, h = H) => g.add(roundedBox(0.1, h, 0.1, 0.02, frame, 1), T(x, 0.3 + h / 2, z));
+  for (let i = 0; i <= 5; i++) { post(-W / 2 + (i * W) / 5, D / 2); post(-W / 2 + (i * W) / 5, -D / 2); }
+  for (let i = 1; i < 4; i++) { post(W / 2, -D / 2 + (i * D) / 4); post(-W / 2, -D / 2 + (i * D) / 4); }
+  for (const z of [D / 2, -D / 2]) g.add(roundedBox(W + 0.1, 0.1, 0.12, 0.02, frame, 1), T(0, 0.3 + H, z));
+  // Rundbogendach aus Segmenten
+  const segs = 7, rr = D / 2, rh = 1.3;
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * P, a1 = ((i + 1) / segs) * P;
+    const z0 = Math.cos(a0) * rr, y0 = Math.sin(a0) * rh, z1 = Math.cos(a1) * rr, y1 = Math.sin(a1) * rh;
+    const len = Math.hypot(z1 - z0, y1 - y0), ang = Math.atan2(y1 - y0, z0 - z1);
+    g.add(roundedBox(W + 0.1, 0.05, len + 0.02, 0.01, glass, 1), T(0, 0.3 + H + (y0 + y1) / 2, (z0 + z1) / 2, 0, ang), { emissive: e });
+    for (let k = 0; k <= 5; k++) g.add(roundedBox(0.07, 0.08, len + 0.04, 0.01, frame, 1), T(-W / 2 + (k * W) / 5, 0.33 + H + (y0 + y1) / 2, (z0 + z1) / 2, 0, ang));
+  }
+  for (const x of [W / 2, -W / 2]) { const poly = []; for (let i = 0; i <= segs; i++) { const a = (i / segs) * P; poly.push([Math.cos(a) * rr, Math.sin(a) * rh]); } g.add(extrude(poly, 0.04, glass), T(x, 0.3 + H, 0, P / 2), { emissive: e }); }
+  // Doppeltür mit Schild
+  g.add(roundedBox(1.3, 1.7, 0.06, 0.03, built ? '#e07a3a' : '#7a7a6a', 1), T(0, 0.3 + 0.85, D / 2 + 0.04));
+  g.add(roundedBox(0.04, 1.6, 0.08, 0.01, frame, 1), T(0, 0.3 + 0.85, D / 2 + 0.08));
+  g.add(roundedBox(1.2, 0.3, 0.06, 0.03, '#2f8f4a', 1), T(0, 0.3 + H - 0.25, D / 2 + 0.06));
+  // Innenleben angedeutet: Palmen, große Blätter
+  for (let i = 0; i < 5; i++) g.add(icosphere(0.4 + R() * 0.15, '#3faa5a', 1, false, 0.15, i), T(-1.8 + i * 0.9, 0.9 + R() * 0.3, -0.7 + (i % 2) * 0.6));
+  if (built) for (const sx of [-1, 1]) {
+    // Palme vor dem Haus
+    g.add(cylinder(0.08, 0.12, 1.4, '#8a6a4a', 7), T(sx * (W / 2 + 0.6), 0, D / 2 + 0.4, 0, 0, sx * 0.12));
+    for (let k = 0; k < 6; k++) g.add(petal(0.9, 0.25, '#3faa5a', { cup: 0.1, curl: -0.35, tip: 0.6, colorTip: '#6fd07a', fold: 0.3 }), T(sx * (W / 2 + 0.6) - sx * 0.15, 1.45, D / 2 + 0.4, (k / 6) * P * 2, -0.2));
+  } else {
+    const tuft = grassTuft(R, 0.6, ['#6aa83e', '#5c9a36', '#7cbf3f']);
+    for (let i = 0; i < 12; i++) g.add(tuft, T(-W / 2 + R() * W, 0.28, D / 2 + 0.1 + R() * 0.3, R() * 6));
+  }
+  return g;
+}
+
+// Innenraum: Fliesenboden, Glaswände, Regale, Palmen, Lampen – die Töpfe kommen aus der Szene
+export function tropicInterior() {
+  const g = new Geo(), R = rng(31);
+  const W = 11, D = 8, H = 3.4;
+  // Wiese rund um das Haus, damit kein Nichts zu sehen ist
+  g.add(disk(30, PAL.lawnA, 24), T(0, -0.06, 0));
+  // Boden aus Terrakotta-Fliesen
+  for (let x = 0; x < 11; x++) for (let z = 0; z < 8; z++) g.add(box(0.98, 0.08, 0.98, (x + z) % 2 ? '#d99a6c' : '#c98855'), T(-W / 2 + 0.5 + x, 0.04, -D / 2 + 0.5 + z));
+  // Glaswände mit Rahmen (nur drei Seiten, Vorderseite offen zur Kamera)
+  const glass = '#bfe9f2', frame = '#f4efe4';
+  for (const [w, x, z, ry] of [[W, 0, -D / 2, 0], [D, W / 2, 0, P / 2], [D, -W / 2, 0, P / 2]]) g.add(roundedBox(w, H, 0.06, 0.02, '#d6f0f6', 1), T(x, H / 2, z, ry), { emissive: 0.4 });
+  // Dach aus Glas
+  g.add(roundedBox(W, 0.05, D, 0.02, '#d6f0f6', 1), T(0, H + 0.12, 0), { emissive: 0.4 });
+  for (let i = 0; i <= 11; i++) g.add(roundedBox(0.1, H, 0.1, 0.02, frame, 1), T(-W / 2 + i, H / 2, -D / 2));
+  for (let i = 0; i <= 8; i++) for (const x of [W / 2, -W / 2]) g.add(roundedBox(0.1, H, 0.1, 0.02, frame, 1), T(x, H / 2, -D / 2 + i));
+  // Dachbalken
+  for (let i = 0; i <= 11; i += 1) g.add(roundedBox(0.08, 0.1, D, 0.02, frame, 1), T(-W / 2 + i, H + 0.05, 0));
+  // Regal hinten mit Töpfen und Gießkannen
+  g.add(roundedBox(6, 0.08, 0.7, 0.02, PAL.wood, 1), T(0, 1.0, -D / 2 + 0.5));
+  g.add(roundedBox(6, 0.08, 0.7, 0.02, PAL.wood, 1), T(0, 1.8, -D / 2 + 0.5));
+  for (let i = 0; i < 7; i++) { g.add(lathe([[0.12, 0], [0.16, 0.25], [0.18, 0.27], [0, 0.27]], ['#d9774a', '#b9634a', '#e8a070'][i % 3], 10), T(-2.6 + i * 0.85, 1.04, -D / 2 + 0.5)); g.add(icosphere(0.16, [PAL.leaf1, '#3faa5a', PAL.leaf3][i % 3], 1, false, 0.2, i), T(-2.6 + i * 0.85, 1.4, -D / 2 + 0.5)); }
+  // Palmen in den Ecken, Farnbüsche
+  for (const [x, z] of [[-W / 2 + 0.9, -D / 2 + 0.9], [W / 2 - 0.9, -D / 2 + 0.9], [W / 2 - 0.8, D / 2 - 1.2], [-W / 2 + 0.8, D / 2 - 1.2]]) {
+    g.add(lathe([[0.3, 0], [0.38, 0.4], [0.42, 0.44], [0, 0.44]], '#b9634a', 12), T(x, 0, z));
+    g.add(cylinder(0.08, 0.11, 1.7, '#8a6a4a', 7), T(x, 0.4, z));
+    for (let k = 0; k < 7; k++) g.add(petal(1.1, 0.28, '#3faa5a', { cup: 0.1, curl: -0.4, tip: 0.6, colorTip: '#6fd07a', fold: 0.3 }), T(x, 2.1, z, (k / 7) * P * 2 + R(), -0.15));
+  }
+  for (let i = 0; i < 6; i++) { const x = -4 + i * 1.6, z = -D / 2 + 1.4; g.add(icosphere(0.35, i % 2 ? '#3faa5a' : '#2f8f4a', 1, false, 0.25, i), T(x, 0.3, z)); }
+  // Hängelampen (warm) und ein kleiner Teich mit Seerosen
+  for (const x of [-3.5, 0, 3.5]) { g.add(cylinder(0.01, 0.01, 1.0, '#555', 4), T(x, H - 1.0, 0)); g.add(lathe([[0, 0], [0.25, 0.02], [0.3, 0.2], [0.1, 0.3], [0, 0.3]], '#2f3340', 12), T(x, H - 1.3, 0)); g.add(sphere(0.12, '#ffe7a3', 8, 6), T(x, H - 1.32, 0), { emissive: 1 }); }
+  g.add(lathe([[0, 0], [1.3, 0], [1.4, 0.18], [1.2, 0.22], [0, 0.22]], '#b7aa98', 24), T(3.3, 0.08, 2.4));
+  g.add(cylinder(1.15, 1.15, 0.04, '#5fc4ef', 24), T(3.3, 0.2, 2.4), { emissive: 0.15 });
+  for (let k = 0; k < 4; k++) { const a = k * 1.7, r = 0.4 + (k % 2) * 0.4; g.add(disk(0.28, '#3faa5a', 10), T(3.3 + Math.cos(a) * r, 0.24, 2.4 + Math.sin(a) * r)); if (k % 2) g.add(sphere(0.08, '#ffb3c6', 7, 6, 0.8), T(3.3 + Math.cos(a) * r, 0.3, 2.4 + Math.sin(a) * r)); }
+  return g;
+}
+// Pflanztopf (Terrakotta) für das Tropenhaus
+export function plantPot() {
+  const g = new Geo();
+  g.add(lathe([[0.55, 0], [0.7, 0.55], [0.76, 0.6], [0.76, 0.68], [0.62, 0.68], [0.6, 0.6], [0.45, 0.08], [0, 0.08]], '#d9774a', 18));
+  g.add(cylinder(0.62, 0.62, 0.04, PAL.soil, 18), T(0, 0.6, 0));
+  return g;
+}
+
+// ---------------- Ehemals feste Gartenstücke als Deko ----------------
+DECO_MODELS.pond = () => {
+  const g = new Geo();
+  g.add(pondRim(2.4, 1.65));
+  g.add(disk(2.4, '#4cb8e6', 32, 1.65), T(0, 0.06, 0), { emissive: 0.15 });
+  return g;
+};
+DECO_MODELS.appleTree = () => new Geo().add(tree(3, 'apple'), T(0, 0, 0, 0, 0, 0, 0.85));
+DECO_MODELS.roundTree = () => new Geo().add(tree(5, 'round'), T(0, 0, 0, 1.2, 0, 0, 0.7));
+DECO_MODELS.roundBedPink = () => roundFlowerBed(1.25, 31, ['#ff6f9a', '#ffd23f', '#ffffff']);
+DECO_MODELS.roundBedViolet = () => roundFlowerBed(1.05, 32, ['#9a7be8', '#ffffff', '#ff8fc0']);

@@ -39,6 +39,10 @@ export function dayKey(now) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+const newPot = () => ({ locked: false, inside: true, seed: null, plantedAt: 0, dur: 0, shiny: false, var: 0, lvl: 1, size: 1, sprinkler: false, drinks: 0, compost: false });
+// Beet oder Topf (Töpfe des Tropenhauses haben Index BED_COUNT + k)
+export const bedOf = (s, i) => (i >= C.BED_COUNT ? s.tropic?.pots[i - C.BED_COUNT] : s.beds[i]);
+export const isPot = (i) => i >= C.BED_COUNT;
 const newBed = (i) => ({ locked: i >= C.STARTING_BEDS, seed: null, plantedAt: 0, dur: 0, shiny: false, var: 0, lvl: 1, size: 1, sprinkler: false, drinks: 0, compost: false });
 
 export function newState(now = Date.now()) {
@@ -55,8 +59,9 @@ export function newState(now = Date.now()) {
     bred: [],
     selectedSeed: 'daisy',
     collection: {},
-    deco: [],            // Deko-Arten, die man besitzt (Sammlung)
-    decor: [],           // aufgestellte bzw. eingelagerte Deko-Teile: { id, x, z, r, stored }
+    deco: C.LEGACY_DECOR.map((d) => d.id), // Deko-Arten, die man besitzt (Sammlung)
+    decor: C.LEGACY_DECOR.map((d) => ({ ...d, stored: false })), // aufgestellte bzw. eingelagerte Deko-Teile: { id, x, z, r, stored }
+    legacyDecor: 1,
     land: 0,             // Gartenerweiterung 0–3
     layout: { beds: C.DEFAULT_BEDS.map((p) => [...p]), gh: [...C.DEFAULT_GH] },
     skins: [],
@@ -77,6 +82,7 @@ export function newState(now = Date.now()) {
     seenAnimals: [],
     tutorial: 0,
     tutorialDone: 0,
+    tropic: { built: false, open: 0, pots: Array.from({ length: C.TROPIC.pots }, () => newPot()) },
     seeds: {},           // Samen von Event-Blumen (auch nach dem Event säbar, tauschbar)
     achievements: [],    // abgeschlossene Erfolge
     titles: [], title: '',
@@ -148,8 +154,8 @@ export function addXp(s, n) {
   while (s.level < C.MAX_LEVEL && s.xp >= C.LEVELS[s.level]) {
     s.level++;
     const reward = C.levelReward(s.level);
-    grant(s, { coins: reward.coins, items: reward.items, deco: reward.deco, skin: reward.skin });
-    ups.push({ level: s.level, reward: reward.coins, items: reward.items, deco: reward.deco, skin: reward.skin, unlocks: levelUnlocks(s.level) });
+    grant(s, { coins: reward.coins, items: reward.items, deco: reward.deco, skin: reward.skin, seeds: reward.seeds, title: reward.title });
+    ups.push({ level: s.level, reward: reward.coins, items: reward.items, deco: reward.deco, skin: reward.skin, seeds: reward.seeds, title: reward.title, unlocks: levelUnlocks(s.level) });
   }
   return ups;
 }
@@ -167,9 +173,10 @@ export function roadmap(s) {
 }
 
 // ---------- Saatgut ----------
-export function seedStatus(s, id, now = Date.now()) {
+export function seedStatus(s, id, now = Date.now(), inside = false) {
   const d = C.SEEDS[id];
   if (!d) return { available: false, reason: ERR.unknown };
+  if (d.tropic && !inside) return { available: false, reason: `Wächst nur im ${C.TROPIC.name}`, tropic: true };
   if (d.exclusive) return s.unlocked.includes(id) ? { available: true } : { available: false, reason: 'Belohnung aus dem Album', album: true };
   if (d.event) {
     const ev = activeEvent(now), n = seedCount(s, id);
@@ -330,11 +337,42 @@ export function buyEventItem(s, id, now) {
 }
 
 // ---------- Beete ----------
-export const growTime = (b, seedId) => Math.round(C.SEEDS[seedId].growMs * (b.sprinkler ? C.SPRINKLER.speed : 1));
+export const growTime = (b, seedId) => Math.round(C.SEEDS[seedId].growMs * (b.inside ? C.TROPIC.speed : b.sprinkler ? C.SPRINKLER.speed : 1));
+
+// ---------- Tropenhaus ----------
+export function potInfo(s, k, now) {
+  const t = s.tropic, b = t?.pots[k];
+  const base = { i: C.BED_COUNT + k, inside: true, lvl: 1, size: 1, sprinkler: false };
+  if (!t || !b || !t.built) return { ...base, locked: true, hidden: true };
+  if (k >= t.open) return { ...base, locked: true, price: C.TROPIC.potCost[k], needLevel: s.level < C.TROPIC.potLevel[k] ? C.TROPIC.potLevel[k] : 0 };
+  if (!b.seed) return { ...base, empty: true };
+  const g = growState(b, now), p = g.p;
+  let stage = 0;
+  for (let j = 0; j < C.GROWTH_STAGE_AT.length; j++) if (p >= C.GROWTH_STAGE_AT[j]) stage = j;
+  const ready = p >= 1;
+  return { ...base, seed: b.seed, progress: p, stage, ready, thirsty: false, remaining: g.remaining, shiny: b.shiny && ready, shinyHidden: b.shiny, compost: !!b.compost, waterLeft: 0, var: b.var };
+}
+export function buildTropic(s) {
+  if (s.tropic.built) return err('owned');
+  if (s.level < C.TROPIC.level) return needLevel(C.TROPIC.level, `Das ${C.TROPIC.name}`);
+  if (!spend(s, C.TROPIC.cost)) return noCoins(s, C.TROPIC.cost, `das ${C.TROPIC.name}`);
+  s.tropic.built = true; s.tropic.open = C.TROPIC.start;
+  return { ok: true };
+}
+export function unlockPot(s, k) {
+  const t = s.tropic;
+  if (!t.built) return err('invalid');
+  if (k !== t.open || k >= C.TROPIC.pots) return err('invalid', { message: 'Schalte die Töpfe der Reihe nach frei.' });
+  if (s.level < C.TROPIC.potLevel[k]) return needLevel(C.TROPIC.potLevel[k], 'Dieser Topf');
+  if (!spend(s, C.TROPIC.potCost[k])) return noCoins(s, C.TROPIC.potCost[k], 'diesen Topf');
+  t.open = k + 1;
+  return { ok: true, k };
+}
+export const allBedInfos = (s, now) => [...s.beds.map((_, i) => bedInfo(s, i, now)), ...(s.tropic?.pots || []).map((_, k) => potInfo(s, k, now))];
 
 // ---------- Gießen ----------
 // Zeitpunkte (Anteil am Wachstum), an denen die Blume Durst bekommt. Sprinkler-Beete gießen sich selbst.
-export const thirstPoints = (b) => (b.sprinkler || !b.seed ? [] : C.WATER_AT[C.SEEDS[b.seed]?.water || 0] || []);
+export const thirstPoints = (b) => (b.sprinkler || b.inside || !b.seed ? [] : C.WATER_AT[C.SEEDS[b.seed]?.water || 0] || []);
 // Wachstum unter Berücksichtigung von Durst: Eine durstige Blume bleibt stehen, bis sie gegossen wird
 export function growState(b, now) {
   const dur = b.dur || growTime(b, b.seed);
@@ -356,7 +394,7 @@ function waterBed(s, b, now) {
 }
 
 export function water(s, i, now) {
-  const b = s.beds[i];
+  const b = bedOf(s, i);
   if (!b || b.locked || !b.seed) return err('notGrowing');
   if (!waterBed(s, b, now)) return err('notThirsty');
   return { ok: true };
@@ -375,7 +413,7 @@ export function applyInbox(s, items, now) {
     } else if (it.k === 'help' && Array.isArray(it.beds)) {
       const done = [];
       for (const i of it.beds.slice(0, C.HELP.perDay)) {
-        const b = s.beds[i];
+        const b = bedOf(s, i);
         if (!b || b.locked || !b.seed) continue;
         const g = growState(b, now);
         if (!g.thirsty) continue;
@@ -412,6 +450,7 @@ export function applyInbox(s, items, now) {
 export const thirstyBeds = (s, now) => s.beds.map((b, i) => (!b.locked && b.seed && growState(b, now).thirsty ? i : -1)).filter((i) => i >= 0);
 
 export function bedInfo(s, i, now) {
+  if (isPot(i)) return potInfo(s, i - C.BED_COUNT, now);
   const b = s.beds[i];
   if (!b) return null;
   const base = { i, lvl: b.lvl, size: b.size || 1, sprinkler: b.sprinkler };
@@ -426,16 +465,16 @@ export function bedInfo(s, i, now) {
 }
 
 export function plant(s, i, seedId, now, rand = Math.random) {
-  const b = s.beds[i];
+  const b = bedOf(s, i);
   if (!b) return err('invalid');
   if (b.locked) return err('locked');
   if (b.seed) return err('occupied');
   const d = C.SEEDS[seedId];
   if (!d) return err('unknown');
-  const st = seedStatus(s, seedId, now);
+  const st = seedStatus(s, seedId, now, !!b.inside);
   if (!st.available) return err('seedLocked', { message: `${d.name.replace(/­/g, '')}: ${st.reason}.` });
-  if (d.nightOnly && timeOfDay(cyclePhase(s, now)) !== 'night') return err('invalid', { message: `${d.name.replace(/­/g, '')} lässt sich nur nachts pflanzen.` });
-  if (d.dayOnly && timeOfDay(cyclePhase(s, now)) === 'night') return err('invalid', { message: `${d.name.replace(/­/g, '')} lässt sich nur tagsüber pflanzen.` });
+  if (!b.inside && d.nightOnly && timeOfDay(cyclePhase(s, now)) !== 'night') return err('invalid', { message: `${d.name.replace(/­/g, '')} lässt sich nur nachts pflanzen.` });
+  if (!b.inside && d.dayOnly && timeOfDay(cyclePhase(s, now)) === 'night') return err('invalid', { message: `${d.name.replace(/­/g, '')} lässt sich nur tagsüber pflanzen.` });
   if (!spend(s, d.cost)) return noCoins(s, d.cost, d.name.replace(/­/g, ''));
   if (st.useSeed) takeSeeds(s, seedId, 1);
   const chance = (C.SHINY_CHANCE + C.BED_LEVELS[b.lvl - 1].shiny) * (isWeekend(now) ? C.WEEKEND_BONUS.shinyFactor : 1) * boost('shinyDay') + (s.pets?.butterfly === dayKey(now) ? C.BUTTERFLY_SHINY : 0);
@@ -447,7 +486,7 @@ export function plant(s, i, seedId, now, rand = Math.random) {
 }
 
 export function harvest(s, i, now) {
-  const b = s.beds[i];
+  const b = bedOf(s, i);
   if (!b) return err('invalid');
   if (b.locked) return err('locked');
   if (!b.seed) return err('empty');
@@ -476,7 +515,8 @@ export function harvest(s, i, now) {
 }
 
 export function unlockBed(s, i) {
-  const b = s.beds[i];
+  if (isPot(i)) return err('invalid', { message: 'Töpfe im Tropenhaus lassen sich nicht ausbauen.' });
+  const b = bedOf(s, i);
   if (!b) return err('invalid');
   if (!b.locked) return err('owned');
   const u = C.BED_UNLOCK[i];
@@ -488,6 +528,7 @@ export function unlockBed(s, i) {
 }
 
 export function buySprinkler(s, i, now) {
+  if (isPot(i)) return err('invalid', { message: 'Töpfe im Tropenhaus lassen sich nicht ausbauen.' });
   const b = s.beds[i];
   if (!b || b.locked) return err('locked');
   if (b.sprinkler) return err('owned');
@@ -503,6 +544,7 @@ export function buySprinkler(s, i, now) {
 }
 
 export function upgradeBed(s, i) {
+  if (isPot(i)) return err('invalid', { message: 'Töpfe im Tropenhaus lassen sich nicht ausbauen.' });
   const b = s.beds[i];
   if (!b || b.locked) return err('locked');
   if (b.lvl >= C.BED_LEVELS.length) return err('maxLevel');
@@ -515,6 +557,7 @@ export function upgradeBed(s, i) {
 
 // Beet vergrößern: braucht freien Platz rundherum
 export function growBed(s, i) {
+  if (isPot(i)) return err('invalid', { message: 'Töpfe im Tropenhaus lassen sich nicht ausbauen.' });
   const b = s.beds[i];
   if (!b || b.locked) return err('locked');
   const cur = b.size || 1;
@@ -555,7 +598,7 @@ export function useItem(s, id, i, now) {
     if (!list.length) return err('invalid', { message: 'Gerade hat keine Blume Durst.' });
     for (const k of list) waterBed(s, s.beds[k], now);
   } else {
-    const b = s.beds[i];
+    const b = bedOf(s, i);
     if (!b || b.locked || !b.seed) return err('notGrowing');
     const g = growState(b, now), done = !g.thirsty && g.p >= 1;
     if (id === 'lucky') {
@@ -1390,6 +1433,11 @@ export function repair(s, now) {
   } else {
     s.decor = s.decor.filter((d) => obj(d) && C.DECO[d.id]).slice(0, C.MAX_DECO).map((d) => ({ id: d.id, x: Number.isFinite(d.x) ? d.x : 0, z: Number.isFinite(d.z) ? d.z : 0, r: [0, 1, 2, 3].includes(d.r) ? d.r : 0, stored: !!d.stored || !Number.isFinite(d.x) || !Number.isFinite(d.z) }));
   }
+  if (!s.legacyDecor) {
+    // Teich, Bäume, Zierbeete und Gießkanne waren bis 3.10 fest – jetzt frei verschiebbare Deko
+    for (const d of C.LEGACY_DECOR) if (!s.decor.some((x) => x.id === d.id && Math.abs(x.x - d.x) < 0.01 && Math.abs(x.z - d.z) < 0.01)) s.decor.push({ ...d, stored: false });
+    s.legacyDecor = 1;
+  }
   for (const d of s.decor) if (!s.deco.includes(d.id)) s.deco.push(d.id);
   s.skins = [...new Set(s.skins.filter((k) => C.SKINS[k]))];
   s.seenAnimals = [...new Set(s.seenAnimals.filter((k) => C.ANIMALS[k]))];
@@ -1446,6 +1494,11 @@ export function repair(s, now) {
   if (s.dailyGift !== null && typeof s.dailyGift !== 'string') s.dailyGift = null;
   s.tutorial = Math.min(2, num(s.tutorial, 0));
   s.tutorialDone = num(s.tutorialDone, 0);
+  { const t = obj(s.tropic) ? s.tropic : {}; const pots = Array.isArray(t.pots) ? t.pots.slice(0, C.TROPIC.pots) : [];
+    while (pots.length < C.TROPIC.pots) pots.push(newPot());
+    s.tropic = { built: !!t.built, open: Math.max(0, Math.min(C.TROPIC.pots, num(Number(t.open), 0))), pots: pots.map((p) => ({ ...newPot(), ...(obj(p) ? p : {}), inside: true, locked: false, lvl: 1, size: 1, sprinkler: false })) };
+    for (const p of s.tropic.pots) { if (!C.SEEDS[p.seed]) { p.seed = null; p.plantedAt = 0; } p.drinks = num(Number(p.drinks), 0); p.var = num(Number(p.var), 0); }
+    if (s.tropic.built && s.tropic.open < C.TROPIC.start) s.tropic.open = C.TROPIC.start; }
   const seeds = {}; for (const [k, n] of Object.entries(obj(s.seeds) ? s.seeds : {})) if (C.SEEDS[k]?.event && num(Number(n), 0) > 0) seeds[k] = Math.floor(num(Number(n), 0)); s.seeds = seeds;
   s.achievements = Array.isArray(s.achievements) ? s.achievements.filter((k) => C.ACHIEVEMENTS.some((a) => a.id === k)) : [];
   s.titles = [...new Set((Array.isArray(s.titles) ? s.titles : []).filter((k) => C.TITLES[k]))];

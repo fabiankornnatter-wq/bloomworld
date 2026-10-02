@@ -12,6 +12,7 @@ const PI = Math.PI;
 export const BED_SPACING = 3.1;
 const OX = 0.4, OZ = 1.0;
 const BED_TOP = 0.56;
+const POT_TOP = 0.66;
 
 // Laufwege
 const FOX_PATH = [[-7.45, -3.75], [8.25, -3.75], [8.25, 5.75], [-7.45, 5.75]];
@@ -60,16 +61,8 @@ export class World {
     // Haus, Teich (fest)
     this.housePos = [-6.0, -6.6];
     this.add(M.house(), T(this.housePos[0], 0, this.housePos[1]));
-    this.pond = { x: 6.6, z: -7.5, rx: 2.4, rz: 1.65 };
-    this.add(M.pondRim(this.pond.rx, this.pond.rz), T(this.pond.x, 0, this.pond.z));
-    this.add(diskGeo(this.pond.rx, this.pond.rz), T(this.pond.x, 0.06, this.pond.z), { mode: 1, shadow: false });
-
-    // Feste Gartenstücke (siehe C.OBSTACLES)
-    this.add(M.tree(3, 'apple'), T(-8.3, 0, 8.4, 0, 0, 0, 0.85));
-    this.add(M.tree(5, 'round'), T(-9.3, 0, -8.9, 1.2, 0, 0, 0.7));
-    this.add(M.roundFlowerBed(1.25, 31, ['#ff6f9a', '#ffd23f', '#ffffff']), T(-3.0, 0, 8.4));
-    this.add(M.roundFlowerBed(1.05, 32, ['#9a7be8', '#ffffff', '#ff8fc0']), T(7.2, 0, 8.0));
-    this.add(M.DECO_MODELS.wateringcan(), T(-6.0, 0, 7.3, 0.7));
+    // Teich, Bäume, Zierbeete und Gießkanne sind seit 3.11 normale Deko (frei verschiebbar), siehe C.LEGACY_DECOR
+    this.pondWater = this.mesh('pondWater', () => diskGeo(2.4, 1.65));
 
     // Gewächshaus (verwittert, bis es restauriert wird) – zentriert, damit es sich verschieben lässt
     this.ghMeshes = [M.greenhouse(true), M.greenhouse(false)].map((g) => this.r.mesh(centered(g).geo));
@@ -114,6 +107,20 @@ export class World {
       this.placeBed(i, C.DEFAULT_BEDS[i]);
     }
     this.placeGreenhouse(C.DEFAULT_GH);
+
+    // Tropenhaus-Innenraum (weit außerhalb des Gartens) mit 12 Töpfen, die wie Beete behandelt werden (Index BED_COUNT + k)
+    const [IX, IZ, IY] = C.TROPIC.inside;
+    this.interior = this.add(M.tropicInterior(), T(IX, IY, IZ), { fog: 0, visible: false }); // nur drinnen gezeichnet
+    const potMesh = this.mesh('pot', () => M.plantPot());
+    const dummy = this.r.addObject({ buf: this.r.gl.createBuffer(), count: 0 }, m4.identity(), { visible: false });
+    for (let k = 0; k < C.TROPIC.pots; k++) {
+      const col = k % 4, row = Math.floor(k / 4);
+      const x = IX - 4.2 + col * 2.8, z = IZ - 2.4 + row * 2.3;
+      const frame = this.r.addObject(potMesh, T(x, IY, z), { fog: 0 });
+      const plants = this.r.addObject({ buf: this.r.gl.createBuffer(), count: 0 }, T(x, IY + POT_TOP, z), { fog: 0 });
+      this.beds.push({ frame, wild: dummy, plants, spr: dummy, head: dummy, sp: [0, 0], pos: [x, z, 0], shown: true, key: '', lvl: 1, sparkles: [], pot: true, top: IY + POT_TOP, base: IY, scale: 0.75 });
+    }
+    this.inside = false;
 
     // Markierung beim Verschieben
     this.marker = this.r.addObject({ buf: this.r.gl.createBuffer(), count: 0 }, m4.identity(), { visible: false, mode: 2, shadow: false });
@@ -179,6 +186,10 @@ export class World {
     this.cartPos = [OX - 3.6, G + 1.9];
     this.cartObj = add(M.traderCart(), T(this.cartPos[0], 0, this.cartPos[1], 0.12));
     this.cartObj.visible = !!this.cartOn;
+    // Tropenhaus rechts vor dem Zaun (außerhalb des Gartens)
+    this.tropicPos = [OX + 7.2, G + 2.6];
+    if (!this.tropicObjs) { this.tropicObjs = { built: this.add(M.tropicHouse(true), m4.identity(), { visible: false }), ruin: this.add(M.tropicHouse(false), m4.identity()) }; }
+    for (const o of Object.values(this.tropicObjs)) o.model = T(this.tropicPos[0], 0, this.tropicPos[1], PI);
     this.syncLights();
     if (this.owl) this.owl.pos[2] = G;
     this.clampTarget?.();
@@ -232,7 +243,9 @@ export class World {
       if (d.id === 'stringLights') { const a = (d.r || 0) * PI / 2, c = Math.cos(a), s = Math.sin(a); L.push([d.x - c * 0.6, l[0], d.z + s * 0.6, l[1] * 0.75], [d.x + c * 0.6, l[0], d.z - s * 0.6, l[1] * 0.75]); }
       else L.push([d.x, l[0], d.z, l[1]]);
     });
-    for (const b of this.beds) if (b.lightCol && b.shown) L.push([b.pos[0], BED_TOP + 0.7, b.pos[1], 2.6]);
+    for (const b of this.beds) if (b.lightCol && b.shown) L.push([b.pos[0], (b.top ?? BED_TOP) + 0.7, b.pos[1], 2.6]);
+    // Lampen im Tropenhaus
+    for (const x of [-3.5, 0, 3.5]) L.push([C.TROPIC.inside[0] + x, (C.TROPIC.inside[2] || 0) + 2.1, C.TROPIC.inside[1], 5]);
     this.lightList = L;
   }
 
@@ -242,21 +255,23 @@ export class World {
     list.forEach((d, k) => {
       let o = this.decoObjs[k];
       if (!o || o.id !== d.id) {
-        if (o) this.r.removeObject(o.obj);
+        if (o) { this.r.removeObject(o.obj); if (o.water) this.r.removeObject(o.water); }
         o = { id: d.id, obj: this.r.addObject(this.decoMesh(d.id).mesh, m4.identity()) };
+        if (d.id === 'pond') o.water = this.r.addObject(this.pondWater, m4.identity(), { mode: 1, shadow: false }); // schimmerndes Wasser
         this.decoObjs[k] = o;
       }
       o.obj.visible = !d.stored;
       o.obj.model = T(d.x, 0, d.z, d.r * PI / 2);
+      if (o.water) { o.water.visible = !d.stored; o.water.model = T(d.x, 0.07, d.z, d.r * PI / 2); }
     });
-    while (this.decoObjs.length > list.length) this.r.removeObject(this.decoObjs.pop().obj);
+    while (this.decoObjs.length > list.length) { const o = this.decoObjs.pop(); this.r.removeObject(o.obj); if (o.water) this.r.removeObject(o.water); }
   }
 
   // Objekt während des Ziehens bewegen (ohne den Spielstand zu ändern)
   preview(ref, x, z, r, lift = 0) {
     if (ref.type === 'bed') this.placeBed(ref.i, [x, z, r], lift);
     else if (ref.type === 'gh') this.placeGreenhouse([x, z, r], lift);
-    else { const o = this.decoObjs[ref.k]; if (o) o.obj.model = T(x, lift, z, r * PI / 2); }
+    else { const o = this.decoObjs[ref.k]; if (o) { o.obj.model = T(x, lift, z, r * PI / 2); if (o.water) o.water.model = T(x, lift + 0.07, z, r * PI / 2); } }
   }
 
   // Rahmen am Boden, grün = Platz frei, rot = belegt
@@ -333,13 +348,16 @@ export class World {
   syncBeds(infos) {
     infos.forEach((info, i) => {
       const bed = this.beds[i];
-      bed.frame.visible = !info.locked;
-      bed.wild.visible = !!info.locked && !info.hidden;
-      if (bed.lvl !== info.lvl) { bed.lvl = info.lvl; bed.frame.mesh = this.bedMeshes[(info.lvl || 1) - 1]; }
-      const sc = C.BED_SIZES[(info.size || 1) - 1]?.scale || 1;
-      if (bed.scale !== sc) { bed.scale = sc; bed.key = null; this.placeBed(i, bed.pos); }
-      bed.spr.visible = bed.head.visible = !info.locked && !!info.sprinkler;
-      bed.plants.visible = !info.locked;
+      if (!bed) return;
+      if (bed.pot) { bed.frame.visible = !info.hidden && this.inside; bed.plants.visible = !info.hidden && this.inside; bed.shown = !info.hidden; }
+      else { bed.frame.visible = !info.locked; bed.wild.visible = !!info.locked && !info.hidden; }
+      if (!bed.pot) {
+        if (bed.lvl !== info.lvl) { bed.lvl = info.lvl; bed.frame.mesh = this.bedMeshes[(info.lvl || 1) - 1]; }
+        const sc = C.BED_SIZES[(info.size || 1) - 1]?.scale || 1;
+        if (bed.scale !== sc) { bed.scale = sc; bed.key = null; this.placeBed(i, bed.pos); }
+        bed.spr.visible = bed.head.visible = !info.locked && !!info.sprinkler;
+        bed.plants.visible = !info.locked;
+      }
       let key = 'empty';
       if (info.seed) key = `${info.seed}|${info.stage}|${info.shiny ? 1 : 0}|${info.var}|${info.size || 1}`;
       if (key === bed.key) return;
@@ -351,7 +369,7 @@ export class World {
       bed.h = !info.seed ? 0 : info.stage === 0 ? 0.35 : (tall ? 1.7 : 0.95) * (info.stage === 1 ? 0.55 : info.stage === 2 ? 0.8 : 1);
       const g = new Geo();
       if (info.seed) {
-        const sz = info.size || 1, sc = C.BED_SIZES[sz - 1]?.scale || 1;
+        const sz = info.size || 1, sc = bed.pot ? 0.7 : C.BED_SIZES[sz - 1]?.scale || 1;
         const base = tall ? [[-0.45, -0.45], [0.45, -0.45], [0.45, 0.45], [-0.45, 0.45]] : [[0, 0], [-0.55, -0.5], [0.55, -0.5], [0.55, 0.5], [-0.55, 0.5]];
         const extra = sz === 2 ? [[0, -0.72], [0, 0.72]] : sz === 3 ? [[0, -0.8], [0, 0.8], [-0.8, 0], [0.8, 0]] : [];
         const spots = [...base.map(([a, b]) => [a * sc, b * sc]), ...extra.map(([a, b]) => [a * sc, b * sc])];
@@ -371,7 +389,7 @@ export class World {
         const col = info.shiny ? mixCol(look?.petal || '#ffffff', '#fff4b0', 0.5) : (look?.tip || look?.petal || '#ffffff');
         const mesh = this.mesh('spark' + col, () => M.sparkle(col, 0.11));
         const n = info.shiny ? 8 : 5;
-        for (let k = 0; k < n; k++) { const a = (k / n) * PI * 2; bed.sparkles.push({ o: this.r.addObject(mesh, m4.identity(), { mode: 2, shadow: false }), rel: [Math.cos(a) * 0.75 * (bed.scale || 1), BED_TOP + 0.55 + (k % 3) * 0.15, Math.sin(a) * 0.65 * (bed.scale || 1)], s: k * 1.7, a, orbit: info.shiny ? 0.6 : 0.3 }); }
+        for (let k = 0; k < n; k++) { const a = (k / n) * PI * 2; bed.sparkles.push({ o: this.r.addObject(mesh, m4.identity(), { mode: 2, shadow: false, visible: !!bed.pot === !!this.inside }), rel: [Math.cos(a) * 0.75 * (bed.scale || 1), (bed.top ?? BED_TOP) + 0.55 + (k % 3) * 0.15, Math.sin(a) * 0.65 * (bed.scale || 1)], s: k * 1.7, a, orbit: info.shiny ? 0.6 : 0.3 }); }
         bed.glowing = true; bed.plants.glowCol = colOf(col); bed.glowStrength = info.shiny ? 0.6 : 0.3;
         if ((look?.glow || 0) >= 0.5) bed.lightCol = col; // nachts eine kleine Lichtquelle
       }
@@ -415,19 +433,19 @@ export class World {
     const n = kind === 'plant' ? 10 : kind === 'bloom' ? 8 : 16;
     for (let k = 0; k < n; k++) {
       const a = R() * PI * 2, sp = kind === 'plant' ? 1.2 : kind === 'bloom' ? 1.0 : 2.2;
-      this.particles.push({ o: this.r.addObject(mesh, m4.identity(), { shadow: false, ...(kind === 'magic' ? { mode: 2 } : {}) }), p: [x + (R() - 0.5) * 1.2, BED_TOP + 0.3, z + (R() - 0.5) * 1.2], v: [Math.cos(a) * sp * R(), 2.5 + R() * 2.5, Math.sin(a) * sp * R()], rot: R() * 6, spin: (R() - 0.5) * 12, life: 1.1, max: 1.1, g: kind === 'plant' ? 9 : 5 });
+      this.particles.push({ o: this.r.addObject(mesh, m4.identity(), { shadow: false, ...(kind === 'magic' ? { mode: 2 } : {}) }), p: [x + (R() - 0.5) * 1.2, (this.beds[i].top ?? BED_TOP) + 0.3, z + (R() - 0.5) * 1.2], v: [Math.cos(a) * sp * R(), 2.5 + R() * 2.5, Math.sin(a) * sp * R()], rot: R() * 6, spin: (R() - 0.5) * 12, life: 1.1, max: 1.1, g: kind === 'plant' ? 9 : 5 });
     }
   }
 
   // Münzregen beim Ernten (aufsteigend, dann fallend)
   coinRain(i, n = 6) {
     const [x, z] = this.beds[i].pos, R = Math.random;
-    for (let k = 0; k < n; k++) this.particles.push({ o: this.r.addObject(this.coinMesh, m4.identity(), { shadow: false }), p: [x + (R() - 0.5) * 0.8, BED_TOP + 0.5, z + (R() - 0.5) * 0.8], v: [(R() - 0.5) * 1.4, 3.5 + R() * 2, (R() - 0.5) * 1.4], rot: R() * 6, spin: 6 + R() * 8, life: 1.3, max: 1.3, g: 7 });
+    for (let k = 0; k < n; k++) this.particles.push({ o: this.r.addObject(this.coinMesh, m4.identity(), { shadow: false }), p: [x + (R() - 0.5) * 0.8, (this.beds[i].top ?? BED_TOP) + 0.5, z + (R() - 0.5) * 0.8], v: [(R() - 0.5) * 1.4, 3.5 + R() * 2, (R() - 0.5) * 1.4], rot: R() * 6, spin: 6 + R() * 8, life: 1.3, max: 1.3, g: 7 });
   }
   // Ring, der beim Wachstumsschub aufsteigt
   growRing(i) {
     const [x, z] = this.beds[i].pos;
-    this.particles.push({ o: this.r.addObject(this.ringMesh, m4.identity(), { shadow: false, mode: 2 }), p: [x, BED_TOP + 0.1, z], v: [0, 0.9, 0], rot: 0, spin: 0, life: 0.7, max: 0.7, g: -0.4, grow: 1.6 });
+    this.particles.push({ o: this.r.addObject(this.ringMesh, m4.identity(), { shadow: false, mode: 2 }), p: [x, (this.beds[i].top ?? BED_TOP) + 0.1, z], v: [0, 0.9, 0], rot: 0, spin: 0, life: 0.7, max: 0.7, g: -0.4, grow: 1.6 });
   }
   // Wasserspritzer beim Gießen: Tropfen fallen von oben
   splash(i) {
@@ -547,8 +565,8 @@ export class World {
         bed.pop -= dt;
         const k = Math.max(0, bed.pop / dur), e = 1 - k, over = 1 + Math.sin(e * PI) * (dur > 0.5 ? 0.22 : 0.18);
         const sc = dur > 0.5 ? (0.8 + 0.2 * Math.min(1, e * 1.6)) * over : over;
-        const [x, z, r] = bed.pos; bed.plants.model = T(x, BED_TOP, z, (r || 0) * PI / 2, 0, 0, sc, dur > 0.5 ? sc : 1 + Math.sin(k * PI) * 0.28, sc);
-        if (bed.pop <= 0) { bed.plants.model = T(x, BED_TOP, z, (r || 0) * PI / 2); bed.popDur = 0; }
+        const [x, z, r] = bed.pos, top = bed.top ?? BED_TOP; bed.plants.model = T(x, top, z, (r || 0) * PI / 2, 0, 0, sc, dur > 0.5 ? sc : 1 + Math.sin(k * PI) * 0.28, sc);
+        if (bed.pop <= 0) { bed.plants.model = T(x, top, z, (r || 0) * PI / 2); bed.popDur = 0; }
       }
     }
     for (const bed of this.beds) {
@@ -625,7 +643,7 @@ export class World {
     const dW = fitW / 2 / Math.tan(hf / 2), dH = fitH / 2 / Math.tan(fovy / 2);
     const dist = Math.max(dW, aspect < 1 ? 0 : dH) * this.cam.zoom;
     const c = this.cam, cp = Math.cos(c.pitch);
-    const eye = [c.target[0] + Math.sin(c.yaw) * cp * dist, Math.sin(c.pitch) * dist, c.target[2] + Math.cos(c.yaw) * cp * dist];
+    const eye = [c.target[0] + Math.sin(c.yaw) * cp * dist, (c.target[1] || 0) + Math.sin(c.pitch) * dist, c.target[2] + Math.cos(c.yaw) * cp * dist];
     return { eye, target: c.target, fovy, near: 0.5, far: 400, dist };
   }
 
@@ -644,8 +662,31 @@ export class World {
   zoomBy(f) { this.cam.zoom = clamp(this.cam.zoom * f, 0.5, 1.45 * Math.max(1, this.G / 10.2)); this.camAnim = null; }
 
   clampTarget() {
-    const t = this.cam.target, lim = this.G - 1.7;
+    const t = this.cam.target;
+    if (this.inside) { const [ix, iz] = C.TROPIC.inside; t[0] = clamp(t[0], ix - 3.5, ix + 3.5); t[2] = clamp(t[2], iz - 2.5, iz + 2.5); return; }
+    const lim = this.G - 1.7;
     t[0] = clamp(t[0], -lim, lim); t[2] = clamp(t[2], -lim, lim);
+  }
+
+  // ---------- Tropenhaus betreten / verlassen ----------
+  setTropic(built) { if (this.tropicObjs) { this.tropicObjs.built.visible = !!built; this.tropicObjs.ruin.visible = !built; } }
+  enterTropic() {
+    if (this.inside) return;
+    this.inside = true;
+    this.savedCam = { target: [...this.cam.target], zoom: this.cam.zoom, yaw: this.cam.yaw, pitch: this.cam.pitch };
+    const [ix, iz, iy] = C.TROPIC.inside;
+    this.cam.target = [ix, iy || 0, iz - 0.6]; this.cam.zoom = 0.8; this.cam.yaw = 0.35; this.cam.pitch = 0.52;
+    this.camAnim = null;
+    this.interior.visible = true;
+    for (const b of this.beds) { for (const sp of b.sparkles) sp.o.visible = !!b.pot; if (b.pot) { b.frame.visible = b.plants.visible = b.shown; } }
+  }
+  exitTropic() {
+    if (!this.inside) return;
+    this.inside = false;
+    if (this.savedCam) { this.cam.target = this.savedCam.target; this.cam.zoom = this.savedCam.zoom; this.cam.yaw = this.savedCam.yaw; this.cam.pitch = this.savedCam.pitch; }
+    this.camAnim = null;
+    this.interior.visible = false;
+    for (const b of this.beds) { for (const sp of b.sparkles) sp.o.visible = !b.pot; if (b.pot) b.frame.visible = b.plants.visible = false; }
   }
 
   focus(x, z, zoom) { this.camAnim = { to: [x, 0, z], zoom: zoom ?? this.cam.zoom }; }
@@ -668,15 +709,17 @@ export class World {
     // 1) Erde auf Beethöhe, 2) Holzrahmen, 3) Pflanzen (nur so hoch wie sie wirklich sind)
     const ts = d[1] < 0 ? (BED_TOP - o[1]) / d[1] : -1;
     const hp = v3.add(o, v3.scale(d, ts));
+    { const [tx, tz] = this.tropicPos || [999, 999]; const tt = rayBox(o, d, [tx - 2.8, 0, tz - 2.3], [tx + 2.8, 3.6, tz + 2.3]); if (tt !== null && !this.inside) consider(tt, { type: 'tropic' }); }
     this.beds.forEach((b, i) => {
-      if (!b.shown) return;
+      if (!b.shown || !!b.pot !== !!this.inside) return;
       const [x, z] = b.pos;
-      const hw = 1.2 * (b.scale || 1);
+      const hw = (b.pot ? 1.0 : 1.2) * (b.pot ? 1 : b.scale || 1);
       if (ts > 0 && Math.abs(hp[0] - x) < hw && Math.abs(hp[2] - z) < hw) consider(ts, { type: 'bed', index: i });
-      const tf = rayBox(o, d, [x - hw, 0, z - hw], [x + hw, BED_TOP, z + hw]);
+      const base = b.base || 0, top = b.top ?? BED_TOP;
+      const tf = rayBox(o, d, [x - hw, base, z - hw], [x + hw, top, z + hw]);
       if (tf !== null) consider(tf, { type: 'bed', index: i });
       if (b.h) {
-        const tp = rayBox(o, d, [x - hw + 0.25, BED_TOP, z - hw + 0.25], [x + hw - 0.25, BED_TOP + b.h, z + hw - 0.25]);
+        const tp = rayBox(o, d, [x - hw + 0.25, top, z - hw + 0.25], [x + hw - 0.25, top + b.h, z + hw - 0.25]);
         if (tp !== null) consider(tp, { type: 'bed', index: i });
       }
     });
@@ -701,8 +744,9 @@ export class World {
   }
 
   screenOf(p) { return this.r.project(p); }
-  bedScreen(i, ready) { const [x, z] = this.beds[i].pos; return this.r.project([x + 0.5, BED_TOP + (ready ? 0.55 : 0.35), z + 0.5]); }
-  bedCenterScreen(i) { const [x, z] = this.beds[i].pos; return this.r.project([x + 0.3, BED_TOP, z + 0.3]); }
+  bedScreen(i, ready) { const b = this.beds[i], [x, z] = b.pos, top = b.top ?? BED_TOP; return this.r.project([x + 0.5, top + (ready ? 0.55 : 0.35), z + 0.5]); }
+  bedCenterScreen(i) { const b = this.beds[i], [x, z] = b.pos; return this.r.project([x + 0.3, b.top ?? BED_TOP, z + 0.3]); }
+  tropicScreen() { return this.r.project([this.tropicPos[0], 3.4, this.tropicPos[1]]); }
   // Blase über der vorderen linken Ecke des Gewächshauses (weg von den Knöpfen am rechten Rand)
   greenhouseScreen() { return this.r.project(m4.point(T(this.ghPos[0], 0, this.ghPos[1], (this.ghPos[2] || 0) * PI / 2), [-1.1, 3.1, 0.9])); }
   objectScreen(ref, y = 1.2) {
@@ -743,7 +787,7 @@ export class World {
     if (lights.length > 12) { const [tx, , tz] = this.cam.target; lights = [...lights].sort((a, b) => Math.hypot(a[0] - tx, a[2] - tz) - Math.hypot(b[0] - tx, b[2] - tz)).slice(0, 12); }
     const arr = this._lightArr || (this._lightArr = new Float32Array(48));
     arr.fill(0); lights.forEach((l, i) => arr.set(l, i * 4));
-    this.r.render(cam, { ...env, lights: arr, lightN: amt > 0.01 ? lights.length : 0, lightAmt: amt, shadowCenter: [this.cam.target[0] * 0.5, 0, this.cam.target[2] * 0.5], shadowRadius: 17 }, this.time);
+    this.r.render(cam, { ...env, lights: arr, lightN: amt > 0.01 ? lights.length : 0, lightAmt: amt, shadowCenter: this.inside ? [this.cam.target[0], C.TROPIC.inside[2] || 0, this.cam.target[2]] : [this.cam.target[0] * 0.5, 0, this.cam.target[2] * 0.5], shadowRadius: this.inside ? 9 : 17 }, this.time);
   }
 
   // ---------- Drehansicht (Sammlung) ----------

@@ -10,7 +10,7 @@ import { Notifier } from './notify.js';
 import { Tutorial } from './tutorial.js';
 import { showAuth } from './authui.js';
 import { Sound } from './audio.js';
-import { UI, fmtTime } from './ui.js';
+import { UI, fmtTime, bedIdxOfBubble } from './ui.js';
 import * as Pay from './payments.js';
 import * as I from './icons.js';
 
@@ -358,7 +358,7 @@ function loop(t) {
   const n = now();
   G.ensureDaily(state, n);
   const shown = visit ? visit.state : state, vn = visit ? Date.now() + visit.skew : n;
-  const infos = shown.beds.map((_, i) => G.bedInfo(shown, i, vn));
+  const infos = visit ? shown.beds.map((_, i) => G.bedInfo(shown, i, vn)) : G.allBedInfos(shown, vn);
   const env = environment(G.cyclePhase(state, n));
   if (drag?.moved) dragEdgePan(dt);
   if (!ui.coveredFor(300)) {
@@ -576,10 +576,11 @@ function tap(x, y) {
     else if (h?.type === 'animal') { world.poke(h.id); sound.play('animal'); }
     return;
   }
-  if (b !== null) { if (b === C.BED_COUNT) actions.tapGreenhouse(); else actions.tapBed(b); return; }
+  if (b !== null) { if (b === C.BED_COUNT) actions.tapGreenhouse(); else if (b === C.BED_COUNT + 1 + C.TROPIC.pots) ui.tropicDialog(); else actions.tapBed(bedIdxOfBubble(b)); return; }
   const hit = world.pick(x, y);
   if (!hit || hit.type === 'ground') { if (ui.sheetBed >= 0) ui.closeSheet(); return; }
   if (hit.type === 'bed') actions.tapBed(hit.index);
+  else if (hit.type === 'tropic') { sound.play('tap'); ui.tropicDialog(); }
   else if (hit.type === 'greenhouse') actions.tapGreenhouse();
   else if (hit.type === 'trader') { sound.play('tap'); ui.nav('trader'); }
   else if (hit.type === 'animal') {
@@ -606,7 +607,7 @@ function newerSave(a, b) {
   return (a?.updatedAt || 0) >= (b?.updatedAt || 0) ? a : b;
 }
 const seedName = (k) => (C.SEEDS[k]?.name || k).replace(/\u00ad/g, '');
-function changed() { persist(); if (!visit) { world.syncLayout(state); world.setTrader(state.level >= C.TRADER.level); } albumCheck(); ui.refresh(); }
+function changed() { persist(); if (!visit) { world.syncLayout(state); world.setTrader(state.level >= C.TRADER.level); world.setTropic(state.tropic.built); } albumCheck(); ui.refresh(); }
 // Nach 20 Minuten Spielzeit einmalig nach Feedback fragen (nur mit Konto, nur wenn wirklich gespielt wurde)
 let playSec = 0, fbAsked = false;
 try { fbAsked = localStorage.getItem('bw_fbAsked') === '1'; } catch { /* egal */ }
@@ -641,6 +642,8 @@ function afterLevelUps(ups) {
     pendingLevel.reward += up.reward;
     if (up.deco) pendingLevel.gifts.push({ deco: up.deco });
     if (up.skin) pendingLevel.gifts.push({ skin: up.skin });
+    if (up.seeds) pendingLevel.gifts.push({ seeds: up.seeds });
+    if (up.title) pendingLevel.gifts.push({ title: up.title });
     for (const [k, v] of Object.entries(up.items || {})) pendingLevel.items[k] = (pendingLevel.items[k] || 0) + v;
     pendingLevel.unlocks.push(...up.unlocks);
   }
@@ -782,7 +785,7 @@ const actions = {
 
   harvestAll() {
     const n = now();
-    const ready = state.beds.map((_, i) => G.bedInfo(state, i, n)).filter((x) => x && x.ready).map((x) => x.i);
+    const ready = G.allBedInfos(state, n).filter((x) => x && x.ready && !!x.inside === !!world.inside).map((x) => x.i);
     if (!ready.length) return;
     let shiny = 0;
     const ups = [], color = eventColor();
@@ -799,6 +802,34 @@ const actions = {
     afterLevelUps(ups);
   },
 
+  buildTropic() {
+    const r = G.buildTropic(state);
+    if (!r.ok) { fail(r); return; }
+    sound.play('unlock'); ui.toast(`🌴 ${C.TROPIC.name} gebaut! Tippe darauf, um hineinzugehen.`, 'good');
+    changed();
+  },
+  enterTropic() {
+    if (visit || world.inside) return;
+    ui.closeSheet(); ui.closePanel?.(); ui.setMode?.(null);
+    world.enterTropic(); sound.play('tap');
+    const bar = document.getElementById('tropicBar');
+    if (bar) { bar.innerHTML = `<span>🌴 ${C.TROPIC.name} · ${state.tropic.open} von ${C.TROPIC.pots} Töpfen</span><button class="btn small" data-act="exitTropic">Zurück in den Garten</button>`; bar.hidden = false; }
+    ui.refresh();
+  },
+  exitTropic() {
+    if (!world.inside) return;
+    ui.closeSheet(); world.exitTropic(); sound.play('tap');
+    const bar = document.getElementById('tropicBar'); if (bar) bar.hidden = true;
+    ui.refresh();
+  },
+  unlockPot(k) {
+    const r = G.unlockPot(state, k);
+    if (!r.ok) { fail(r); return; }
+    sound.play('unlock'); world.burst(C.BED_COUNT + k, 'plant');
+    actions.enterTropic();
+    const bar = document.getElementById('tropicBar'); if (bar && !bar.hidden) bar.firstElementChild.textContent = `🌴 ${C.TROPIC.name} · ${state.tropic.open} von ${C.TROPIC.pots} Töpfen`;
+    changed();
+  },
   unlockBed(i) {
     const r = G.unlockBed(state, i);
     if (!r.ok) return fail(r);

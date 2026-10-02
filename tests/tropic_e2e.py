@@ -1,0 +1,45 @@
+# Tropenhaus: bauen, betreten, Töpfe, tropische Blumen, Ernte, zurück.
+# Aufruf: python3 tests/tropic_e2e.py <URL> <Screenshot-Ordner>
+import sys
+from playwright.sync_api import sync_playwright
+URL = sys.argv[1].rstrip('/'); OUT = sys.argv[2].rstrip('/') + '/'
+res = []
+def check(n, ok, d=''):
+    res.append(bool(ok)); print(('OK   ' if ok else 'FEHL ') + n + (f'  [{d}]' if d else ''))
+with sync_playwright() as p:
+    b = p.chromium.launch(args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
+    pg = b.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True, bypass_csp=True).new_page()
+    errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
+    pg.route('**/api/**', lambda r: r.abort()); pg.goto(URL + '/?debug=1&notut=1')
+    pg.wait_for_selector('#authBox [data-offline]', timeout=180000); pg.locator('#authBox [data-offline]').click()
+    pg.wait_for_function('window.BW && document.getElementById("loader").hidden', timeout=120000); pg.wait_for_timeout(1500)
+    pg.evaluate("BW.G.markIntroSeen(BW.state); BW.ui.modalQueue.length = 0; BW.ui.closeModal(); BW.state.coins = 20000; BW.state.level = 14; BW.state.rareUnlocked.push('rose'); BW.actions.afterTrade()")
+    pg.wait_for_timeout(4000)
+    check('Tropenhaus-Blase draußen', 'Tropenhaus' in pg.evaluate("[...document.querySelectorAll('#bubbles .bub:not([hidden])')].map(e => e.innerText).join('|')"))
+    pg.evaluate("BW.ui.tropicDialog()"); pg.wait_for_timeout(600)
+    check('Bau-Dialog', 'Tropenhaus' in pg.locator('#modal').inner_text())
+    pg.locator('#modal [data-act=buildTropic]').click(); pg.wait_for_timeout(1500)
+    check('Gebaut mit 4 Töpfen', pg.evaluate('BW.state.tropic.built') and pg.evaluate('BW.state.tropic.open') == 4)
+    pg.evaluate("BW.actions.enterTropic()"); pg.wait_for_timeout(8000)
+    bubs = pg.evaluate("[...document.querySelectorAll('#bubbles .bub:not([hidden])')].map(e => e.id)")
+    check('Drinnen: nur Topf-Blasen', pg.evaluate('BW.world.inside') and 'bub25' in bubs and 'bub0' not in bubs, ','.join(bubs))
+    pg.screenshot(path=OUT + 'tropic_inside.png')
+    pg.evaluate("BW.actions.tapBed(24)"); pg.wait_for_timeout(800)
+    check('Tropische Samen in der Auswahl', pg.locator('#sheet .seed[data-id=frangipani]').count() == 1 and pg.locator('#sheet .seed[data-id=lotus]').count() == 1)
+    pg.locator('#sheet .seed[data-id=frangipani]').click(); pg.wait_for_timeout(600)
+    pg.evaluate("BW.actions.plant(25, 'moonflower'); BW.actions.plant(26, 'rose'); BW.actions.plant(27, 'daisy')"); pg.wait_for_timeout(600)
+    check('Gepflanzt (auch Nachtblume tagsüber)', pg.evaluate("BW.state.tropic.pots.slice(0,4).map(p => p.seed).join()") == 'frangipani,moonflower,rose,daisy')
+    pg.evaluate("BW.skip(2 * 3600_000)"); pg.wait_for_timeout(3000)
+    pg.evaluate("BW.actions.tapBed(28)"); pg.wait_for_timeout(600)
+    check('Topf-Dialog', 'Topf' in pg.locator('#modal').inner_text())
+    pg.locator('#modal [data-act=unlockPot]').click(); pg.wait_for_timeout(800)
+    check('5. Topf frei', pg.evaluate('BW.state.tropic.open') == 5)
+    pg.evaluate("BW.actions.harvestAll()"); pg.wait_for_timeout(1500)
+    check('Ernte im Tropenhaus', pg.evaluate("BW.state.collection.frangipani?.count") == 1 and pg.evaluate("BW.state.tropic.pots[0].seed") is None)
+    pg.evaluate("BW.ui.modalQueue.length = 0; BW.ui.closeModal()"); pg.wait_for_timeout(300)
+    pg.locator('#tropicBar [data-act=exitTropic]').click(); pg.wait_for_timeout(4000)
+    check('Zurück im Garten', not pg.evaluate('BW.world.inside'))
+    check('Kein JS-Fehler', not errs, '; '.join(errs)[:300])
+    b.close()
+print(f'{sum(res)}/{len(res)} bestanden')
+sys.exit(0 if all(res) else 1)

@@ -49,12 +49,20 @@ export const SEEDS = {
   lavaHibiscus:  { name: 'Lava­hibiskus',      cost: 130, growMs: 14 * M,  reward: 470,  xp: 50, level: 9,  model: 'poppy',      bred: true, tier: 'episch', water: 1, dayOnly: true },
   frostStar:     { name: 'Frost­stern',        cost: 180, growMs: 20 * M,  reward: 720,  xp: 75, level: 12, model: 'poinsettia', bred: true, tier: 'episch', water: 2 },
   queenRose:     { name: 'Rosen­königin',      cost: 300, growMs: 30 * M,  reward: 1400, xp: 150, level: 15, model: 'rose',      bred: true, tier: 'legendär', water: 2 },
+  // Tropenhaus: wachsen nur drinnen (Klima: nie Durst, Tag und Nacht, 20 % schneller)
+  frangipani:    { name: 'Frangipani',              cost: 120, growMs: 25 * M,  reward: 420,  xp: 48,  level: 8,  model: 'moonflower', tropic: true, water: 0 },
+  strelitzia:    { name: 'Strelitzie',              cost: 160, growMs: 35 * M,  reward: 600,  xp: 65,  level: 9,  model: 'lily',       tropic: true, water: 0 },
+  lotus:         { name: 'Lotus',                   cost: 200, growMs: 50 * M,  reward: 900,  xp: 90,  level: 10, model: 'peony',      tropic: true, water: 0 },
+  passionflower: { name: 'Passions­blume',     cost: 240, growMs: 60 * M,  reward: 1100, xp: 110, level: 11, model: 'daisy',      tropic: true, water: 0 },
+  protea:        { name: 'Protea',                  cost: 300, growMs: 90 * M,  reward: 1700, xp: 160, level: 12, model: 'dahlia',     tropic: true, water: 0, rare: true, unlockCoins: 800 },
+  cactusFlower:  { name: 'Kaktus­blüte',       cost: 350, growMs: 2 * H,   reward: 3800, xp: 220, level: 13, model: 'cornflower', tropic: true, water: 0, slow: true },
   opheliaBloom:  { name: 'Ophelias Mond­blüte', cost: 150, growMs: 20 * M,  reward: 800,  xp: 90, level: 1, model: 'peony',   exclusive: 'complete', water: 1, tier: 'legendär' },
   crocus:        { name: 'Krokus',                  cost: 12,  growMs: 40 * S,  reward: 30,   xp: 5,  level: 1, model: 'tulip',       event: 'spring',    water: 0 },
 };
 export const SEED_ORDER = ['daisy', 'tulip', 'cornflower', 'sunflower', 'lavender', 'rose', 'poppy', 'orchid', 'lily', 'hydrangea', 'dahlia', 'peony', 'magnolia', 'moonflower',
   'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'moonRose', 'crystalRose',
-  'crocus', 'daffodil', 'lilac', 'hibiscus', 'chrysanthemum', 'marigold', 'poinsettia', 'sparkler', 'heartRose', 'candyCrocus', 'lavaHibiscus', 'frostStar', 'queenRose', 'opheliaBloom'];
+  'crocus', 'daffodil', 'lilac', 'hibiscus', 'chrysanthemum', 'marigold', 'poinsettia', 'sparkler', 'heartRose', 'candyCrocus', 'lavaHibiscus', 'frostStar', 'queenRose', 'frangipani', 'strelitzia', 'lotus', 'passionflower', 'protea', 'cactusFlower', 'opheliaBloom'];
+export const TROPIC_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].tropic);
 export const EXCLUSIVE_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].exclusive);
 export const EVENT_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].event);
 export const EVENT_TOKEN_MULT = 2; // Event-Blumen bringen doppelte Event-Währung
@@ -90,6 +98,12 @@ export const FLOWER_INFO = {
   lavaHibiscus: 'Glühend wie Lava, mit goldenem Rand. Braucht Mittagssonne zum Entstehen und blüht nur tagsüber.',
   frostStar: 'Ein Weihnachtsstern aus Eis: bläulich-weiße Sternblätter mit frostigem Schimmer.',
   queenRose: 'Die Königin aller Rosen – tiefrot mit goldenem Herzen. Nur in der Abenddämmerung aus Herzrose und Goldener Rose zu züchten.',
+  frangipani: 'Fünf gedrehte Blätter, cremeweiß mit gelbem Herz – der Duft der Südsee. Wächst nur im warmen Tropenhaus.',
+  strelitzia: 'Die Paradiesvogelblume aus Südafrika: orange und blau wie ein Vogelkopf. Im Tropenhaus braucht sie nie Wasser.',
+  lotus: 'Die heilige Blume Asiens öffnet ihre rosa Schale morgens und schließt sie abends. Im Tropenhaus blüht sie rund um die Uhr.',
+  passionflower: 'Violett-weißer Strahlenkranz mit auffälligen Staubgefäßen. Rankt an der Tropenhaus-Wand hoch.',
+  protea: 'Die Königsprotea aus Südafrika mit riesigem Kopf aus spitzen Hüllblättern – die größte Blüte des Spiels.',
+  cactusFlower: 'Die Königin der Nacht: Ein kleiner Kugelkaktus, der nach zwei Stunden eine riesige pinke Blüte öffnet. Braucht nie Wasser.',
   opheliaBloom: 'Ophelias eigene Züchtung – pastellfarben schimmernd, nur für Gärtner, die jede Blume des Albums gefunden haben. Ein Zeichen wahrer Sammelleidenschaft.',
   crocus: 'Der erste Bote des Frühlings – kleine lila Kelche, die schon nach 40 Sekunden blühen und doppelt so viele Knospen bringen.',
   rainbowTulip: 'Jedes Blütenblatt in einer anderen Farbe. Die erste Züchtung jeder Gärtnerin und jedes Gärtners.',
@@ -110,7 +124,7 @@ export const FLOWER_INFO = {
 
 // Wann eine Blume Durst bekommt (Anteil der Wachstumszeit)
 export const WATER_AT = { 1: [0.45], 2: [0.33, 0.66] };
-export const BASE_SEEDS = SEED_ORDER.filter((k) => !SEEDS[k].bred && !SEEDS[k].event && !SEEDS[k].exclusive);
+export const BASE_SEEDS = SEED_ORDER.filter((k) => !SEEDS[k].bred && !SEEDS[k].event && !SEEDS[k].exclusive && !SEEDS[k].tropic);
 export const BRED_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].bred);
 
 // Kreuzungen im Gewächshaus. Eltern müssen schon einmal geerntet worden sein.
@@ -205,6 +219,15 @@ export const SHINY_MULTIPLIER = 3;
 // Beete: 24 Plätze, die ersten 6 sind frei. Weitere kosten Münzen und brauchen ein Level,
 // die letzten 9 liegen auf neuem Land (Gartenerweiterung).
 export const BED_COUNT = 24;
+// Tropenhaus: zweites Gewächshaus mit Pflanztöpfen. Töpfe liegen im Spielstand unter s.tropic.pots und werden mit Index BED_COUNT + k angesprochen.
+export const TROPIC = {
+  name: 'Tropenhaus', level: 8, cost: 2500, pots: 12, start: 4,
+  potCost: [0, 0, 0, 0, 500, 700, 900, 1200, 1500, 1900, 2400, 3000], potLevel: [0, 0, 0, 0, 8, 9, 10, 11, 12, 13, 14, 16],
+  speed: 0.8,            // Wachstumszeit ×0,8 (warmes Klima)
+  pos: [-13.6, -4.2],    // Standort außerhalb des Zauns (westlich)
+  inside: [0, 80, 18],   // Innenraum liegt weit außerhalb des Gartens in der Szene (x, z, Höhe über den Hügeln)
+};
+export const POT_INDEX = (k) => BED_COUNT + k;
 export const STARTING_BEDS = 6;
 export const BED_UNLOCK = [
   null, null, null, null, null, null,
@@ -240,12 +263,11 @@ export const DEFAULT_GH = [0, -7.35, 0];
 // Feste Hindernisse (Haus, Teich, Bäume, Zierbeete): [x0, z0, x1, z1]
 export const OBSTACLES = [
   [-8.6, -8.8, -3.4, -4.3],   // Haus
-  [3.65, -9.8, 9.55, -5.2],   // Teich
-  [-9.2, 7.5, -7.4, 9.3],     // Apfelbaum
-  [-10.1, -9.7, -8.5, -8.1],  // Baum hinten links
-  [-4.45, 6.95, -1.55, 9.85], // Zierbeet links
-  [5.95, 6.75, 8.45, 9.25],   // Zierbeet rechts
-  [-6.5, 6.9, -5.5, 7.7],     // Gießkanne
+];
+// Gartenstücke, die früher fest waren: werden einmalig als Deko in den Spielstand übernommen (frei verschiebbar, einlagerbar)
+export const LEGACY_DECOR = [
+  { id: 'pond', x: 6.0, z: -7.3, r: 0 }, { id: 'appleTree', x: -7.9, z: 7.6, r: 0 }, { id: 'roundTree', x: -8.6, z: 3.8, r: 0 },
+  { id: 'roundBedPink', x: -3.0, z: 7.2, r: 0 }, { id: 'roundBedViolet', x: 7.0, z: 7.4, r: 0 }, { id: 'wateringcan', x: -6.0, z: 7.3, r: 0 },
 ];
 export const BED_LEVELS = [
   { name: 'Holzbeet', mult: 1, shiny: 0 },
@@ -280,10 +302,10 @@ export const COMPOST_BONUS = 1.5;
 export const START_COINS = 50;
 
 // Level 1–30: benötigte Erfahrung (gesamt)
-export const MAX_LEVEL = 30;
+export const MAX_LEVEL = 60;
 export const LEVELS = (() => {
   const a = [0];
-  for (let l = 1; l < MAX_LEVEL; l++) a.push(a[l - 1] + Math.round((18 * Math.pow(l, 1.5) + 10) / 5) * 5);
+  for (let l = 1; l < MAX_LEVEL; l++) a.push(a[l - 1] + Math.round((26 * Math.pow(l, 1.75) + 10) / 5) * 5);
   return a;
 })();
 // Besondere Level-Geschenke: Deko, Skins und Item-Pakete – jedes Level fühlt sich wie ein Meilenstein an
@@ -317,15 +339,23 @@ export const LEVEL_SPECIAL = {
   28: { deco: 'beehive', items: { lucky: 3 } },
   29: { items: { turbo: 5, pollen: 3 } },
   30: { items: { lucky: 5, pollen: 5, boost: 3, compost: 5 } },
+  // Level 31–60: Deko-Klassiker, Samen von Event-Blumen, große Pakete alle 5 Level
+  32: { deco: 'roundTree', items: { turbo: 3 } }, 34: { items: { compost: 4, rain: 3 } }, 35: { deco: 'pond', items: { lucky: 3 } }, 36: { seeds: { crocus: 3 }, items: { pollen: 2 } },
+  38: { deco: 'appleTree', items: { turbo: 4 } }, 40: { items: { lucky: 5, boost: 3, compost: 5 }, seeds: { heartRose: 3 } }, 42: { items: { turbo: 5, rain: 4 } }, 44: { seeds: { daffodil: 3, lilac: 3 }, items: { pollen: 3 } },
+  45: { deco: 'goldenBench', items: { lucky: 5 } }, 46: { items: { compost: 5, turbo: 5 } }, 48: { seeds: { hibiscus: 3, chrysanthemum: 3 } }, 50: { items: { lucky: 8, pollen: 5, boost: 5 }, seeds: { marigold: 3, poinsettia: 3 } },
+  52: { items: { turbo: 6, rain: 5 } }, 54: { seeds: { sparkler: 3 }, items: { pollen: 4 } }, 55: { deco: 'trophy', items: { lucky: 6 } }, 56: { items: { compost: 6, boost: 4 } },
+  58: { items: { turbo: 8, lucky: 6 } }, 60: { items: { lucky: 12, pollen: 10, boost: 8, compost: 10 }, title: 'legende' },
 };
 export function levelReward(lvl) {
   const sp = LEVEL_SPECIAL[lvl] || {};
   const items = { ...(sp.items || {}) };
   if (lvl % 2 === 0) items.fert = (items.fert || 0) + 2;
-  const coins = 40 + lvl * 30 + (lvl % 5 === 0 ? lvl * 40 : 0) + (lvl === 30 ? 3000 : 0);
+  const coins = 40 + lvl * 30 + (lvl % 5 === 0 ? lvl * 40 : 0) + (lvl === 30 ? 3000 : 0) + (lvl === 60 ? 10000 : 0);
   const r = { coins, items };
   if (sp.deco) r.deco = sp.deco;
   if (sp.skin) r.skin = sp.skin;
+  if (sp.seeds) r.seeds = sp.seeds;
+  if (sp.title) r.title = sp.title;
   return r;
 }
 
@@ -370,7 +400,7 @@ export const SURPRISES = [
 // size = Grundfläche [Breite, Tiefe] für die Platzprüfung
 export const DECO = {
   pathStone:   { name: 'Trittsteine',   price: 15,  level: 1, size: [1.5, 1.1], desc: 'Zwei flache Steine für eigene Wege.' },
-  hedgeBlock:  { name: 'Heckenstück',   price: 40,  level: 1, size: [1.8, 0.8], desc: 'Grüne Hecke zum Abgrenzen und Gestalten.' },
+  hedgeBlock:  { name: 'Heckenstück',   price: 40,  level: 1, size: [2.0, 0.8], desc: 'Grüne Hecke, 2 m lang – Stücke lassen sich nahtlos aneinanderreihen.' },
   flowerpots:  { name: 'Blumentöpfe',   price: 60,  level: 1, size: [1.2, 1.2], desc: 'Drei bunte Töpfe.' },
   lantern:     { name: 'Gartenlaterne', price: 80,  level: 1, size: [0.5, 0.5], desc: 'Leuchtet nachts warm am Weg.' },
   planter:     { name: 'Blumenkübel',   price: 90,  level: 2, size: [1.0, 1.0], desc: 'Großer Kübel voller Blüten.' },
@@ -405,11 +435,17 @@ export const DECO = {
   fireworks:   { name: 'Raketenkiste', size: [1.0, 0.8], desc: 'Funkelnde Raketen – exklusiv von den Silvesterfunken.', event: 'newyear' },
   snowman:     { name: 'Schneemann', size: [0.9, 0.9], desc: 'Mit Möhre und Schal – exklusiv vom Wintermarkt.', event: 'winter' },
   xmasTree:    { name: 'Tannenbaum', size: [1.3, 1.3], desc: 'Geschmückt mit Lichtern und Kugeln – exklusiv vom Wintermarkt.', event: 'winter' },
+  pond:        { name: 'Teich',         price: 900, level: 3, size: [5.0, 3.5], desc: 'Stiller Gartenteich mit Steinrand und Schilf.' },
+  appleTree:   { name: 'Apfelbaum',     price: 350, level: 2, size: [1.8, 1.8], desc: 'Spendet Schatten und trägt rote Äpfel.' },
+  roundTree:   { name: 'Kugelbaum',     price: 300, level: 2, size: [1.6, 1.6], desc: 'Rund geschnittener Laubbaum.' },
+  roundBedPink: { name: 'Zierbeet rosa', price: 220, level: 1, size: [2.8, 2.8], desc: 'Rundes Blumenbeet in Rosa, Gelb und Weiß.' },
+  roundBedViolet: { name: 'Zierbeet lila', price: 200, level: 1, size: [2.4, 2.4], desc: 'Rundes Blumenbeet in Lila, Weiß und Rosa.' },
+  wateringcan: { name: 'Gießkanne',     price: 30,  level: 1, size: [0.8, 0.7], desc: 'Die gute alte Blechkanne.' },
   trophy:      { name: 'Züchter-Pokal', size: [0.7, 0.7], desc: 'Goldener Pokal auf Marmorsockel – nur für Meisterzüchter.', event: 'album' },
   goldenBench: { name: 'Goldene Gartenbank', size: [1.9, 0.8], desc: 'Vergoldete Bank mit Blumenranken – nur für Jahresgärtner.', event: 'album' },
   flowerPress: { name: 'Blumenpresse', size: [0.8, 0.6], desc: 'Alte Holzpresse mit getrockneten Blüten – für Sammler aller Gartenblumen.', event: 'album' },
 };
-export const DECO_ORDER = ['pathStone', 'groundLights', 'pinwheel', 'hedgeBlock', 'flowerpots', 'hoseReel', 'lantern', 'torch', 'lampPost', 'planter', 'rainBarrel', 'compostBin', 'birdhouse', 'bench', 'insectHotel', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'stringLights', 'tableSet', 'arch', 'fountain'];
+export const DECO_ORDER = ['pathStone', 'groundLights', 'pinwheel', 'hedgeBlock', 'flowerpots', 'hoseReel', 'lantern', 'torch', 'lampPost', 'planter', 'rainBarrel', 'compostBin', 'birdhouse', 'bench', 'insectHotel', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'stringLights', 'tableSet', 'arch', 'fountain', 'wateringcan', 'roundBedPink', 'roundBedViolet', 'appleTree', 'roundTree', 'pond'];
 export const ALL_DECO = [...DECO_ORDER, 'pumpkinLantern', 'leafPile', 'heartBalloons', 'loveSeat', 'eggBasket', 'eggTree', 'bouquetVase', 'parasol', 'ghostLantern', 'cauldron', 'fireworks', 'snowman', 'xmasTree', 'flowerPress', 'trophy', 'goldenBench'];
 export const MAX_DECO = 80; // Deko-Teile insgesamt (Leistung auf dem Handy)
 // Bevorzugte Plätze (Übernahme alter Spielstände, erste Käufe)
@@ -606,7 +642,7 @@ export const GROWTH_STAGE_AT = [0, 0.25, 0.6, 1.0]; // Fortschritt -> Stufe 0..3
 export const TITLES = {
   sammler: 'Sammler', gartenfreund: 'Gartenfreund', meisterzuechter: 'Meisterzüchter', jahresgaertner: 'Jahresgärtner', funkelfinder: 'Funkelfinder',
   glitzerkoenig: 'Glitzerkönig', gestalter: 'Gestalter', tierfreund: 'Tierfreund', erntekoenig: 'Erntekönig', nachbar: 'Guter Nachbar', haendler: 'Tauschprofi',
-  vollmond: 'Mondgärtner', ophelia: 'Ophelias Freund',
+  vollmond: 'Mondgärtner', ophelia: 'Ophelias Freund', tropen: 'Tropengärtner', legende: 'Gartenlegende',
 };
 // progress(s) liefert [erreicht, Ziel]; reward wie überall (+ title, seeds, unlock)
 const nDisc = (s, list) => list.filter((k) => (s.collection[k]?.count || 0) > 0).length;
@@ -626,5 +662,6 @@ export const ACHIEVEMENTS = [
   { id: 'friends5', name: 'Guter Nachbar', desc: '5 Freunde und 25× geholfen', icon: 'heart', progress: (s) => [Math.min(s.stats.friends, 5) + Math.min(s.stats.helped, 25), 30], reward: { coins: 500, items: { rain: 3 }, title: 'nachbar' } },
   { id: 'trades10', name: 'Tauschprofi', desc: '10 Tauschgeschäfte in der Tauschbörse', icon: 'cart', progress: (s) => [s.stats.trades || 0, 10], reward: { coins: 800, items: { pollen: 2 }, title: 'haendler' } },
   { id: 'moon', name: 'Mondgärtner', desc: 'Mondscheinrose, Mondorchidee und Mondwinde geerntet', icon: 'flower:moonRose', progress: (s) => [nDisc(s, ['moonRose', 'moonOrchid', 'moonflower']), 3], reward: { coins: 1200, items: { pollen: 3 }, title: 'vollmond' } },
+  { id: 'tropics', name: 'Tropengärtner', desc: 'Alle Tropenhaus-Blumen geerntet', icon: 'flower:lotus', progress: (s) => [nDisc(s, TROPIC_SEEDS), TROPIC_SEEDS.length], reward: { coins: 1500, items: { turbo: 3, lucky: 2 }, title: 'tropen' } },
   { id: 'complete', name: 'Ophelias Album', desc: 'Jede Blume entdeckt – das ganze Album voll', icon: 'animal:owl', progress: (s) => [nDisc(s, SEED_ORDER.filter((k) => !SEEDS[k].exclusive)), SEED_ORDER.filter((k) => !SEEDS[k].exclusive).length], reward: { coins: 5000, unlock: 'opheliaBloom', title: 'ophelia' } },
 ];
