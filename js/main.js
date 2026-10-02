@@ -261,10 +261,11 @@ export const BOOST_NAMES = { doubleXp: 'Doppelte Erfahrung', doubleCoins: 'Doppe
 
 // Rechtstexte (Impressum, Datenschutz) – vom Admin gepflegt
 async function legalDialog(key) {
-  ui.modal({ title: key === 'impressum' ? 'Impressum' : 'Datenschutz', cls: 'legaldlg', html: '<p>Wird geladen …</p>', buttons: [['OK', 'closeModal', '']] });
+  const TITLE = { impressum: 'Impressum', datenschutz: 'Datenschutz', agb: 'Nutzungsbedingungen' };
+  ui.modal({ title: TITLE[key] || 'Info', cls: 'legaldlg', html: '<p>Wird geladen …</p>', buttons: [['OK', 'closeModal', '']] });
   const r = await loadLegal(key);
-  const text = r.ok && r.text ? `<div class="legal">${escapeHtml(r.text).replace(/\n/g, '<br>')}</div>` : r.ok && r.fallback ? r.fallback : key === 'impressum' ? '<p>Das Impressum wird gerade eingerichtet.</p>' : '<p>Konnte nicht geladen werden.</p>';
-  if (ui.modalOpen) ui.modal({ title: key === 'impressum' ? 'Impressum' : 'Datenschutz', cls: 'legaldlg', html: text, buttons: [['OK', 'closeModal', '']] });
+  const text = r.ok && r.text ? `<div class="legal">${escapeHtml(r.text).replace(/\n/g, '<br>')}</div>` : '<p>Konnte nicht geladen werden. Bitte versuche es später noch einmal.</p>';
+  if (ui.modalOpen) ui.modal({ title: TITLE[key] || 'Info', cls: 'legaldlg', html: text, buttons: [['OK', 'closeModal', '']] });
 }
 
 // Spielername muss neu gewählt werden (vom Admin zurückgesetzt)

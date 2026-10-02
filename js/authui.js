@@ -1,6 +1,7 @@
 // Anmelde- und Registrierungsbildschirm (im Startbildschirm).
 import { api } from './account.js';
 import { PRIVACY_HTML } from './legal.js';
+import { loadLegal } from './social.js';
 import * as I from './icons.js';
 
 const $ = (id) => document.getElementById(id);
@@ -25,7 +26,7 @@ export function showAuth({ onDone, onOffline, offline = false, reason = '', unlo
         <label class="fld"><span>Spielername</span><input name="name" autocomplete="nickname" required minlength="3" maxlength="20" placeholder="z. B. Rosenfee"></label>
         <label class="fld"><span>E-Mail</span><input type="email" name="email" autocomplete="email" required maxlength="254" inputmode="email"></label>
         ${pwField('password', 'Passwort <small>(mind. 8 Zeichen)</small>', 'new-password')}
-        <label class="check"><input type="checkbox" name="privacy" required><span>Ich habe die <button type="button" class="link" data-privacy>Datenschutzhinweise</button> gelesen.</span></label>
+        <label class="check"><input type="checkbox" name="privacy" required><span>Ich bin mindestens 16 Jahre alt (oder meine Eltern sind einverstanden) und akzeptiere die <button type="button" class="link" data-legal="agb">Nutzungsbedingungen</button> und die <button type="button" class="link" data-legal="datenschutz">Datenschutzerklärung</button>.</span></label>
         ${rememberBox}
         <p class="ferr" role="alert"></p>
         <button class="btn big wide" type="submit">Konto erstellen</button>
@@ -68,12 +69,24 @@ export function showAuth({ onDone, onOffline, offline = false, reason = '', unlo
     if (t) { setTab(t.dataset.tab); return; }
     const eye = e.target.closest('[data-eye]');
     if (eye) { const inp = eye.parentElement.querySelector('input'); inp.type = inp.type === 'password' ? 'text' : 'password'; eye.classList.toggle('on', inp.type === 'text'); return; }
+    const lg = e.target.closest('[data-legal]');
+    if (lg) { e.preventDefault(); showLegal(lg.dataset.legal); return; }
     if (e.target.closest('[data-privacy]')) { e.preventDefault(); forms.login.hidden = forms.register.hidden = true; box.querySelector('.privacy').hidden = false; return; }
     if (e.target.closest('[data-privacy-close]')) { setTab('register'); return; }
     if (e.target.closest('[data-forgot]')) { setTab('forgot'); forms.forgot.querySelector('[name=login]').value = forms.login.querySelector('[name=login]').value; return; }
     if (e.target.closest('[data-sendcode]')) { sendCode(); return; }
     if (e.target.closest('[data-back-login]')) { setTab('login'); return; }
     if (e.target.closest('[data-offline]')) { unlock?.(); onOffline(); }
+  };
+
+  const showLegal = async (key) => {
+    const pv = box.querySelector('.privacy');
+    forms.login.hidden = forms.register.hidden = forms.forgot.hidden = true;
+    pv.innerHTML = '<p>Wird geladen …</p><button type="button" class="btn small ghost" data-privacy-close>Zurück</button>';
+    pv.hidden = false;
+    const r = await loadLegal(key);
+    const body = r.ok && r.text ? `<div class="legal">${esc(r.text).replace(/\n/g, '<br>')}</div>` : PRIVACY_HTML;
+    pv.innerHTML = `${body}<button type="button" class="btn small ghost" data-privacy-close>Zurück</button>`;
   };
 
   const sendCode = async () => {
@@ -99,7 +112,7 @@ export function showAuth({ onDone, onOffline, offline = false, reason = '', unlo
       if (name.length < 3 || name.length > 20) return (err.textContent = 'Der Spielername muss 3 bis 20 Zeichen lang sein.');
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(d.email || '').trim())) return (err.textContent = 'Bitte gib eine gültige E-Mail-Adresse ein.');
       if (String(d.password || '').length < 8) return (err.textContent = 'Das Passwort muss mindestens 8 Zeichen lang sein.');
-      if (!d.privacy) return (err.textContent = 'Bitte bestätige die Datenschutzhinweise.');
+      if (!d.privacy) return (err.textContent = 'Bitte bestätige Nutzungsbedingungen und Datenschutzerklärung.');
     } else if (kind === 'forgot') {
       if (!String(d.login || '').trim() || !String(d.code || '').trim()) return (err.textContent = 'Bitte gib Spielername/E-Mail und den Code ein.');
       if (String(d.password || '').length < 8) return (err.textContent = 'Das neue Passwort muss mindestens 8 Zeichen lang sein.');

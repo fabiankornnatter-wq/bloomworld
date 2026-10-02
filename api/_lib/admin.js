@@ -252,7 +252,7 @@ export async function getPublic() {
   for (const [k, v] of Object.entries(bh)) { const x = J(v, null); if (x && x.start <= now && x.end > now) boosts[k] = x; }
   const offer = J(o, null);
   const legal = toObject(l) || {};
-  return { maint: maint && maint.on && (!maint.until || maint.until > now) ? maint : null, boosts, offer: offer && offer.day === new Date().toISOString().slice(0, 10) ? offer : null, legal: { impressum: !!legal.impressum, datenschutz: !!legal.datenschutz } };
+  return { maint: maint && maint.on && (!maint.until || maint.until > now) ? maint : null, boosts, offer: offer && offer.day === new Date().toISOString().slice(0, 10) ? offer : null, legal: { impressum: !!legal.impressum, datenschutz: !!legal.datenschutz, agb: !!legal.agb } };
 }
 export async function setBoost(id, hours, mult) {
   if (!BOOSTS.includes(id)) throw new UserError(400, 'invalid', 'Unbekannter Event-Schalter.');
@@ -279,7 +279,7 @@ export async function getTraderOffer() { try { const v = JSON.parse(await kv().c
 
 // ---------- Rechtstexte ----------
 export async function setLegal(key, text) {
-  if (!['impressum', 'datenschutz'].includes(key)) throw new UserError(400, 'invalid', 'Unbekannt.');
+  if (!['impressum', 'datenschutz', 'agb'].includes(key)) throw new UserError(400, 'invalid', 'Unbekannt.');
   const t = String(text ?? '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, 20000);
   if (t) await kv().cmd('HSET', LEGAL_KEY, key, t); else await kv().cmd('HDEL', LEGAL_KEY, key);
 }

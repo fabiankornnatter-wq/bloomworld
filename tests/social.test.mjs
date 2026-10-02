@@ -239,6 +239,10 @@ test('Admin-Werkzeuge: Spieler-Support, Namensreset, Passwort-Reset, Wartung, Ev
   const req = Readable.from([]); req.method = 'GET'; req.url = '/api/news?legal=impressum'; req.headers = { host: 'localhost:3000' };
   const leg = await new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, end: (t) => resolve(JSON.parse(t)) }; newsApi(req, res); });
   assert.equal(leg.text, 'Max Muster\nMusterweg 1');
+  const reqA = Readable.from([]); reqA.method = 'GET'; reqA.url = '/api/news?legal=agb'; reqA.headers = { host: 'localhost:3000' };
+  const agb = await new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, end: (t) => resolve(JSON.parse(t)) }; newsApi(reqA, res); });
+  assert.match(agb.text, /Nutzungsbedingungen/);
+  assert.equal(agb.custom, false, 'Vorlage, solange nichts gespeichert');
   assert.equal((await A({ action: 'addWord', word: 'Blubberwort' })).status, 200);
   const ben = { cookie: (await call(auth, { body: { action: 'login', login: 'Ben' + tag, password: 'blumen123' }, ip: '10.9.9.3' })).headers['set-cookie'].split(';')[0] };
   await soc(adm, { action: 'request', name: 'Ben' + tag }); // Ben hatte Anna blockiert -> bleibt blockiert; Test über Kim

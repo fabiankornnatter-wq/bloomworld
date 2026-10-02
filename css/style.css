@@ -803,3 +803,4 @@ body.visiting #maint { display: none; }
 .codebox .code.small { font-size: 12px; letter-spacing: 0; overflow-wrap: anywhere; }
 #bellBtn { background: radial-gradient(circle at 40% 35%, #ffe08a, #f0a810); }
 @media (max-width: 440px) { #hud { gap: 5px; } .lvl { min-width: 78px; padding-right: 6px; } .pill { font-size: 16px; } .round { width: 40px; height: 40px; } .round svg { width: 25px; height: 25px; } }
+.privacy .legal { font-size: 13px; line-height: 1.45; text-align: left; user-select: text; -webkit-user-select: text; white-space: normal; }
