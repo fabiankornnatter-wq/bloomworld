@@ -149,7 +149,7 @@ with sync_playwright() as p:
     A.evaluate("BW.ui.tab.admin = 'legal'; BW.ui.renderPanel()"); A.wait_for_timeout(300)
     A.locator('#panel [data-act=adminTpl][data-id=impressum]').click(); A.wait_for_timeout(200)
     A.locator('#panel form[data-form=legal][data-id=impressum] button[type=submit]').click(); A.wait_for_timeout(1200)
-    check('Impressum gespeichert', 'veröffentlicht' in A.locator('#panel form[data-form=legal][data-id=impressum]').inner_text())
+    check('Impressum gespeichert', 'eigener Text' in A.locator('#panel form[data-form=legal][data-id=impressum]').inner_text())
     # Spieler B: Wartungsbanner + Event + Impressum + Passwort per Code zurücksetzen
     B.evaluate("BW.ui.closeModal(); BW.ui.nav('garden')"); B.goto(URL + '/?debug=1')
     B.wait_for_function('window.BW && document.getElementById("loader").hidden', timeout=90000); B.wait_for_timeout(3000)

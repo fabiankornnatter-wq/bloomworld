@@ -193,7 +193,7 @@ test('Story: Aufgaben zählen, Abholen, nächstes Kapitel', () => {
   assert.equal(s.items.fert, 1);
   assert.equal(G.storyStatus(s).quest.goal.type, 'useItem');
   // Kapitel überspringen bis zum Ende
-  s.story.ch = C.STORY.length - 1; s.story.q = C.STORY.at(-1).quests.length - 1; s.bred.push('crystalRose');
+  s.story.ch = C.STORY.length - 1; s.story.q = C.STORY.at(-1).quests.length - 1; s.level = 25;
   assert.ok(G.claimQuest(s).chapterDone);
   assert.equal(G.storyStatus(s).finished, true);
 });
@@ -561,4 +561,45 @@ test('Händler: Korb, Bestellungen, Tagesblume, Besonderheiten, Ruf', () => {
   const back = G.migrate(JSON.parse(JSON.stringify(s)), sat).state;
   assert.equal(back.trader.rep, 2);
   assert.equal(back.basket.daisy, 2);
+});
+
+
+test('Wochenziele, Tiere streicheln, Überraschungen, Nacht-Blume', () => {
+  const mon = new Date('2026-10-05T10:00:00').getTime(); // Montag
+  const s = G.newState(mon);
+  s.coins = 9999; s.level = 14;
+  G.ensureDaily(s, mon);
+  assert.equal(G.weeklyList(s, mon).tasks.find((t) => t.id === 'days').have, 1);
+  G.ensureDaily(s, mon + 86400000);
+  assert.equal(s.weekly.progress.days, 2);
+  // Ernten zählt
+  for (let i = 0; i < 3; i++) { G.plant(s, i, 'daisy', mon, never); G.harvest(s, i, mon + 60000); }
+  assert.equal(s.weekly.progress.harvest, 3);
+  s.weekly.progress.harvest = 60;
+  assert.equal(G.claimWeekly(s, 'harvest', mon).ok, true);
+  assert.equal(G.claimWeekly(s, 'harvest', mon).code, 'claimed');
+  assert.equal(G.claimWeekly(s, 'bonus', mon).code, 'notDone');
+  // neue Woche setzt zurück
+  G.ensureDaily(s, mon + 8 * 86400000);
+  assert.equal(s.weekly.claimed.length, 0);
+  // Tiere
+  const r = G.pet(s, 'hedgehog', mon, () => 0);
+  assert.ok(r.ok && r.gift.coins === 40);
+  assert.equal(G.pet(s, 'hedgehog', mon).again, true, 'nur einmal am Tag');
+  assert.ok(G.pet(s, 'butterfly', mon).ok);
+  assert.equal(s.pets.butterfly, G.dayKey(mon));
+  assert.equal(s.stats.petDays, 1);
+  assert.equal(G.pet(s, 'fox', mon + 86400000).ok, true);
+  assert.equal(s.stats.petDays, 2);
+  // Überraschung höchstens einmal am Tag
+  assert.ok(G.rollSurprise(s, mon, 'night', () => 0));
+  assert.equal(G.rollSurprise(s, mon, 'night', () => 0), null);
+  // Mondwinde nur nachts
+  s.settings.cycle = 'day'; s.settings.cycleEpoch = mon;
+  assert.equal(G.plant(s, 5, 'moonflower', mon, never).ok, false);
+  s.settings.cycle = 'night';
+  assert.ok(G.plant(s, 5, 'moonflower', mon, never).ok);
+  assert.equal(s.beds[5].dur, 10 * 3600000);
+  const back = G.migrate(JSON.parse(JSON.stringify(s)), mon).state;
+  assert.equal(back.pets.ever.length, 3);
 });

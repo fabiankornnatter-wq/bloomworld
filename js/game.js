@@ -67,7 +67,10 @@ export function newState(now = Date.now()) {
     event: { id: null, year: 0, tokens: 0, total: 0, claimed: [] },
     tasks: { date: dayKey(now), progress: { plant: 0, harvest: 0, earn: 0, water: 0 }, claimed: [] },
     dailyGift: null,
-    stats: { planted: 0, harvested: 0, earned: 0, shiny: 0, bred: 0, itemsUsed: 0, watered: 0, breedFailed: 0, orders: 0, sold: 0 },
+    stats: { planted: 0, harvested: 0, earned: 0, shiny: 0, bred: 0, itemsUsed: 0, watered: 0, breedFailed: 0, orders: 0, sold: 0, special: 0, helped: 0, gifted: 0, liked: 0, friends: 0, petDays: 0 },
+    weekly: { week: '', progress: {}, claimed: [], days: [], bonus: false },
+    pets: { day: '', done: [], butterfly: '' },   // Tiere gestreichelt (je Tag), Schmetterling-Bonus-Tag
+    surprise: { day: '', n: 0 },
     trader: { day: '', orders: [], rep: 0, gift: '', offer: '' },
     basket: {}, basketShiny: {},   // Blumenkorb für den Händler
     breedFails: {},      // Fehlversuche je Züchtung (machen den nächsten Versuch leichter)
@@ -253,7 +256,7 @@ function waterBed(s, b, now) {
   if (!g.thirsty) return false;
   b.plantedAt = now - g.p * g.dur; // Wachstum geht ab hier weiter
   b.drinks = (b.drinks || 0) + 1;
-  s.stats.watered++; s.tasks.progress.water++;
+  s.stats.watered++; s.tasks.progress.water++; weekly(s, now, 'water');
   track(s, 'water');
   return true;
 }
@@ -327,8 +330,9 @@ export function plant(s, i, seedId, now, rand = Math.random) {
   if (!d) return err('unknown');
   const st = seedStatus(s, seedId);
   if (!st.available) return err('seedLocked', { message: `${d.name.replace(/­/g, '')}: ${st.reason}.` });
+  if (d.nightOnly && timeOfDay(cyclePhase(s, now)) !== 'night') return err('invalid', { message: `${d.name.replace(/­/g, '')} lässt sich nur nachts pflanzen.` });
   if (!spend(s, d.cost)) return noCoins(s, d.cost, d.name.replace(/­/g, ''));
-  const chance = (C.SHINY_CHANCE + C.BED_LEVELS[b.lvl - 1].shiny) * (isWeekend(now) ? C.WEEKEND_BONUS.shinyFactor : 1) * boost('shinyDay');
+  const chance = (C.SHINY_CHANCE + C.BED_LEVELS[b.lvl - 1].shiny) * (isWeekend(now) ? C.WEEKEND_BONUS.shinyFactor : 1) * boost('shinyDay') + (s.pets?.butterfly === dayKey(now) ? C.BUTTERFLY_SHINY : 0);
   b.seed = seedId; b.plantedAt = now; b.dur = growTime(b, seedId); b.shiny = rand() < chance; b.var = Math.floor(rand() * 1000); b.drinks = 0;
   s.stats.planted++; s.tasks.progress.plant++;
   track(s, 'plant', seedId);
@@ -351,7 +355,7 @@ export function harvest(s, i, now) {
   addCoins(s, reward);
   const entry = (s.collection[seed] ||= { count: 0, shiny: 0 });
   entry.count++; if (shiny) { entry.shiny++; s.stats.shiny++; track(s, 'shiny', seed); }
-  s.stats.harvested++; s.tasks.progress.harvest++;
+  s.stats.harvested++; s.tasks.progress.harvest++; weekly(s, now, 'harvest');
   track(s, 'harvest', seed);
   let tokens = 0;
   const ev = ensureEvent(s, now);
@@ -545,7 +549,7 @@ export function collectBreeding(s, now) {
     return { ok: true, failed: true, seed: info.result, refund, xp: 5, next: r ? breedChance(s, r).chance : 1, levelUps };
   }
   if (!s.bred.includes(info.result)) s.bred.push(info.result);
-  s.stats.bred++;
+  s.stats.bred++; weekly(s, now, 'bred');
   const levelUps = addXp(s, 20 + d.xp);
   return { ok: true, seed: info.result, xp: 20 + d.xp, levelUps };
 }
@@ -557,6 +561,7 @@ function currentQuest(s) {
 }
 
 function track(s, type, id, amount = 1) {
+  if (amount === null) amount = 1;
   const q = s.story && currentQuest(s);
   if (!q || q.goal.type !== type) return;
   if (q.goal.seed && q.goal.seed !== id) return;
@@ -577,6 +582,14 @@ function questProgress(s, goal) {
     case 'sprinkler': return [Math.min(goal.n, s.beds.filter((b) => b.sprinkler).length), goal.n];
     case 'bedLevel': return [Math.min(goal.n, s.beds.filter((b) => b.lvl >= goal.lvl).length), goal.n];
     case 'animal': return [s.seenAnimals.includes(goal.id) ? 1 : 0, 1];
+    case 'sold': case 'orders': case 'special': case 'helped': case 'gifted': case 'liked': return [Math.min(goal.n, s.story.count), goal.n];
+    case 'rep': return [Math.min(goal.n, repLevel(s)), goal.n];
+    case 'friends': return [Math.min(goal.n, s.stats.friends || 0), goal.n];
+    case 'petted': return [s.pets?.ever?.includes(goal.id) ? 1 : 0, 1];
+    case 'petDays': return [Math.min(goal.n, s.stats.petDays || 0), goal.n];
+    case 'lights': return [Math.min(goal.n, s.decor.filter((d) => !d.stored && C.LIGHTS[d.id]).length), goal.n];
+    case 'land': return [Math.min(goal.n, s.land), goal.n];
+    case 'collected': return [Math.min(goal.n, Object.values(s.collection).filter((e) => e.count > 0).length), goal.n];
     default: return [0, 1];
   }
 }
@@ -760,6 +773,80 @@ export function equipSkin(s, animal, id) {
 export function ensureDaily(s, now) {
   const k = dayKey(now);
   if (s.tasks.date !== k) s.tasks = { date: k, progress: { plant: 0, harvest: 0, earn: 0, water: 0 }, claimed: [] };
+  ensureWeekly(s, now);
+  if (!s.weekly.days.includes(k)) { s.weekly.days.push(k); s.weekly.progress.days = s.weekly.days.length; }
+}
+
+// ---------- Wochenziele (Montag bis Sonntag) ----------
+export function weekKey(now) {
+  const d = new Date(now); const day = (d.getDay() + 6) % 7; // Montag = 0
+  d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - day);
+  return dayKey(d.getTime());
+}
+export function ensureWeekly(s, now) {
+  const w = weekKey(now);
+  if (!s.weekly || s.weekly.week !== w) s.weekly = { week: w, progress: {}, claimed: [], days: [], bonus: false };
+}
+function weekly(s, now, id, n = 1) { ensureWeekly(s, now); s.weekly.progress[id] = (s.weekly.progress[id] || 0) + n; }
+export function weeklyList(s, now) {
+  ensureWeekly(s, now);
+  const list = C.WEEKLY_TASKS.map((t) => ({ ...t, have: Math.min(t.goal, s.weekly.progress[t.id] || 0), done: (s.weekly.progress[t.id] || 0) >= t.goal, claimed: s.weekly.claimed.includes(t.id) }));
+  const end = new Date(s.weekly.week); end.setDate(end.getDate() + 7);
+  return { tasks: list, allDone: list.every((t) => t.claimed), bonus: s.weekly.bonus, left: Math.max(0, end.getTime() - now) };
+}
+export function claimWeekly(s, id, now) {
+  const { tasks } = weeklyList(s, now);
+  if (id === 'bonus') {
+    if (s.weekly.bonus) return err('claimed');
+    if (!tasks.every((t) => t.claimed)) return err('notDone', { message: 'Erst alle Wochenziele abholen.' });
+    s.weekly.bonus = true;
+    const levelUps = grant(s, C.WEEKLY_BONUS);
+    return { ok: true, reward: C.WEEKLY_BONUS, levelUps };
+  }
+  const t = tasks.find((x) => x.id === id);
+  if (!t) return err('invalid');
+  if (t.claimed) return err('claimed');
+  if (!t.done) return err('notDone');
+  s.weekly.claimed.push(id);
+  const levelUps = grant(s, t.reward);
+  return { ok: true, reward: t.reward, levelUps };
+}
+export const claimableWeekly = (s, now) => { const w = weeklyList(s, now); return w.tasks.filter((t) => t.done && !t.claimed).length + (w.allDone && !w.bonus ? 1 : 0); };
+
+// Soziales fürs Wochenziel und die Story (vom Browser gemeldet)
+export function socialEvent(s, kind, now, n = 1) {
+  if (kind === 'helped' || kind === 'gifted') weekly(s, now, 'social', n);
+  if (['helped', 'gifted', 'liked'].includes(kind)) { s.stats[kind] = (s.stats[kind] || 0) + n; track(s, kind, null, n); }
+  if (kind === 'friends') s.stats.friends = Math.max(s.stats.friends || 0, n);
+}
+
+// ---------- Tiere streicheln ----------
+export function pet(s, id, now, rand = Math.random) {
+  const a = C.ANIMAL_GIFTS[id];
+  if (!a) return err('invalid');
+  const day = dayKey(now);
+  if (!s.pets || s.pets.day !== day) s.pets = { ...(s.pets || {}), day, done: [] };
+  if (!s.pets.ever) s.pets.ever = [];
+  if (!s.pets.ever.includes(id)) s.pets.ever.push(id);
+  track(s, 'petted', id);
+  if (s.pets.done.includes(id)) return { ok: true, again: true };
+  s.pets.done.push(id);
+  if (s.pets.done.length === 1) s.stats.petDays = (s.stats.petDays || 0) + 1;
+  const gift = a.gifts[Math.floor(rand() * a.gifts.length)];
+  let levelUps = [];
+  if (gift.shinyBoost) s.pets.butterfly = day;
+  else levelUps = grant(s, gift);
+  return { ok: true, gift, levelUps };
+}
+
+// ---------- Überraschungen ----------
+export function rollSurprise(s, now, time, rand = Math.random) {
+  const day = dayKey(now);
+  if (!s.surprise || s.surprise.day !== day) s.surprise = { day, n: 0 };
+  if (s.surprise.n >= 1) return null;
+  const list = C.SURPRISES.filter((x) => (!x.night || time === 'night') && (!x.day || time !== 'night'));
+  for (const x of list) if (rand() < x.chance) { s.surprise.n++; const levelUps = grant(s, x.reward); return { ...x, levelUps }; }
+  return null;
 }
 
 export function taskList(s) {
@@ -1021,8 +1108,9 @@ export function deliverOrder(s, i, now) {
   const coins = Math.round(o.coins * (1 + C.TRADER.repBonus[lvl0]));
   addCoins(s, coins);
   if (o.items) addItems(s, o.items);
-  s.stats.orders = (s.stats.orders || 0) + 1;
-  track(s, 'order');
+  s.stats.orders = (s.stats.orders || 0) + 1; weekly(s, now, 'orders');
+  if (o.special) { s.stats.special = (s.stats.special || 0) + 1; track(s, 'special'); }
+  track(s, 'orders');
   const levelUps = addXp(s, o.xp);
   return { ok: true, coins, xp: o.xp, items: o.items, repUp: repLevel(s) > lvl0 ? repLevel(s) : 0, levelUps };
 }
@@ -1035,7 +1123,7 @@ export function sellFlowers(s, seed, shiny, n, now) {
   const coins = sellPrice(s, seed, shiny, now) * n;
   box[seed] = have - n; if (!box[seed]) delete box[seed];
   addCoins(s, coins);
-  s.stats.sold = (s.stats.sold || 0) + n;
+  s.stats.sold = (s.stats.sold || 0) + n; track(s, 'sold', null, n);
   return { ok: true, coins, n };
 }
 
@@ -1209,6 +1297,12 @@ export function repair(s, now) {
     s[key] = {};
     for (const [k, n] of Object.entries(b0)) if (C.SEEDS[k] && Number.isFinite(n) && n > 0) s[key][k] = Math.min(200, Math.floor(n));
   }
+  const wk = obj(s.weekly) ? s.weekly : {};
+  s.weekly = { week: typeof wk.week === 'string' ? wk.week : '', progress: obj(wk.progress) ? Object.fromEntries(Object.entries(wk.progress).filter(([, v]) => Number.isFinite(v)).map(([k, v]) => [k, Math.max(0, Math.floor(v))])) : {}, claimed: Array.isArray(wk.claimed) ? wk.claimed.filter((x) => typeof x === 'string') : [], days: Array.isArray(wk.days) ? wk.days.filter((x) => typeof x === 'string').slice(0, 7) : [], bonus: !!wk.bonus };
+  const pt = obj(s.pets) ? s.pets : {};
+  s.pets = { day: typeof pt.day === 'string' ? pt.day : '', done: Array.isArray(pt.done) ? pt.done.filter((x) => C.ANIMAL_GIFTS[x]) : [], butterfly: typeof pt.butterfly === 'string' ? pt.butterfly : '', ever: Array.isArray(pt.ever) ? pt.ever.filter((x) => C.ANIMAL_GIFTS[x]) : [] };
+  const sp = obj(s.surprise) ? s.surprise : {};
+  s.surprise = { day: typeof sp.day === 'string' ? sp.day : '', n: num(Number(sp.n), 0) };
   const bf = obj(s.breedFails) ? s.breedFails : {};
   s.breedFails = {};
   for (const [k, n] of Object.entries(bf)) if (C.SEEDS[k]?.bred && Number.isFinite(n) && n > 0) s.breedFails[k] = Math.min(20, Math.floor(n));

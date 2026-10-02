@@ -27,7 +27,16 @@ const guestStore = new LocalStore();
 let store = null, state, world, ui, saver, cloud = null, user = null, icons;
 let hub = null;    // Freunde & Chat (nur mit Konto)
 let basketWarned = false;
-let notifier = null, savedAtBefore = 0;
+let notifier = null, savedAtBefore = 0, surpriseTick = 0;
+
+function surprise(sp) {
+  sound.play('level');
+  world.surpriseFx?.(sp.id);
+  ui.modal({ queue: true, title: sp.name, cls: 'surprise', html: `<div class="spicon">${{ star: '🌠', rainbow: '🌈', bee: '🐝', coin: '💰', peddler: '🧺' }[sp.id] || '✨'}</div><p>${escapeHtml(sp.say)}</p>${ui.chips(sp.reward)}`, buttons: [['Wow!', 'closeModal', '']] });
+  ui.bumpCoins();
+  changed();
+  afterLevelUps(sp.levelUps);
+}
 let visit = null;  // Besuch im Garten eines Freundes: { id, name, state, skew, helpLeft, liked, queued }
 let migrated = false, started = false, freshSave = false, entered = false;
 // Zeitgesteuerte Effekte; beim Zurücksetzen werden alte verworfen
@@ -176,7 +185,7 @@ async function enter(u, autoStart, isNew = false, resumed = false) {
   notifier = new Notifier({ getState: () => state, now, onChange: () => ui?.notifyChanged() });
   if (u && serverOk) {
     hub = new SocialHub({
-      onChange: (kind, info) => ui?.socialChanged(kind, info),
+      onChange: (kind, info) => { if (kind === 'sync' && hub?.data && state) { const n0 = state.stats.friends || 0; G.socialEvent(state, 'friends', now(), hub.data.friends.length); if ((state.stats.friends || 0) !== n0) changed(); } ui?.socialChanged(kind, info); },
       onInbox: (items) => receiveInbox(items),
       onAuthLost: () => hub?.stop(),
     });
@@ -356,6 +365,8 @@ function loop(t) {
     ui.setTime(env);
     sound.night = env.name === 'night';
     if (state.trader?.day !== G.dayKey(n)) { G.ensureTrader(state, n); persist(false); ui.refresh(); }
+    // Überraschungen: etwa einmal je Minute würfeln, wenn nichts offen ist
+    if (!visit && !ui.anyOpen && (surpriseTick += 0.5) >= 60) { surpriseTick = 0; const sp = G.rollSurprise(state, n, env.name); if (sp) surprise(sp); }
     if (state.settings.cycle !== 'real' && !G.previewLeft(state, n)) { state.settings.cycle = 'real'; persist(false); ui.toast('Vorschau beendet – Tag und Nacht laufen wieder nach der echten Zeit.'); ui.refresh(); }
     storyCheck();
   }
@@ -550,6 +561,7 @@ function tap(x, y) {
     world.poke(hit.id);
     sound.play('animal');
     if (!state.seenAnimals.includes(hit.id)) discover(hit.id);
+    actions.pet(hit.id);
   }
 }
 
@@ -648,7 +660,7 @@ const actions = {
     const first = !state.stats.watered;
     const r = G.water(state, i, now());
     if (!r.ok) return fail(r);
-    world.burst(i, 'water');
+    world.burst(i, 'water'); world.splash(i);
     sound.play('water');
     if (first) ui.toast('Gegossen! Die Blume wächst weiter. Ein Sprinkler gießt ein Beet automatisch.', 'good');
     changed();
@@ -709,6 +721,7 @@ const actions = {
     const r = G.harvest(state, i, now());
     if (!r.ok) return fail(r);
     world.burst(i, 'harvest', r.seed);
+    world.coinRain(i, r.shiny ? 12 : C.SEEDS[r.seed].slow ? 10 : 5);
     sound.play(r.shiny ? 'gold' : 'harvest');
     ui.floatReward(i, r.reward, r.shiny, r.tokens, eventColor());
     if (r.shiny) ui.toast(`Funkelblüte: ${plain(C.SEEDS[r.seed].name)}! Dreifache Belohnung.`, 'good');
@@ -728,7 +741,7 @@ const actions = {
       if (!r.ok) return;
       if (r.shiny) shiny++;
       ups.push(...r.levelUps);
-      later(() => { world.burst(i, 'harvest', r.seed); ui.floatReward(i, r.reward, r.shiny, r.tokens, color); }, k * 140);
+      later(() => { world.burst(i, 'harvest', r.seed); world.coinRain(i, 4); ui.floatReward(i, r.reward, r.shiny, r.tokens, color); }, k * 140);
     });
     sound.play(shiny ? 'gold' : 'harvest');
     if (shiny) ui.toast(shiny > 1 ? `${shiny} Funkelblüten! Dreifache Belohnung.` : 'Eine Funkelblüte! Dreifache Belohnung.', 'good');
@@ -856,6 +869,25 @@ const actions = {
     afterLevelUps(r.levelUps);
   },
 
+  // ----- Tiere -----
+  pet(id) {
+    const r = G.pet(state, id, now());
+    if (!r.ok) return;
+    const a = C.ANIMAL_GIFTS[id];
+    if (r.again) { if (Math.random() < 0.3) ui.toast(`${a.name} freut sich – morgen gibt es wieder ein Geschenk.`); changed(); return; }
+    const g = r.gift;
+    sound.play('buy');
+    if (g.shinyBoost) ui.toast(`🦋 Der Schmetterling bestäubt deine Blumen: heute +${Math.round(C.BUTTERFLY_SHINY * 100)} % Funkel-Chance!`, 'good');
+    else {
+      const parts = []; if (g.coins) parts.push(`${g.coins} Münzen`); if (g.xp) parts.push(`${g.xp} EP`); for (const [k, n] of Object.entries(g.items || {})) parts.push(`${n}× ${C.ITEMS[k].name}`);
+      const say = { hedgehog: 'Der Igel hat etwas ausgebuddelt', fox: 'Der Fuchs bringt dir ein Fundstück', owl: 'Ophelia erzählt dir eine Geschichte' }[id] || a.name;
+      ui.toast(`${say}: ${parts.join(', ')}!`, 'good');
+      if (g.coins) ui.bumpCoins();
+    }
+    changed();
+    afterLevelUps(r.levelUps);
+  },
+
   // ----- Blumenhändler -----
   trDeliver(i) {
     const r = G.deliverOrder(state, i, now());
@@ -922,6 +954,7 @@ const actions = {
   giftSent(r, name, kind) {
     sound.play('buy');
     const ups = G.grant(state, { xp: r.xp || 0 });
+    G.socialEvent(state, 'gifted', now());
     ui.toast(`Geschenk an ${escapeHtml(name || 'deinen Freund')} verschickt: ${C.GIFTS[kind]?.label || ''}. +${r.xp || 0} EP fürs Schenken!`, 'good');
     changed();
     afterLevelUps(ups);
@@ -983,6 +1016,7 @@ const actions = {
     if (!r.ok) { fail(r); return; }
     if (visit === v) { v.helpLeft = r.helpLeft; ui.setVisit(v); }
     const ups = G.grant(state, { coins: r.coins, xp: r.xp });
+    G.socialEvent(state, 'helped', now(), beds.length);
     ui.toast(`Danke fürs Gießen! +${r.coins} Münzen, +${r.xp} EP`, 'good');
     ui.bumpCoins();
     changed();
@@ -995,6 +1029,7 @@ const actions = {
     const r = await socialApi.like(v.id);
     if (!r.ok) return fail(r);
     v.liked = true;
+    G.socialEvent(state, 'liked', now()); changed();
     if (visit === v) ui.setVisit(v);
     sound.play('magic');
     ui.toast(`💖 Du hast ${escapeHtml(v.name)} ein Herz geschenkt – dein Freund bekommt ${C.LIKE.coins} Münzen.`, 'good');
@@ -1193,6 +1228,16 @@ const actions = {
     world.syncSkins(state.activeSkin);
     sound.play('tap');
     changed();
+  },
+
+  claimWeekly(id) {
+    const r = G.claimWeekly(state, id, now());
+    if (!r.ok) return fail(r);
+    sound.play(id === 'bonus' ? 'level' : 'buy');
+    ui.toast(id === 'bonus' ? 'Wochenbonus abgeholt – stark!' : 'Wochenziel geschafft!', 'good');
+    ui.bumpCoins();
+    changed();
+    afterLevelUps(r.levelUps);
   },
 
   claim(id) {

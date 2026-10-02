@@ -1,7 +1,7 @@
 // Spieldaten von BloomWorld: Pflanzen, Zucht, Gegenstände, Beete, Level, Story, Events, Shop.
 // Preise in Münzen sind Spielwährung. Echtgeld-Produkte sind nur vorbereitet (siehe payments.js).
 
-const S = 1000, M = 60_000;
+const S = 1000, M = 60_000, H = 3_600_000;
 
 // model = Grundform im 3D-Garten, look = Farben (siehe world/models.js)
 // water = wie oft die Blume beim Wachsen gegossen werden muss (Beete mit Sprinkler gießen sich selbst)
@@ -16,6 +16,11 @@ export const SEEDS = {
   orchid:     { name: 'Orchidee',            cost: 80,  growMs: 10 * M,  reward: 260, xp: 32, level: 6,  model: 'orchid', rare: true, unlockCoins: 300, water: 2 },
   lily:       { name: 'Lilie',               cost: 65,  growMs: 8 * M,   reward: 210, xp: 26, level: 8,  model: 'lily', water: 1 },
   hydrangea:  { name: 'Hor­tensie',     cost: 100, growMs: 14 * M,  reward: 360, xp: 40, level: 10, model: 'hydrangea', rare: true, unlockCoins: 600, water: 2 },
+  // Langzeit-Blumen: wachsen Stunden, bringen pro Stunde mehr – ideal für Arbeit, Schule, Nacht
+  dahlia:     { name: 'Dahlie',              cost: 150, growMs: 2 * H,   reward: 3200, xp: 120, level: 7,  model: 'hydrangea', slow: true, water: 1 },
+  peony:      { name: 'Pfingst­rose',   cost: 260, growMs: 4 * H,   reward: 7400, xp: 240, level: 9,  model: 'rose', slow: true, water: 1 },
+  magnolia:   { name: 'Magnolie',            cost: 420, growMs: 8 * H,   reward: 17500, xp: 480, level: 11, model: 'lily', slow: true, water: 1 },
+  moonflower: { name: 'Mond­winde',     cost: 600, growMs: 10 * H,  reward: 26000, xp: 700, level: 14, model: 'orchid', slow: true, water: 0, nightOnly: true },
   // Züchtungen (im Gewächshaus)
   rainbowTulip:     { name: 'Regenbogen­tulpe',     cost: 25,  growMs: 90 * S,  reward: 70,   xp: 10,  level: 3,  model: 'tulip', bred: true, tier: 'selten', water: 0 },
   sunTulip:         { name: 'Sonnen­tulpe',         cost: 30,  growMs: 150 * S, reward: 90,   xp: 12,  level: 4,  model: 'tulip', bred: true, tier: 'selten', water: 1 },
@@ -32,7 +37,7 @@ export const SEEDS = {
   moonRose:         { name: 'Mondschein­rose',     cost: 200, growMs: 22 * M,  reward: 900,  xp: 95,  level: 12, model: 'rose', bred: true, tier: 'legendär', water: 2 },
   crystalRose:      { name: 'Kristall­rose',        cost: 320, growMs: 30 * M,  reward: 1500, xp: 160, level: 16, model: 'rose', bred: true, tier: 'legendär', water: 2 },
 };
-export const SEED_ORDER = ['daisy', 'tulip', 'cornflower', 'sunflower', 'lavender', 'rose', 'poppy', 'orchid', 'lily', 'hydrangea',
+export const SEED_ORDER = ['daisy', 'tulip', 'cornflower', 'sunflower', 'lavender', 'rose', 'poppy', 'orchid', 'lily', 'hydrangea', 'dahlia', 'peony', 'magnolia', 'moonflower',
   'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'moonRose', 'crystalRose'];
 // Kurzbeschreibungen für die Detailansicht in der Sammlung
 export const FLOWER_INFO = {
@@ -46,6 +51,10 @@ export const FLOWER_INFO = {
   orchid: 'Exotisch und anspruchsvoll: Die Orchidee möchte zweimal gegossen werden, dankt es aber mit hohem Ertrag.',
   lily: 'Sechs elegante Blütenblätter und lange Staubgefäße – Lilien sind die Grundlage für Eis- und Drachenlilie.',
   hydrangea: 'Hunderte kleine Blüten bilden eine große Kugel. Durstig, aber eine der ertragreichsten Gartenblumen.',
+  dahlia: 'Die Dahlie lässt sich Zeit – zwei Stunden – und belohnt Geduld mit einer prächtigen Blütenkugel. Perfekt, wenn du zwischendurch etwas anderes vorhast.',
+  peony: 'Vier Stunden Geduld, dann öffnet sich eine Blüte wie aus Seide. Die Pfingstrose ist die Lieblingsblume aller, die tagsüber arbeiten.',
+  magnolia: 'Pflanz sie vor dem Schlafengehen: Die Magnolie blüht nach acht Stunden – und zahlt dafür wie ein ganzer Tag Gartenarbeit.',
+  moonflower: 'Sie öffnet sich nur, wenn sie nachts gepflanzt wurde, und braucht zehn Stunden. Dafür braucht sie nie Wasser und leuchtet im Dunkeln.',
   rainbowTulip: 'Jedes Blütenblatt in einer anderen Farbe. Die erste Züchtung jeder Gärtnerin und jedes Gärtners.',
   sunTulip: 'Gelb mit feurig-orangen Spitzen – als hätte die Sonne selbst die Tulpe bemalt.',
   skyCornflower: 'So hellblau wie ein wolkenloser Sommerhimmel und kein bisschen durstig.',
@@ -241,6 +250,35 @@ export const DAILY_TASKS = [
 ];
 export const DAILY_GIFT = 50;
 
+// Wochenziele: Montag bis Sonntag, größere Belohnungen für regelmäßiges Spielen
+export const WEEKLY_TASKS = [
+  { id: 'harvest', label: 'Ernte 60 Blumen', goal: 60, reward: { coins: 300, xp: 60 } },
+  { id: 'orders', label: 'Liefere 8 Bestellungen beim Händler', goal: 8, reward: { coins: 400, xp: 80, items: { compost: 2 } } },
+  { id: 'water', label: 'Gieße 25 Blumen', goal: 25, reward: { coins: 200, xp: 40, items: { rain: 1 } } },
+  { id: 'bred', label: 'Schließe 2 Züchtungen ab', goal: 2, reward: { coins: 500, xp: 100, items: { pollen: 1 } } },
+  { id: 'days', label: 'Spiele an 5 Tagen', goal: 5, reward: { coins: 350, xp: 70, items: { lucky: 1 } } },
+  { id: 'social', label: 'Hilf Freunden 10× (gießen oder schenken)', goal: 10, reward: { coins: 250, xp: 50 } },
+];
+export const WEEKLY_BONUS = { coins: 1000, xp: 200, items: { turbo: 2 } }; // alle Wochenziele geschafft
+
+// Tiere: Nutzen und Geschenke (Streicheln einmal je Tier und Tag)
+export const ANIMAL_GIFTS = {
+  hedgehog: { name: 'Igel', desc: 'Buddelt beim Streicheln gern etwas aus.', gifts: [{ coins: 40 }, { coins: 60 }, { items: { fert: 1 } }, { items: { compost: 1 } }, { coins: 25, items: { fert: 1 } }] },
+  fox: { name: 'Fuchs', desc: 'Bringt Fundstücke aus dem Wald.', gifts: [{ coins: 50 }, { items: { rain: 1 } }, { items: { turbo: 1 } }, { coins: 80 }, { items: { pollen: 1 } }] },
+  owl: { name: 'Eule Ophelia', desc: 'Erzählt nachts Geschichten und schenkt Weisheit (EP).', gifts: [{ xp: 40 }, { xp: 60 }, { xp: 50, coins: 30 }] },
+  butterfly: { name: 'Schmetterling', desc: 'Bestäubt deine Blumen: heute +5 % Funkel-Chance.', gifts: [{ shinyBoost: 1 }] },
+};
+export const BUTTERFLY_SHINY = 0.05;
+
+// Seltene Überraschungen im Garten (höchstens eine pro Tag; Chance je Spielminute)
+export const SURPRISES = [
+  { id: 'star', name: 'Sternschnuppe', chance: 0.02, night: true, reward: { coins: 120, xp: 30 }, say: 'Eine Sternschnuppe! Wünsch dir was … und nimm die Münzen, die sie hinterlassen hat.' },
+  { id: 'rainbow', name: 'Regenbogen', chance: 0.015, day: true, reward: { items: { lucky: 1 } }, say: 'Ein Regenbogen über deinem Garten! Am Ende lag ein Glücksdünger.' },
+  { id: 'bee', name: 'Bienenschwarm', chance: 0.02, day: true, reward: { items: { pollen: 1 } }, say: 'Ein Bienenschwarm hat deinen Garten besucht und Zauberpollen dagelassen.' },
+  { id: 'coin', name: 'Vergrabener Schatz', chance: 0.012, reward: { coins: 250 }, say: 'Der Igel hat beim Buddeln ein altes Münzsäckchen gefunden!' },
+  { id: 'peddler', name: 'Wanderhändlerin', chance: 0.01, reward: { items: { rain: 2, compost: 1 } }, say: 'Eine Wanderhändlerin kam vorbei und hat dir aus Dankbarkeit für den schönen Garten etwas geschenkt.' },
+];
+
 // Kosmetische Dekoration – frei im Garten aufstellbar, mehrfach kaufbar. Kein Spielvorteil.
 // size = Grundfläche [Breite, Tiefe] für die Platzprüfung
 export const DECO = {
@@ -350,7 +388,54 @@ export const STORY = [
     { text: 'Ernte 3 Lilien.', goal: { type: 'harvest', seed: 'lily', n: 3 }, reward: { coins: 300, xp: 60, items: { compost: 2 } } },
     { text: 'Züchte den Feuermohn (Mohnblume + Sonnenblume).', goal: { type: 'breed', seed: 'firePoppy' }, reward: { coins: 400, xp: 90 } },
     { text: 'Züchte die Eislilie (Lilie + Mondorchidee).', goal: { type: 'breed', seed: 'iceLily' }, reward: { coins: 600, xp: 120, items: { rain: 3 } }, say: 'Sie glitzert wie Raureif – fast zu schön, um wahr zu sein.' },
-    { text: 'Züchte die Kristallrose (Sternenrose + Eislilie).', goal: { type: 'breed', seed: 'crystalRose' }, reward: { coins: 2500, xp: 400, items: { lucky: 3, turbo: 3 } }, say: 'Die Kristallrose! Ich habe sie mein ganzes Leben gesucht. Danke! Neue Kapitel folgen bald.' },
+    { text: 'Züchte die Kristallrose (Sternenrose + Eislilie).', goal: { type: 'breed', seed: 'crystalRose' }, reward: { coins: 2500, xp: 400, items: { lucky: 3, turbo: 3 } }, say: 'Die Kristallrose! Ich habe sie mein ganzes Leben gesucht. Danke!' },
+  ] },
+  { title: 'Der Händler kommt', intro: 'Hörst du das Rattern? Herr Igelmann ist mit seinem Karren da. Er kauft Blumen und hat jeden Tag etwas Besonderes dabei.', quests: [
+    { text: 'Verkaufe 10 Blumen aus deinem Korb an den Händler.', goal: { type: 'sold', n: 10 }, reward: { coins: 100, xp: 30 }, say: 'Er zahlt gut – und für die Tagesblume sogar doppelt!' },
+    { text: 'Liefere 3 Bestellungen.', goal: { type: 'orders', n: 3 }, reward: { coins: 250, xp: 60, items: { compost: 2 } } },
+    { text: 'Erfülle einen Sonderwunsch (Funkelblüte oder Züchtung).', goal: { type: 'special', n: 1 }, reward: { coins: 400, xp: 90, items: { lucky: 1 } }, say: 'Davon erzählt er jetzt im ganzen Tal!' },
+    { text: 'Erreiche beim Händler die Ruf-Stufe „Stammkundschaft“.', goal: { type: 'rep', n: 1 }, reward: { coins: 300, xp: 80 }, say: 'Dein Korb ist jetzt größer. Die Leute mögen dich!' },
+  ] },
+  { title: 'Geduld zahlt sich aus', intro: 'Manche Blumen lassen sich Zeit – und belohnen dich dafür königlich. Pflanz sie, bevor du zur Arbeit gehst oder schlafen legst.', quests: [
+    { text: 'Pflanze eine Dahlie (wächst 2 Stunden).', goal: { type: 'plant', seed: 'dahlia', n: 1 }, reward: { coins: 150, xp: 40 } },
+    { text: 'Ernte 2 Dahlien.', goal: { type: 'harvest', seed: 'dahlia', n: 2 }, reward: { coins: 500, xp: 120 }, say: 'Siehst du? Warten lohnt sich. Pro Stunde bringt sie mehr als jede schnelle Blume.' },
+    { text: 'Ernte eine Pfingstrose (4 Stunden).', goal: { type: 'harvest', seed: 'peony', n: 1 }, reward: { coins: 800, xp: 150, items: { compost: 3 } } },
+    { text: 'Erreiche Level 11.', goal: { type: 'level', n: 11 }, reward: { coins: 400, xp: 0 }, say: 'Jetzt kannst du die Magnolie pflanzen – die blüht über Nacht.' },
+  ] },
+  { title: 'Nachbarn', intro: 'Ein Garten ist schöner, wenn man ihn teilt. Im Tal gibt es andere Gärtnerinnen und Gärtner – besuch sie doch mal!', quests: [
+    { text: 'Füge einen Freund hinzu (Menü „Freunde“, Spielername eingeben).', goal: { type: 'friends', n: 1 }, reward: { coins: 150, xp: 40 }, say: 'Wenn du noch niemanden kennst: Teile deinen Spielernamen!' },
+    { text: 'Besuche den Garten eines Freundes und gieße 3 Blumen.', goal: { type: 'helped', n: 3 }, reward: { coins: 200, xp: 60 } },
+    { text: 'Schicke einem Freund ein Geschenk.', goal: { type: 'gifted', n: 1 }, reward: { coins: 150, xp: 40, items: { rain: 1 } } },
+    { text: 'Gib einem Garten ein Herz.', goal: { type: 'liked', n: 1 }, reward: { coins: 100, xp: 30 }, say: 'Freundschaft lässt Gärten doppelt blühen.' },
+  ] },
+  { title: 'Die Tiere des Gartens', intro: 'Fuchs, Igel und Schmetterling sind nicht nur zum Anschauen da. Wer sie streichelt, bekommt kleine Geschenke.', quests: [
+    { text: 'Streichle den Igel (antippen).', goal: { type: 'petted', id: 'hedgehog' }, reward: { coins: 80, xp: 20 }, say: 'Er buddelt gern etwas für dich aus!' },
+    { text: 'Streichle den Fuchs.', goal: { type: 'petted', id: 'fox' }, reward: { coins: 80, xp: 20 } },
+    { text: 'Streichle an 3 verschiedenen Tagen ein Tier.', goal: { type: 'petDays', n: 3 }, reward: { coins: 250, xp: 60, items: { fert: 3 } } },
+    { text: 'Lass dich vom Schmetterling bestäuben (am Tag antippen).', goal: { type: 'petted', id: 'butterfly' }, reward: { coins: 150, xp: 40, items: { lucky: 1 } }, say: 'Heute funkeln deine Blumen öfter!' },
+  ] },
+  { title: 'Licht in der Nacht', intro: 'Wenn es dunkel wird, zeigt der Garten ein zweites Gesicht. Lass ihn leuchten!', quests: [
+    { text: 'Stelle 3 Lichtquellen auf (Laterne, Fackel, Pilzleuchten …).', goal: { type: 'lights', n: 3 }, reward: { coins: 200, xp: 50 } },
+    { text: 'Züchte den Feuermohn in der Abenddämmerung.', goal: { type: 'breed', seed: 'firePoppy' }, reward: { coins: 300, xp: 80 } },
+    { text: 'Pflanze nachts eine Mondwinde (10 Stunden, braucht kein Wasser).', goal: { type: 'plant', seed: 'moonflower', n: 1 }, reward: { coins: 300, xp: 80 } },
+    { text: 'Ernte eine Mondwinde.', goal: { type: 'harvest', seed: 'moonflower', n: 1 }, reward: { coins: 1200, xp: 250, items: { pollen: 2 } }, say: 'Sie leuchtet wie ein kleiner Mond. Wunderschön.' },
+  ] },
+  { title: 'Vollmondnacht', intro: 'Alle 29 Tage steht der Vollmond am Himmel. Nur dann gelingt die seltenste Rose, die ich kenne.', quests: [
+    { text: 'Züchte die Mondorchidee (nachts).', goal: { type: 'breed', seed: 'moonOrchid' }, reward: { coins: 300, xp: 80 } },
+    { text: 'Ernte 6 Nordlicht-Rosen.', goal: { type: 'harvest', seed: 'northRose', n: 6 }, reward: { coins: 600, xp: 120 } },
+    { text: 'Züchte die Mondscheinrose (Mondorchidee + Nordlicht-Rose, bei Vollmond).', goal: { type: 'breed', seed: 'moonRose' }, reward: { coins: 2000, xp: 400, items: { lucky: 2 } }, say: 'In all meinen Jahren habe ich das nur einmal gesehen. Du bist eine wahre Mondgärtnerin … ein wahrer Mondgärtner!' },
+  ] },
+  { title: 'Meisterschaft', intro: 'Dein Garten ist berühmt. Zeit, ihn zu vollenden.', quests: [
+    { text: 'Erweitere deinen Garten auf die volle Größe.', goal: { type: 'land', n: 3 }, reward: { coins: 800, xp: 200 } },
+    { text: 'Baue 6 Beete zu Prachtbeeten aus.', goal: { type: 'bedLevel', lvl: 3, n: 6 }, reward: { coins: 1000, xp: 250 } },
+    { text: 'Entdecke 24 verschiedene Blumen.', goal: { type: 'collected', n: 24 }, reward: { coins: 1500, xp: 300, items: { turbo: 3 } } },
+    { text: 'Erreiche Level 20.', goal: { type: 'level', n: 20 }, reward: { coins: 2000, xp: 0, items: { lucky: 3, pollen: 3 } }, say: 'Ich bin so stolz auf dich. Dieser Garten ist das Schönste, was ich je gesehen habe.' },
+  ] },
+  { title: 'Ophelias Geheimnis', intro: 'Ich habe dir noch nie erzählt, warum ich diesen Garten so lange bewacht habe … Komm nachts zu mir.', quests: [
+    { text: 'Besuche Ophelia nachts (antippen).', goal: { type: 'petted', id: 'owl' }, reward: { coins: 200, xp: 60 }, say: 'Vor langer Zeit hat hier jemand die Kristallrose gepflanzt – für mich. Ich wartete, dass sie wiederkommt. Jetzt weiß ich: Der Garten gehört dem, der ihn liebt.' },
+    { text: 'Ernte 3 Kristallrosen.', goal: { type: 'harvest', seed: 'crystalRose', n: 3 }, reward: { coins: 3000, xp: 500 } },
+    { text: 'Liefere 25 Bestellungen beim Händler.', goal: { type: 'orders', n: 25 }, reward: { coins: 2500, xp: 400, items: { compost: 5 } } },
+    { text: 'Erreiche Level 25.', goal: { type: 'level', n: 25 }, reward: { coins: 5000, xp: 0, items: { lucky: 5, turbo: 5, pollen: 5 } }, say: 'Danke, dass du geblieben bist. Dieser Garten – und ich – gehören jetzt zu dir. Für immer.' },
   ] },
 ];
 

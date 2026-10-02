@@ -23,7 +23,7 @@ export function fmtTime(ms) {
   if (m < 60) return `${m}:${String(r).padStart(2, '0')}`;
   return `${Math.floor(m / 60)} Std ${m % 60} Min`;
 }
-const growLabel = (ms) => (ms < 60_000 ? `${ms / 1000} Sek` : `${Math.round(ms / 60_000)} Min`);
+const growLabel = (ms) => (ms < 60_000 ? `${ms / 1000} Sek` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} Min` : `${Math.round(ms / 360_000) / 10} Std`.replace('.0 Std', ' Std').replace('.', ','));
 const daysLeft = (ms) => { const d = Math.ceil(ms / 86_400_000); return d <= 1 ? 'Letzter Tag!' : `Noch ${d} Tage`; };
 
 const TIER = { selten: ['Selten', 't1'], episch: ['Episch', 't2'], legendär: ['Legendär', 't3'] };
@@ -180,7 +180,7 @@ export class UI {
     const xp = G.xpProgress(s);
     $('lvl').innerHTML = `${I.star(xp.level)}<small>${xp.max ? 'Max. Level' : `${num(xp.have)}/${num(xp.need)} EP`}</small><span class="xpbar"><i style="width:${(xp.frac * 100).toFixed(1)}%"></i></span>`;
     const st = G.storyStatus(s);
-    const quests = G.claimableTasks(s) + (G.dailyGiftAvailable(s, now) ? 1 : 0) + (!st.finished && st.done ? 1 : 0);
+    const quests = G.claimableTasks(s) + (G.dailyGiftAvailable(s, now) ? 1 : 0) + (!st.finished && st.done ? 1 : 0) + G.claimableWeekly(s, now);
     const ev = G.eventInfo(s, now);
     this.badge('quests', quests);
     this.badge('events', ev.active ? ev.claimable : 0);
@@ -309,7 +309,7 @@ export class UI {
   boostCards() {
     const list = Object.values(this.boosts || {}).filter((b) => b.end > Date.now());
     if (!list.length) return '';
-    const NAMES = { doubleXp: ['Doppelte Erfahrung', I.xp], doubleCoins: ['Doppelte Münzen', I.coinPile], shinyDay: ['Funkel-Tag', I.sparkle], traderSale: ['Händler zahlt mehr', I.cart] };
+    const NAMES = { doubleXp: ['Doppelte Erfahrung', I.xp], doubleCoins: ['Doppelte Münzen', I.coinPile()], shinyDay: ['Funkel-Tag', I.sparkle], traderSale: ['Händler zahlt mehr', I.cart] };
     return `<div class="sec">Gerade aktiv</div>` + list.map((b) => { const [n, ic] = NAMES[b.id] || [b.id, I.sparkle]; const left = b.end - Date.now(); const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / 60000); return `<div class="card row boost">${svg(ic, 44)}<div class="grow"><h4>${n} ×${b.mult}</h4><p>Noch ${h ? `${h} Std ` : ''}${m} Min – für alle Spieler.</p></div></div>`; }).join('');
   }
 
@@ -449,8 +449,9 @@ export class UI {
       const d = C.SEEDS[id], st = G.seedStatus(s, id), afford = s.coins >= d.cost;
       const label = st.available ? `${I.coin()} ${d.cost}` : `${I.lock} ${esc(st.reason)}`;
       const act = st.available ? 'plant' : st.shop ? 'gotoShop' : st.breed ? 'gotoBreed' : 'seedLocked';
-      return `<button class="seed ${st.available ? '' : 'lock'} ${d.rare || d.bred ? 'rare' : ''}" data-act="${act}" data-id="${id}" aria-label="${esc(plain(d.name))}">
-        ${tierTag(d)}<img alt="" src="${this.icons.flower[id]}"><b>${esc(d.name)}</b>
+      const nightLock = d.nightOnly && this.api.breedCtx?.().time !== 'night';
+      return `<button class="seed ${st.available ? '' : 'lock'} ${d.rare || d.bred ? 'rare' : ''} ${d.slow ? 'slow' : ''}" data-act="${act}" data-id="${id}" aria-label="${esc(plain(d.name))}">
+        ${tierTag(d)}${d.slow ? `<span class="tier tslow">${nightLock ? '🌙 nachts' : '⏳ Geduld'}</span>` : ''}<img alt="" src="${this.icons.flower[id]}"><b>${esc(d.name)}</b>
         <span class="meta"><span>⏱ ${growLabel(G.growTime(s.beds[i] || {}, id))}</span><span>${I.coin()}${Math.round(d.reward * C.BED_LEVELS[(s.beds[i]?.lvl || 1) - 1].mult)}</span>${d.water && !s.beds[i]?.sprinkler ? `<span class="wneed" title="Muss ${d.water}× gegossen werden">${I.drop}${d.water}</span>` : ''}</span>
         <span class="price ${st.available && !afford ? 'poor' : ''}">${label}</span></button>`;
     }).join('');
@@ -576,9 +577,10 @@ export class UI {
     const st = G.storyStatus(s);
     const daily = G.claimableTasks(s) + (G.dailyGiftAvailable(s, now) ? 1 : 0);
     const cur = this.tab.quests || 'story';
-    let h = this.tabs('quests', [['story', 'Story', !st.finished && st.done ? 1 : 0], ['daily', 'Täglich', daily], ['levels', 'Levelweg']]);
+    let h = this.tabs('quests', [['story', 'Story', !st.finished && st.done ? 1 : 0], ['daily', 'Täglich', daily], ['weekly', 'Woche', G.claimableWeekly(s, now)], ['levels', 'Levelweg']]);
     if (cur === 'story') h += this.storyHtml(st);
     else if (cur === 'daily') h += this.dailyHtml();
+    else if (cur === 'weekly') h += this.weeklyHtml();
     else h += this.levelsHtml();
     return h;
   }
@@ -622,6 +624,18 @@ export class UI {
     const gift = G.dailyGiftAvailable(s, now);
     h += `<div class="card row">${svg(I.gift, 54)}<div class="grow"><h4>Tägliches Geschenk</h4><p>Jeden Tag ${C.DAILY_GIFT} Münzen gratis.</p></div><button class="btn small" data-act="gift" ${gift ? '' : 'disabled'}>${gift ? 'Abholen' : '✓ Heute'}</button></div>`;
     h += `<p class="note">Neue Tagesaufgaben gibt es jeden Tag um Mitternacht.</p>`;
+    return h;
+  }
+
+  weeklyHtml() {
+    const s = this.s, now = this.api.now();
+    const w = G.weeklyList(s, now);
+    const d = Math.floor(w.left / 86400000), hh = Math.floor((w.left % 86400000) / 3600000);
+    let h = `<div class="card row">${svg(I.target, 46)}<div class="grow"><h4>Wochenziele</h4><p>Größere Belohnungen für regelmäßiges Spielen. Noch ${d ? `${d} Tage ${hh} Std` : `${hh} Std`} bis zur neuen Woche.</p></div></div>`;
+    h += w.tasks.map((t) => `<div class="card"><div class="row"><div class="grow"><h4>${esc(t.label)}</h4><p>${num(t.have)} / ${num(t.goal)}</p>${this.chips(t.reward)}</div>
+      ${t.claimed ? '<button class="btn small off" disabled>✓</button>' : `<button class="btn small" data-act="claimWeekly" data-id="${t.id}" ${t.done ? '' : 'disabled'}>Abholen</button>`}</div>
+      <div class="prog"><i style="width:${(t.have / t.goal) * 100}%"></i></div></div>`).join('');
+    h += `<div class="card ${w.allDone && !w.bonus ? 'glow' : ''}"><div class="row">${svg(I.coinChest(), 54)}<div class="grow"><h4>Wochenbonus</h4><p>Alle sechs Ziele geschafft:</p>${this.chips(C.WEEKLY_BONUS)}</div>${w.bonus ? '<button class="btn small off" disabled>✓</button>' : `<button class="btn small gold" data-act="claimWeekly" data-id="bonus" ${w.allDone ? '' : 'disabled'}>Abholen</button>`}</div></div>`;
     return h;
   }
 
@@ -890,7 +904,7 @@ export class UI {
       <div class="card set"><div class="lab">Spielstand</div><p>Wird automatisch gespeichert${acc.user ? ' – in deinem Konto und auf diesem Gerät' : ' – auf diesem Gerät'}.</p><button class="btn red small" style="align-self:flex-start;margin-top:6px" data-act="reset">Garten neu beginnen</button></div>
       <div class="card set"><div class="lab">Als App auf dem Handy</div><p>${standalone ? 'BloomWorld läuft als App. 🌸' : 'Mit eigenem Symbol auf dem Startbildschirm, ohne Browserleiste.'}</p>${standalone ? '' : '<button class="btn small" style="align-self:flex-start;margin-top:6px" data-act="install">Zum Startbildschirm hinzufügen</button>'}</div>
       <div class="btnrow center"><button class="btn small ghost" data-act="legal" data-id="impressum">Impressum</button><button class="btn small ghost" data-act="legal" data-id="datenschutz">Datenschutz</button><button class="btn small ghost" data-act="legal" data-id="agb">AGB</button></div>
-      <p class="note">BloomWorld · Version 3.5<br>Schrift: Poppins (SIL Open Font License)</p>`;
+      <p class="note">BloomWorld · Version 3.6<br>Schrift: Poppins (SIL Open Font License)</p>`;
   }
 
   // ---------- Klicks in Panels, Leisten, Dialogen ----------
@@ -961,6 +975,7 @@ export class UI {
       case 'buySkin': A.buySkin(id); break;
       case 'equip': A.equip(el.dataset.animal, id); if (this.modalOpen && this.detail.kind === 'animal') this.detail.open('animal', id); break;
       case 'claim': A.claim(id); break;
+      case 'claimWeekly': A.claimWeekly(id); break;
       case 'share': A.share(); break;
       case 'set': A.setting(el.dataset.key, el.dataset.val); break;
       case 'toggle': A.setting(el.dataset.key, !this.s.settings[el.dataset.key]); break;

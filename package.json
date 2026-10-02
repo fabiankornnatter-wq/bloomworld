@@ -1,6 +1,6 @@
 {
   "name": "bloomworld",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "private": true,
   "description": "BloomWorld – mobiles 3D-Garten- und Sammel-Browsergame",
   "type": "module",

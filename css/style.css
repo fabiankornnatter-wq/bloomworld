@@ -804,3 +804,6 @@ body.visiting #maint { display: none; }
 #bellBtn { background: radial-gradient(circle at 40% 35%, #ffe08a, #f0a810); }
 @media (max-width: 440px) { #hud { gap: 5px; } .lvl { min-width: 78px; padding-right: 6px; } .pill { font-size: 16px; } .round { width: 40px; height: 40px; } .round svg { width: 25px; height: 25px; } }
 .privacy .legal { font-size: 13px; line-height: 1.45; text-align: left; user-select: text; -webkit-user-select: text; white-space: normal; }
+.dlg.surprise .spicon { font-size: 64px; line-height: 1; margin: 4px 0 8px; animation: bob 1.4s ease-in-out infinite; }
+.seed.slow { background: linear-gradient(#fff, #fff4fa); }
+.tier.tslow { background: linear-gradient(#b48cff, #7a4dff); }

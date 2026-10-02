@@ -1,6 +1,6 @@
 // Die Gartenwelt: baut die Szene auf, animiert Tiere/Effekte, steuert Kamera und Antippen.
 import { Renderer } from '../engine/gl.js';
-import { Geo, T, sphere, petal, box } from '../engine/geo.js';
+import { Geo, T, sphere, petal, box, cylinder } from '../engine/geo.js';
 import { m4, v3, rng, clamp, lerp } from '../engine/math.js';
 import * as M from './models.js';
 import { environment } from './sky.js';
@@ -324,6 +324,8 @@ export class World {
     });
     this.goldSpark = this.r.mesh(M.sparkle('#fff4b0', 0.07));
     this.heartMesh = this.r.mesh(heartGeo());
+    this.coinMesh = this.r.mesh(coinGeo());
+    this.ringMesh = this.r.mesh(ringGeo());
   }
 
   // ---------- Spielzustand -> Szene ----------
@@ -338,6 +340,9 @@ export class World {
       let key = 'empty';
       if (info.seed) key = `${info.seed}|${info.stage}|${info.shiny ? 1 : 0}|${info.var}`;
       if (key === bed.key) return;
+      const wasStage = bed.stage; bed.stage = info.stage;
+      // Wachstums-Sprung: Pflanzen „ploppen“ kurz, wenn sie eine Stufe weiter sind
+      if (info.seed && wasStage !== undefined && info.stage > (wasStage ?? -1) && bed.key !== 'empty') { bed.pop = 0.45; this.growRing(i); }
       bed.key = key;
       const tall = info.seed && SEEDS[info.seed].model === 'sunflower';
       bed.h = !info.seed ? 0 : info.stage === 0 ? 0.35 : (tall ? 1.7 : 0.95) * (info.stage === 1 ? 0.55 : info.stage === 2 ? 0.8 : 1);
@@ -399,6 +404,23 @@ export class World {
       const a = R() * PI * 2, sp = kind === 'plant' ? 1.2 : 2.2;
       this.particles.push({ o: this.r.addObject(mesh, m4.identity(), { shadow: false, ...(kind === 'magic' ? { mode: 2 } : {}) }), p: [x + (R() - 0.5) * 1.2, BED_TOP + 0.3, z + (R() - 0.5) * 1.2], v: [Math.cos(a) * sp * R(), 2.5 + R() * 2.5, Math.sin(a) * sp * R()], rot: R() * 6, spin: (R() - 0.5) * 12, life: 1.1, max: 1.1, g: kind === 'plant' ? 9 : 5 });
     }
+  }
+
+  // Münzregen beim Ernten (aufsteigend, dann fallend)
+  coinRain(i, n = 6) {
+    const [x, z] = this.beds[i].pos, R = Math.random;
+    for (let k = 0; k < n; k++) this.particles.push({ o: this.r.addObject(this.coinMesh, m4.identity(), { shadow: false }), p: [x + (R() - 0.5) * 0.8, BED_TOP + 0.5, z + (R() - 0.5) * 0.8], v: [(R() - 0.5) * 1.4, 3.5 + R() * 2, (R() - 0.5) * 1.4], rot: R() * 6, spin: 6 + R() * 8, life: 1.3, max: 1.3, g: 7 });
+  }
+  // Ring, der beim Wachstumsschub aufsteigt
+  growRing(i) {
+    const [x, z] = this.beds[i].pos;
+    this.particles.push({ o: this.r.addObject(this.ringMesh, m4.identity(), { shadow: false, mode: 2 }), p: [x, BED_TOP + 0.1, z], v: [0, 0.9, 0], rot: 0, spin: 0, life: 0.7, max: 0.7, g: -0.4, grow: 1.6 });
+  }
+  // Wasserspritzer beim Gießen: Tropfen fallen von oben
+  splash(i) {
+    const [x, z] = this.beds[i].pos, R = Math.random;
+    const mesh = this.mesh('pdrop', () => sphere(0.045, '#7cc8ff', 5, 4, 1.6));
+    for (let k = 0; k < 22; k++) this.particles.push({ o: this.r.addObject(mesh, m4.identity(), { shadow: false }), p: [x + (R() - 0.5) * 1.6, BED_TOP + 1.6 + R() * 0.8, z + (R() - 0.5) * 1.6], v: [(R() - 0.5) * 0.3, -1 - R() * 2, (R() - 0.5) * 0.3], rot: 0, spin: 0, life: 0.5 + R() * 0.3, max: 0.8, g: 6 });
   }
 
   hearts(p) {
@@ -505,6 +527,14 @@ export class World {
     // Sprinkler drehen sich
     for (const bed of this.beds) if (bed.head.visible) bed.head.model = T(bed.sp[0], 0.95, bed.sp[1], t * 1.4 + bed.sp[0]);
     // Funkeln (Funkelblüten, Sternenrose)
+    for (const bed of this.beds) {
+      if (bed.pop > 0) {
+        bed.pop -= dt;
+        const k = Math.max(0, bed.pop / 0.45), sc = 1 + Math.sin(k * PI) * 0.18;
+        const [x, z, r] = bed.pos; bed.plants.model = T(x, BED_TOP, z, (r || 0) * PI / 2, 0, 0, sc, 1 + Math.sin(k * PI) * 0.28, sc);
+        if (bed.pop <= 0) bed.plants.model = T(x, BED_TOP, z, (r || 0) * PI / 2);
+      }
+    }
     for (const bed of this.beds) for (const s of bed.sparkles) {
       const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 2.5 + s.s));
       s.o.model = T(bed.pos[0] + s.rel[0], s.rel[1] + Math.sin(t * 1.5 + s.s) * 0.08, bed.pos[1] + s.rel[2], t * 0.8 + s.s, 0.5, 0, tw);
@@ -517,8 +547,9 @@ export class World {
       q.v[1] -= q.g * dt;
       q.p = v3.add(q.p, v3.scale(q.v, dt));
       q.rot += q.spin * dt;
-      const sc = Math.min(1, q.life / q.max * 2.5);
-      q.o.model = q.face ? T(q.p[0], q.p[1], q.p[2], this.cam.yaw, 0, 0, sc) : T(q.p[0], q.p[1], q.p[2], q.rot, q.rot * 0.7, 0, sc);
+      let sc = Math.min(1, q.life / q.max * 2.5);
+      if (q.grow) sc = (1 - q.life / q.max) * q.grow + 0.3;
+      q.o.model = q.face ? T(q.p[0], q.p[1], q.p[2], this.cam.yaw, 0, 0, sc) : q.grow ? T(q.p[0], q.p[1], q.p[2], 0, 0, 0, sc, 1, sc) : T(q.p[0], q.p[1], q.p[2], q.rot, q.rot * 0.7, 0, sc);
     }
     this.updateCamera(dt);
   }
@@ -812,6 +843,20 @@ function diskGeo(rx, rz) {
   return g;
 }
 
+function coinGeo() {
+  const g = new Geo();
+  g.add(cylinder(0.11, 0.11, 0.035, '#ffd23f', 12), T(0, 0, 0, 0, PI / 2));
+  g.add(cylinder(0.07, 0.07, 0.04, '#f0a810', 10), T(0, 0, 0, 0, PI / 2));
+  return g;
+}
+function ringGeo() {
+  const g = new Geo(), seg = 24;
+  for (let i = 0; i < seg; i++) {
+    const a0 = (i / seg) * PI * 2, a1 = ((i + 1) / seg) * PI * 2;
+    g.add(box(0.1, 0.02, 0.06, '#c8ffb0'), T(Math.cos((a0 + a1) / 2) * 0.9, 0, Math.sin((a0 + a1) / 2) * 0.9, -(a0 + a1) / 2));
+  }
+  return g;
+}
 function heartGeo() {
   const g = new Geo(), c = [1, 0.35, 0.55];
   g.add(sphere(0.09, c, 8, 6), T(-0.07, 0.05, 0));

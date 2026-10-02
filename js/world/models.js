@@ -165,6 +165,10 @@ Object.assign(FLOWER_LOOK, {
   dragonLily: { petal: '#6a0a24', tip: '#ffb81c', center: '#ffd23f', glow: 0.35 },
   crystalRose: { petal: '#cfefff', tip: '#ffffff', center: '#8fd6ff', glow: 0.85 },
   moonRose: { petal: '#dfe6ff', tip: '#fbfcff', center: '#a9b8ff', glow: 0.9 },
+  dahlia: { petal: '#ff5c8a', tip: '#ffd1dc', center: '#ff9ab8' },
+  peony: { petal: '#ffb3c6', tip: '#fff0f3', center: '#ffd6e0' },
+  magnolia: { petal: '#f7e6f2', tip: '#ffffff', center: '#e8a0c8' },
+  moonflower: { petal: '#f4f6ff', tip: '#ffffff', center: '#d8e4ff', glow: 1.0 },
 });
 const brighten = (look) => {
   const b = (c) => { const v = col(c); return v.map((x) => Math.min(1, x * 1.12 + 0.04)); };
@@ -316,7 +320,7 @@ export function plant(seedId, stage, shiny = false, seed = 1) {
     g.add(sm, T(Math.cos(a) * off, 0, Math.sin(a) * off, a));
   }
   g.windByHeight(0.05, tall * 1.1, 1);
-  const k = PLANT_SCALE[type] * (['starRose', 'crystalRose', 'dragonLily', 'moonRose'].includes(seedId) ? 1.12 : 1);
+  const k = PLANT_SCALE[type] * (['starRose', 'crystalRose', 'dragonLily', 'moonRose'].includes(seedId) ? 1.12 : SEEDS[seedId]?.slow ? 1.22 : 1);
   return new Geo().add(g, T(0, 0, 0, 0, 0, 0, k));
 }
 export const PLANT_SCALE = { daisy: 2.3, tulip: 2.1, sunflower: 1.5, lavender: 1.9, rose: 2.15, orchid: 2.1, cornflower: 2.1, poppy: 2.0, lily: 1.9, hydrangea: 1.9 };
