@@ -255,3 +255,38 @@ test('Admin-Werkzeuge: Spieler-Support, Namensreset, Passwort-Reset, Wartung, Ev
   assert.ok(ov.body.logs.some((l) => l.action === 'Rechtstext'));
   assert.ok(ov.body.words.includes('blubberwort'));
 });
+
+test('Tauschbörse: Angebot, Liste, Annehmen, Abbrechen, Samen-Geschenk', async () => {
+  const dora = await register('Dora'), emil = await register('Emil');
+  let r = await soc(dora, { action: 'tradeOffer', give: 'marigold', giveN: 2, want: 'heartRose', wantN: 1 });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const id = r.body.offer.id;
+  assert.equal((await soc(dora, { action: 'tradeOffer', give: 'marigold', giveN: 2, want: 'marigold', wantN: 1 })).status, 400);
+  assert.equal((await soc(dora, { action: 'tradeOffer', give: 'daisy', giveN: 2, want: 'heartRose', wantN: 1 })).status, 400);
+  let list = (await soc(emil, { action: 'trades' })).body;
+  const mine = list.offers.find((o) => o.id === id);
+  assert.ok(mine && !mine.mine && mine.name === dora.name);
+  assert.equal((await soc(dora, { action: 'trades' })).body.open, 1);
+  // eigenes Angebot nicht annehmbar, fremdes schon
+  assert.equal((await soc(dora, { action: 'tradeAccept', id })).status, 400);
+  r = await soc(emil, { action: 'tradeAccept', id });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.offer.give, 'marigold');
+  assert.equal((await soc(emil, { action: 'tradeAccept', id })).status, 404);
+  // Dora bekommt die Samen über die Inbox
+  const sb = (await soc(dora, { action: 'sync' })).body;
+  const done = sb.inbox.find((x) => x.k === 'tradeDone');
+  assert.ok(done && done.offer.want === 'heartRose' && done.name === emil.name);
+  // Nur-Freunde-Angebot und Abbrechen
+  r = await soc(dora, { action: 'tradeOffer', give: 'crocus', giveN: 1, want: 'lilac', wantN: 1, friendsOnly: true });
+  assert.equal((await soc(emil, { action: 'tradeAccept', id: r.body.offer.id })).status, 403);
+  assert.equal((await soc(emil, { action: 'tradeCancel', id: r.body.offer.id })).status, 403);
+  assert.equal((await soc(dora, { action: 'tradeCancel', id: r.body.offer.id })).status, 200);
+  assert.equal((await soc(dora, { action: 'trades' })).body.open, 0);
+  // Samen schenken nur unter Freunden
+  assert.equal((await soc(dora, { action: 'seedGift', id: emil.id, seed: 'crocus', n: 2 })).status, 403);
+  await soc(dora, { action: 'request', name: emil.name }); await soc(emil, { action: 'accept', id: dora.id });
+  assert.equal((await soc(dora, { action: 'seedGift', id: emil.id, seed: 'crocus', n: 2 })).status, 200);
+  const se = (await soc(emil, { action: 'sync' })).body;
+  assert.ok(se.inbox.find((x) => x.k === 'seeds' && x.seed === 'crocus' && x.n === 2));
+});

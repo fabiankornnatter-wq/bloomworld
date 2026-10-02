@@ -43,6 +43,11 @@ export default async function handler(req, res) {
       case 'like': r = await S.like(uid, name, b.id); break;
       case 'visit': r = await S.visit(uid, b.id); break;
       case 'help': r = await S.help(uid, name, b.id, b.beds); break;
+      case 'trades': r = await S.tradeList(uid, b.scope); break;
+      case 'tradeOffer': r = await S.tradeOffer(uid, name, b); break;
+      case 'tradeCancel': r = await S.tradeCancel(uid, b.id); break;
+      case 'tradeAccept': r = await S.tradeAccept(uid, name, b.id); break;
+      case 'seedGift': r = await S.seedGift(uid, name, b.id, b.seed, b.n); break;
       default: return fail(res, 400, 'action', 'Unbekannte Aktion.');
     }
     return send(res, 200, r);

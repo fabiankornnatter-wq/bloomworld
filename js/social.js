@@ -21,6 +21,11 @@ export const socialApi = {
   help: (id, beds) => post('help', { id, beds }),
   redeem: (code) => post('redeem', { code }),
   feedback: (d) => post('feedback', d),
+  trades: (scope) => post('trades', { scope }),
+  tradeOffer: (d) => post('tradeOffer', d),
+  tradeCancel: (id) => post('tradeCancel', { id }),
+  tradeAccept: (id) => post('tradeAccept', { id }),
+  seedGift: (id, seed, n) => post('seedGift', { id, seed, n }),
 };
 
 export const adminApi = {

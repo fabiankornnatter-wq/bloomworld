@@ -101,8 +101,8 @@ export async function sync(uid, { pop = true } = {}) {
   const ids = [...new Set([...Object.keys(friends), ...Object.keys(incoming), ...Object.keys(outgoing), ...(blk || [])])].filter(isUid);
   const info = {};
   if (ids.length) {
-    const rows = await db.pipe(ids.flatMap((id) => [['HMGET', K.user(id), 'name', 'lvl'], ['EXISTS', S.online(id)]]));
-    ids.forEach((id, i) => { const [name, lvl] = rows[i * 2] || []; info[id] = { id, name: name || null, level: Number(lvl) || 1, online: Number(rows[i * 2 + 1]) === 1 }; });
+    const rows = await db.pipe(ids.flatMap((id) => [['HMGET', K.user(id), 'name', 'lvl', 'title'], ['EXISTS', S.online(id)]]));
+    ids.forEach((id, i) => { const [name, lvl, title] = rows[i * 2] || []; info[id] = { id, name: name || null, level: Number(lvl) || 1, title: title || '', online: Number(rows[i * 2 + 1]) === 1 }; });
   }
   const day = today();
   const [gifted, liked, helped] = ids.length ? await db.pipe([['SMEMBERS', `bw:d:${day}:gift:${uid}`], ['SMEMBERS', `bw:d:${day}:like:${uid}`], ['MGET', ...Object.keys(friends).filter(isUid).map((f) => `bw:d:${day}:help:${uid}:${f}`), 'x']]) : [[], [], []];
@@ -305,4 +305,82 @@ export async function purgeUser(uid) {
   for (const f of Object.keys(toObject(out) || {})) cmds.push(['HDEL', S.inReq(f), uid]);
   cmds.push(['DEL', S.friends(uid), S.inReq(uid), S.outReq(uid), S.blocked(uid), S.unread(uid), S.inbox(uid), S.online(uid), S.ban(uid)]);
   await db.pipe(cmds);
+}
+
+// ---------- Tauschbörse (Samen von Event-Blumen) ----------
+// Angebote liegen in einem Hash (id -> JSON). Die Samen des Anbieters sind lokal reserviert; beim Abschluss
+// bekommt der Anbieter die gewünschten Samen über seine Inbox, der Annehmende die angebotenen Samen als Antwort.
+const TR = { offers: 'bw:trade:offers', mine: (u) => `bw:trade:mine:${u}` };
+const tradeValid = (seed, n) => C.SEEDS[seed]?.event && Number.isInteger(n) && n >= 1 && n <= C.TRADE.maxN;
+
+export async function tradeList(uid, scope = 'all') {
+  const db = kv();
+  const all = toObject(await db.cmd('HGETALL', TR.offers)) || {};
+  const now = Date.now(), out = [], expired = [];
+  const friendIds = scope === 'friends' ? Object.keys(toObject(await db.cmd('HGETALL', S.friends(uid))) || {}) : null;
+  for (const [id, raw] of Object.entries(all)) {
+    let o; try { o = JSON.parse(raw); } catch { continue; }
+    if (now - o.ts > C.TRADE.days * DAY * 1000) { expired.push(o); continue; }
+    if (friendIds && o.uid !== uid && !friendIds.includes(o.uid)) continue;
+    out.push({ ...o, mine: o.uid === uid });
+  }
+  // abgelaufene Angebote: Samen an den Anbieter zurück
+  for (const o of expired) {
+    if (Number(await db.cmd('HDEL', TR.offers, o.id)) !== 1) continue;
+    await db.cmd('SREM', TR.mine(o.uid), o.id);
+    await pushInbox(o.uid, { k: 'tradeBack', offer: o, reason: 'expired' });
+  }
+  out.sort((a, b) => Number(b.mine) - Number(a.mine) || b.ts - a.ts);
+  return { offers: out.slice(0, 200), open: out.filter((o) => o.mine).length };
+}
+
+export async function tradeOffer(uid, myName, body) {
+  const give = String(body.give || ''), want = String(body.want || ''), giveN = Math.floor(Number(body.giveN)), wantN = Math.floor(Number(body.wantN));
+  if (!tradeValid(give, giveN) || !tradeValid(want, wantN) || give === want) throw nope('Ungültiges Tauschangebot.');
+  await rateLimit('tradeoffer', uid, 30, 3600);
+  const db = kv();
+  const open = Number(await db.cmd('SCARD', TR.mine(uid))) || 0;
+  if (open >= C.TRADE.maxOpen) throw nope(`Höchstens ${C.TRADE.maxOpen} offene Angebote gleichzeitig.`, 409, 'full');
+  const o = { id: newId(), uid, name: myName, give, giveN, want, wantN, ts: Date.now(), friendsOnly: !!body.friendsOnly };
+  await db.pipe([['HSET', TR.offers, o.id, JSON.stringify(o)], ['SADD', TR.mine(uid), o.id]]);
+  return { ok: true, offer: o };
+}
+
+export async function tradeCancel(uid, id) {
+  const db = kv();
+  const raw = await db.cmd('HGET', TR.offers, String(id));
+  if (!raw) throw nope('Dieses Angebot gibt es nicht mehr.', 404, 'gone');
+  const o = JSON.parse(raw);
+  if (o.uid !== uid) throw nope('Das ist nicht dein Angebot.', 403, 'forbidden');
+  if (Number(await db.cmd('HDEL', TR.offers, o.id)) !== 1) throw nope('Dieses Angebot wurde gerade angenommen.', 409, 'gone');
+  await db.cmd('SREM', TR.mine(uid), o.id);
+  return { ok: true, offer: o }; // Samen kommen lokal zurück
+}
+
+export async function tradeAccept(uid, myName, id) {
+  const db = kv();
+  const raw = await db.cmd('HGET', TR.offers, String(id));
+  if (!raw) throw nope('Dieses Angebot gibt es nicht mehr.', 404, 'gone');
+  const o = JSON.parse(raw);
+  if (o.uid === uid) throw nope('Das ist dein eigenes Angebot.');
+  if (o.friendsOnly && !(await isFriend(o.uid, uid))) throw nope('Dieses Angebot gilt nur für Freunde des Anbieters.', 403, 'not_friend');
+  if (!(await dayCount(S.day('trade', uid), 1, C.TRADE.perDay))) throw nope('Du hast heute schon sehr viel getauscht. Morgen wieder!', 429, 'limit');
+  if (Number(await db.cmd('HDEL', TR.offers, o.id)) !== 1) throw nope('Zu spät – jemand war schneller.', 409, 'gone');
+  await db.cmd('SREM', TR.mine(o.uid), o.id);
+  await pushInbox(o.uid, { k: 'tradeDone', from: uid, name: myName, offer: o });
+  await ping(o.uid, 'trade', { title: 'Tausch abgeschlossen! 🌱', body: `${myName} hat dein Angebot angenommen: ${o.wantN}× ${C.SEEDS[o.want].name.replace(/­/g, '')}-Samen sind unterwegs.`, tag: 'trade', url: '/?open=trade' }, { cooldownSec: 600 });
+  return { ok: true, offer: o }; // der Annehmende erhält o.give × o.giveN lokal
+}
+
+// Samen an einen Freund verschenken
+export async function seedGift(uid, myName, other, seed, n) {
+  await mustBeFriend(uid, other);
+  n = Math.floor(Number(n));
+  if (!tradeValid(seed, n)) throw nope('Ungültiges Samen-Geschenk.');
+  if (!(await dayCount(S.day('seedgift', uid), 1, 20))) throw nope('Du hast heute schon viele Samen verschenkt. Morgen wieder!', 429, 'limit');
+  const label = `${n}× ${C.SEEDS[seed].name.replace(/­/g, '')}-Samen`;
+  await pushInbox(other, { k: 'seeds', from: uid, name: myName, seed, n });
+  await ping(other, 'gift', { title: 'Samen für dich! 🌱', body: `${myName} hat dir ${label} geschenkt.`, tag: 'gift', url: '/' }, { cooldownSec: 1800 });
+  await pushChat(uid, other, { k: 'gift', t: `hat dir ${label} geschenkt.`, x: 'seeds' });
+  return { ok: true };
 }

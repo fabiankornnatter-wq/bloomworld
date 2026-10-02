@@ -77,6 +77,10 @@ export function newState(now = Date.now()) {
     seenAnimals: [],
     tutorial: 0,
     tutorialDone: 0,
+    seeds: {},           // Samen von Event-Blumen (auch nach dem Event säbar, tauschbar)
+    achievements: [],    // abgeschlossene Erfolge
+    titles: [], title: '',
+    unlocked: [],        // exklusive Blumen aus dem Album
     settings: { cycle: 'real', rt: true, cycleMin: 8, cycleEpoch: now, quality: 'auto', music: true, musicVol: 0.5, sound: true, soundVol: 0.8 },
   };
 }
@@ -113,6 +117,9 @@ export function grant(s, r = {}) {
   if (r.items) addItems(s, r.items);
   if (r.deco && C.DECO[r.deco] && !s.deco.includes(r.deco)) { s.deco.push(r.deco); addDecor(s, r.deco); }
   if (r.skin && C.SKINS[r.skin] && !s.skins.includes(r.skin)) s.skins.push(r.skin);
+  if (r.seeds) addSeeds(s, r.seeds);
+  if (r.title && C.TITLES[r.title] && !s.titles.includes(r.title)) { s.titles.push(r.title); if (!s.title) s.title = r.title; }
+  if (r.unlock && C.SEEDS[r.unlock]?.exclusive && !s.unlocked.includes(r.unlock)) s.unlocked.push(r.unlock);
   return r.xp ? addXp(s, r.xp) : [];
 }
 
@@ -163,11 +170,14 @@ export function roadmap(s) {
 export function seedStatus(s, id, now = Date.now()) {
   const d = C.SEEDS[id];
   if (!d) return { available: false, reason: ERR.unknown };
+  if (d.exclusive) return s.unlocked.includes(id) ? { available: true } : { available: false, reason: 'Belohnung aus dem Album', album: true };
   if (d.event) {
-    const ev = activeEvent(now);
-    if (!ev || ev.id !== d.event) { const name = C.EVENTS.find((e) => e.id === d.event)?.name || 'Event'; return { available: false, reason: `Nur beim Event „${name}“`, event: d.event }; }
+    const ev = activeEvent(now), n = seedCount(s, id);
     if (s.level < d.level) return { available: false, reason: `Ab Level ${d.level}`, level: d.level };
-    return { available: true, event: d.event };
+    if (ev && ev.id === d.event) return { available: true, event: d.event, seeds: n };
+    if (n > 0) return { available: true, event: d.event, useSeed: true, seeds: n };
+    const name = C.EVENTS.find((e) => e.id === d.event)?.name || 'Event';
+    return { available: false, reason: `Nur beim Event „${name}“ – oder mit Samen aus der Tauschbörse`, event: d.event, trade: true };
   }
   if (d.bred) return s.bred.includes(id) ? { available: true } : { available: false, reason: 'Im Gewächshaus züchten', breed: true };
   if (d.rare) {
@@ -177,6 +187,66 @@ export function seedStatus(s, id, now = Date.now()) {
   }
   if (s.level < d.level) return { available: false, reason: `Ab Level ${d.level}`, level: d.level };
   return { available: true };
+}
+
+// ---------- Samen von Event-Blumen ----------
+export const seedCount = (s, k) => (s.seeds && s.seeds[k]) || 0;
+export function addSeeds(s, seeds = {}) {
+  for (const [k, n] of Object.entries(seeds || {})) if (C.SEEDS[k]?.event && n > 0) s.seeds[k] = (s.seeds[k] || 0) + Math.floor(n);
+}
+export function takeSeeds(s, k, n) {
+  if (seedCount(s, k) < n) return false;
+  s.seeds[k] -= n; if (s.seeds[k] <= 0) delete s.seeds[k];
+  return true;
+}
+export const seedList = (s) => C.EVENT_SEEDS.filter((k) => seedCount(s, k) > 0).map((k) => ({ id: k, n: seedCount(s, k) }));
+
+// Tauschbörse: lokale Prüfungen (der Server vermittelt, die Samen wandern über Inbox-Einträge)
+export function tradeOfferCheck(s, give, giveN, want, wantN, openCount = 0) {
+  if (!C.SEEDS[give]?.event || !C.SEEDS[want]?.event) return err('invalid', { message: 'Nur Samen von Event-Blumen lassen sich tauschen.' });
+  if (give === want) return err('invalid', { message: 'Gleiche Blume gegen gleiche Blume? Das lohnt sich nicht. 🙂' });
+  giveN = Math.floor(Number(giveN) || 0); wantN = Math.floor(Number(wantN) || 0);
+  if (giveN < 1 || wantN < 1 || giveN > C.TRADE.maxN || wantN > C.TRADE.maxN) return err('invalid', { message: `1 bis ${C.TRADE.maxN} Samen je Seite.` });
+  if (seedCount(s, give) < giveN) return err('invalid', { message: `Du hast nur ${seedCount(s, give)} Samen von ${C.SEEDS[give].name.replace(/­/g, '')}.` });
+  if (openCount >= C.TRADE.maxOpen) return err('invalid', { message: `Höchstens ${C.TRADE.maxOpen} offene Angebote gleichzeitig.` });
+  return { ok: true, give, giveN, want, wantN };
+}
+// Angebot wurde vom Server angenommen → eigene Samen sind reserviert (abgezogen)
+export function tradeReserve(s, give, giveN) { return takeSeeds(s, give, giveN); }
+// Fremdes Angebot annehmen: eigene Samen hergeben, fremde erhalten
+export function tradeAcceptCheck(s, offer) {
+  if (!offer || !C.SEEDS[offer.want]?.event || !C.SEEDS[offer.give]?.event) return err('invalid');
+  if (seedCount(s, offer.want) < offer.wantN) return err('invalid', { message: `Dir fehlen ${offer.wantN - seedCount(s, offer.want)} Samen von ${C.SEEDS[offer.want].name.replace(/­/g, '')}.` });
+  return { ok: true };
+}
+export function tradeComplete(s, offer, asOwner) {
+  // asOwner: ich habe das Angebot erstellt und bekomme jetzt die gewünschten Samen; sonst: ich habe angenommen
+  if (asOwner) addSeeds(s, { [offer.want]: offer.wantN });
+  else { takeSeeds(s, offer.want, offer.wantN); addSeeds(s, { [offer.give]: offer.giveN }); }
+  s.stats.trades = (s.stats.trades || 0) + 1;
+}
+
+// ---------- Album: Erfolge & Titel ----------
+export function achievementList(s) {
+  return C.ACHIEVEMENTS.map((a) => { const [have, need] = a.progress(s); return { ...a, have: Math.min(have, need), need, done: s.achievements.includes(a.id), ready: have >= need }; });
+}
+// Neue Erfolge prüfen und sofort belohnen; liefert die frisch erreichten
+export function checkAchievements(s) {
+  const out = [];
+  for (const a of C.ACHIEVEMENTS) {
+    if (s.achievements.includes(a.id)) continue;
+    const [have, need] = a.progress(s);
+    if (have < need) continue;
+    s.achievements.push(a.id);
+    const levelUps = grant(s, a.reward);
+    out.push({ ...a, levelUps });
+  }
+  return out;
+}
+export function setTitle(s, id) {
+  if (id && (!C.TITLES[id] || !s.titles.includes(id))) return err('invalid');
+  s.title = id || '';
+  return { ok: true };
 }
 
 // ---------- Wochenende & Events ----------
@@ -252,9 +322,11 @@ export function buyEventItem(s, id, now) {
   if (!it) return err('invalid');
   if (it.deco && s.deco.includes(it.deco)) return err('owned');
   if (s.event.tokens < it.price) return err('noTokens', { message: `Dir fehlen ${it.price - s.event.tokens} ${ev.token}.` });
+  const evSeed = it.seedPack ? C.EVENT_SEEDS.find((k) => C.SEEDS[k].event === ev.id) : null;
+  if (it.seedPack && !evSeed) return err('invalid');
   s.event.tokens -= it.price;
-  grant(s, { items: it.items, deco: it.deco });
-  return { ok: true };
+  grant(s, { items: it.items, deco: it.deco, seeds: evSeed ? { [evSeed]: C.SEED_PACK.n } : null });
+  return { ok: true, seeds: evSeed ? { [evSeed]: C.SEED_PACK.n } : null };
 }
 
 // ---------- Beete ----------
@@ -318,6 +390,16 @@ export function applyInbox(s, items, now) {
       if (coins) addCoins(s, coins);
       addItems(s, items);
       out.push({ k: 'teamgift', title: String(it.title || 'Geschenk').slice(0, 60), coins, items });
+    } else if (it.k === 'seeds' && C.SEEDS[it.seed]?.event) {
+      const n = Math.max(1, Math.min(C.TRADE.maxN, Math.floor(Number(it.n) || 1)));
+      addSeeds(s, { [it.seed]: n });
+      out.push({ k: 'seeds', name: name(it), seed: it.seed, n });
+    } else if (it.k === 'tradeDone' && it.offer) {
+      const o = it.offer;
+      if (C.SEEDS[o.want]?.event) { tradeComplete(s, { want: o.want, wantN: Math.max(1, Math.min(C.TRADE.maxN, Math.floor(Number(o.wantN) || 1))) }, true); out.push({ k: 'tradeDone', name: name(it), offer: o }); }
+    } else if (it.k === 'tradeBack' && it.offer) {
+      const o = it.offer;
+      if (C.SEEDS[o.give]?.event) { addSeeds(s, { [o.give]: Math.max(1, Math.min(C.TRADE.maxN, Math.floor(Number(o.giveN) || 1))) }); out.push({ k: 'tradeBack', offer: o, reason: it.reason || 'expired' }); }
     } else if (it.k === 'like') {
       const coins = Math.max(0, Math.min(C.LIKE.coins, Math.floor(Number(it.coins) || 0)));
       if (coins) addCoins(s, coins);
@@ -355,6 +437,7 @@ export function plant(s, i, seedId, now, rand = Math.random) {
   if (d.nightOnly && timeOfDay(cyclePhase(s, now)) !== 'night') return err('invalid', { message: `${d.name.replace(/­/g, '')} lässt sich nur nachts pflanzen.` });
   if (d.dayOnly && timeOfDay(cyclePhase(s, now)) === 'night') return err('invalid', { message: `${d.name.replace(/­/g, '')} lässt sich nur tagsüber pflanzen.` });
   if (!spend(s, d.cost)) return noCoins(s, d.cost, d.name.replace(/­/g, ''));
+  if (st.useSeed) takeSeeds(s, seedId, 1);
   const chance = (C.SHINY_CHANCE + C.BED_LEVELS[b.lvl - 1].shiny) * (isWeekend(now) ? C.WEEKEND_BONUS.shinyFactor : 1) * boost('shinyDay') + (s.pets?.butterfly === dayKey(now) ? C.BUTTERFLY_SHINY : 0);
   b.seed = seedId; b.plantedAt = now; b.dur = growTime(b, seedId); b.shiny = rand() < chance; b.var = Math.floor(rand() * 1000); b.drinks = 0;
   s.stats.planted++; s.tasks.progress.plant++;
@@ -383,10 +466,13 @@ export function harvest(s, i, now) {
   let tokens = 0;
   const ev = ensureEvent(s, now);
   if (ev) { tokens = eventTokensFor(reward) * (d.event === ev.id ? C.EVENT_TOKEN_MULT : 1); s.event.tokens += tokens; s.event.total += tokens; }
+  // Event-Blume während ihres Events: jede 3. Ernte bringt einen Samen (Funkelblüte: zwei)
+  let seedsWon = 0;
+  if (d.event && ev && ev.id === d.event && entry.count % C.SEED_EVERY === 0) { seedsWon = shiny ? 2 : 1; addSeeds(s, { [seed]: seedsWon }); }
   if (s.tutorial < 2) s.tutorial = 2;
   const basket = toBasket(s, seed, shiny);
   const levelUps = addXp(s, xp);
-  return { ok: true, seed, reward, xp, shiny, compost, tokens, basket, levelUps };
+  return { ok: true, seed, reward, xp, shiny, compost, tokens, basket, levelUps, seedsWon };
 }
 
 export function unlockBed(s, i) {
@@ -1360,6 +1446,12 @@ export function repair(s, now) {
   if (s.dailyGift !== null && typeof s.dailyGift !== 'string') s.dailyGift = null;
   s.tutorial = Math.min(2, num(s.tutorial, 0));
   s.tutorialDone = num(s.tutorialDone, 0);
+  const seeds = {}; for (const [k, n] of Object.entries(obj(s.seeds) ? s.seeds : {})) if (C.SEEDS[k]?.event && num(Number(n), 0) > 0) seeds[k] = Math.floor(num(Number(n), 0)); s.seeds = seeds;
+  s.achievements = Array.isArray(s.achievements) ? s.achievements.filter((k) => C.ACHIEVEMENTS.some((a) => a.id === k)) : [];
+  s.titles = [...new Set((Array.isArray(s.titles) ? s.titles : []).filter((k) => C.TITLES[k]))];
+  s.title = C.TITLES[s.title] && s.titles.includes(s.title) ? s.title : '';
+  s.unlocked = Array.isArray(s.unlocked) ? s.unlocked.filter((k) => C.SEEDS[k]?.exclusive) : [];
+  s.stats.trades = num(Number(s.stats.trades), 0);
   if (!obj(s.settings)) s.settings = { ...base.settings };
   for (const [k, rule] of Object.entries(SETTING_RULES)) if (!rule(s.settings[k])) s.settings[k] = base.settings[k];
   // Einmalig: automatischer Zyklus wird zu Echtzeit (Tag & Nacht wie draußen)

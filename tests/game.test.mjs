@@ -662,3 +662,44 @@ test('Event-Blumen: nur während des Events säbar, doppelte Event-Währung, nic
   for (const k of C.EVENT_SEEDS) { assert.ok(C.EVENTS.find((e) => e.id === C.SEEDS[k].event), k); assert.ok(C.FLOWER_INFO[k], 'Info ' + k); }
   assert.equal(C.EVENT_SEEDS.length, C.EVENTS.length);
 });
+
+test('Samen: jede 3. Event-Ernte, Samenpaket im Event-Shop, Säen nach dem Event, Tausch', () => {
+  const s = G.newState(OCT); s.coins = 9000; s.level = 10;
+  for (let k = 0; k < 3; k++) { assert.ok(G.plant(s, 0, 'chrysanthemum', OCT, () => 0.9).ok); s.beds[0].drinks = 9; G.harvest(s, 0, OCT + 60 * 60_000); }
+  assert.equal(G.seedCount(s, 'chrysanthemum'), 1);
+  s.event.tokens = 100;
+  assert.ok(G.buyEventItem(s, 'seeds', OCT).ok);
+  assert.equal(G.seedCount(s, 'chrysanthemum'), 4);
+  // Nach dem Event: nur mit Samen
+  const DEC = new Date(2026, 10, 20, 10).getTime();
+  assert.equal(G.activeEvent(DEC), null);
+  assert.ok(G.seedStatus(s, 'chrysanthemum', DEC).useSeed);
+  assert.ok(G.plant(s, 1, 'chrysanthemum', DEC, () => 0.9).ok);
+  assert.equal(G.seedCount(s, 'chrysanthemum'), 3);
+  // Tausch
+  assert.equal(G.tradeOfferCheck(s, 'chrysanthemum', 2, 'marigold', 1).ok, true);
+  assert.equal(G.tradeOfferCheck(s, 'chrysanthemum', 5, 'marigold', 1).ok, false);
+  assert.ok(G.tradeReserve(s, 'chrysanthemum', 2)); assert.equal(G.seedCount(s, 'chrysanthemum'), 1);
+  G.applyInbox(s, [{ k: 'tradeDone', name: 'Anna', offer: { give: 'chrysanthemum', giveN: 2, want: 'marigold', wantN: 1 } }], DEC);
+  assert.equal(G.seedCount(s, 'marigold'), 1); assert.equal(s.stats.trades, 1);
+  G.applyInbox(s, [{ k: 'tradeBack', offer: { give: 'chrysanthemum', giveN: 2 } }, { k: 'seeds', name: 'Bob', seed: 'heartRose', n: 2 }], DEC);
+  assert.equal(G.seedCount(s, 'chrysanthemum'), 3); assert.equal(G.seedCount(s, 'heartRose'), 2);
+  const r = G.repair(JSON.parse(JSON.stringify(s)), DEC);
+  assert.deepEqual(r.seeds, s.seeds);
+});
+
+test('Album: Erfolge, Titel, exklusive Blume', () => {
+  const s = G.newState(T0); s.coins = 100;
+  assert.equal(G.checkAchievements(s).length, 0);
+  for (const k of C.SEED_ORDER.slice(0, 10)) s.collection[k] = { count: 1, shiny: 0 };
+  const got = G.checkAchievements(s);
+  assert.equal(got[0].id, 'disc10'); assert.ok(s.coins >= 400);
+  assert.equal(G.checkAchievements(s).length, 0);
+  for (const k of C.SEED_ORDER) if (!C.SEEDS[k].exclusive) s.collection[k] = { count: 1, shiny: 0 };
+  const all = G.checkAchievements(s).map((a) => a.id);
+  assert.ok(all.includes('complete') && all.includes('garden') && all.includes('events'));
+  assert.ok(s.unlocked.includes('opheliaBloom') && s.deco.includes('goldenBench') && s.titles.includes('ophelia'));
+  assert.ok(G.seedStatus(s, 'opheliaBloom', T0).available);
+  assert.ok(G.setTitle(s, 'jahresgaertner').ok); assert.equal(G.setTitle(s, 'meisterzuechter').ok, false);
+  assert.ok(G.achievementList(s).every((a) => a.need > 0));
+});

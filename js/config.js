@@ -45,13 +45,23 @@ export const SEEDS = {
   marigold:      { name: 'Tagetes',                 cost: 35,  growMs: 3 * M,   reward: 90,   xp: 13, level: 2, model: 'dahlia',      event: 'halloween', water: 0 },
   poinsettia:    { name: 'Weihnachts­stern',   cost: 80,  growMs: 12 * M,  reward: 320,  xp: 38, level: 5, model: 'poinsettia',  event: 'winter',    water: 1 },
   sparkler:      { name: 'Funken­blume',        cost: 90,  growMs: 10 * M,  reward: 300,  xp: 36, level: 6, model: 'daisy',       event: 'newyear',   water: 1 },
+  candyCrocus:   { name: 'Zucker­krokus',       cost: 40,  growMs: 3 * M,   reward: 110,  xp: 15, level: 4,  model: 'tulip',      bred: true, tier: 'selten', water: 0 },
+  lavaHibiscus:  { name: 'Lava­hibiskus',      cost: 130, growMs: 14 * M,  reward: 470,  xp: 50, level: 9,  model: 'poppy',      bred: true, tier: 'episch', water: 1, dayOnly: true },
+  frostStar:     { name: 'Frost­stern',        cost: 180, growMs: 20 * M,  reward: 720,  xp: 75, level: 12, model: 'poinsettia', bred: true, tier: 'episch', water: 2 },
+  queenRose:     { name: 'Rosen­königin',      cost: 300, growMs: 30 * M,  reward: 1400, xp: 150, level: 15, model: 'rose',      bred: true, tier: 'legendär', water: 2 },
+  opheliaBloom:  { name: 'Ophelias Mond­blüte', cost: 150, growMs: 20 * M,  reward: 800,  xp: 90, level: 1, model: 'peony',   exclusive: 'complete', water: 1, tier: 'legendär' },
   crocus:        { name: 'Krokus',                  cost: 12,  growMs: 40 * S,  reward: 30,   xp: 5,  level: 1, model: 'tulip',       event: 'spring',    water: 0 },
 };
 export const SEED_ORDER = ['daisy', 'tulip', 'cornflower', 'sunflower', 'lavender', 'rose', 'poppy', 'orchid', 'lily', 'hydrangea', 'dahlia', 'peony', 'magnolia', 'moonflower',
   'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'moonRose', 'crystalRose',
-  'crocus', 'daffodil', 'lilac', 'hibiscus', 'chrysanthemum', 'marigold', 'poinsettia', 'sparkler', 'heartRose'];
+  'crocus', 'daffodil', 'lilac', 'hibiscus', 'chrysanthemum', 'marigold', 'poinsettia', 'sparkler', 'heartRose', 'candyCrocus', 'lavaHibiscus', 'frostStar', 'queenRose', 'opheliaBloom'];
+export const EXCLUSIVE_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].exclusive);
 export const EVENT_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].event);
 export const EVENT_TOKEN_MULT = 2; // Event-Blumen bringen doppelte Event-Währung
+// Samen: Während des Events bringt jede 3. Ernte einer Event-Blume einen Samen (Funkelblüte: 2). Mit Samen lässt sich die Blume auch nach dem Event säen.
+export const SEED_EVERY = 3;
+export const SEED_PACK = { n: 3, price: 40 };          // im Event-Shop: 3 Samen für Event-Währung
+export const TRADE = { maxOpen: 5, days: 7, maxN: 10, perDay: 20 }; // Tauschbörse: offene Angebote je Spieler, Laufzeit, Samen je Angebot, Tauschgeschäfte pro Tag
 // Kurzbeschreibungen für die Detailansicht in der Sammlung
 export const FLOWER_INFO = {
   daisy: 'Klein, fröhlich und unverwüstlich. Das Gänseblümchen wächst blitzschnell und braucht nie Wasser – perfekt für den Anfang.',
@@ -76,6 +86,11 @@ export const FLOWER_INFO = {
   marigold: 'Orangefarbene Tagetes, die Blume der Gruselnacht – ihr Duft hält Geister fern. Doppelte Geisterlichter beim Ernten.',
   poinsettia: 'Der Weihnachtsstern des Wintermarkts: rote Sternblätter über dunklem Grün. Bringt doppelt so viele Schneeflocken.',
   sparkler: 'Die Funkenblume der Silvesterfunken: jedes Blütenblatt hat eine andere Farbe und glüht nachts. Doppelte Funken beim Ernten.',
+  candyCrocus: 'Ein Krokus in Zuckerfarben – jede Pflanze blüht anders. Entsteht nur am frühen Morgen aus Krokus und Regenbogentulpe.',
+  lavaHibiscus: 'Glühend wie Lava, mit goldenem Rand. Braucht Mittagssonne zum Entstehen und blüht nur tagsüber.',
+  frostStar: 'Ein Weihnachtsstern aus Eis: bläulich-weiße Sternblätter mit frostigem Schimmer.',
+  queenRose: 'Die Königin aller Rosen – tiefrot mit goldenem Herzen. Nur in der Abenddämmerung aus Herzrose und Goldener Rose zu züchten.',
+  opheliaBloom: 'Ophelias eigene Züchtung – pastellfarben schimmernd, nur für Gärtner, die jede Blume des Albums gefunden haben. Ein Zeichen wahrer Sammelleidenschaft.',
   crocus: 'Der erste Bote des Frühlings – kleine lila Kelche, die schon nach 40 Sekunden blühen und doppelt so viele Knospen bringen.',
   rainbowTulip: 'Jedes Blütenblatt in einer anderen Farbe. Die erste Züchtung jeder Gärtnerin und jedes Gärtners.',
   sunTulip: 'Gelb mit feurig-orangen Spitzen – als hätte die Sonne selbst die Tulpe bemalt.',
@@ -95,7 +110,7 @@ export const FLOWER_INFO = {
 
 // Wann eine Blume Durst bekommt (Anteil der Wachstumszeit)
 export const WATER_AT = { 1: [0.45], 2: [0.33, 0.66] };
-export const BASE_SEEDS = SEED_ORDER.filter((k) => !SEEDS[k].bred && !SEEDS[k].event);
+export const BASE_SEEDS = SEED_ORDER.filter((k) => !SEEDS[k].bred && !SEEDS[k].event && !SEEDS[k].exclusive);
 export const BRED_SEEDS = SEED_ORDER.filter((k) => SEEDS[k].bred);
 
 // Kreuzungen im Gewächshaus. Eltern müssen schon einmal geerntet worden sein.
@@ -114,6 +129,11 @@ export const RECIPES = [
   { a: 'lily', b: 'blackRose', result: 'dragonLily', when: 'night', diff: 4, cost: 450, ms: 16 * M, hint: 'Gelingt nur nachts – feurig und geheimnisvoll.' },
   { a: 'moonOrchid', b: 'northRose', result: 'moonRose', when: 'night', moon: 'full', diff: 4, cost: 500, ms: 20 * M, hint: 'Blüht nur auf, wenn der Vollmond am Himmel steht.' },
   { a: 'starRose', b: 'iceLily', result: 'crystalRose', diff: 5, cost: 900, ms: 35 * M, hint: 'Die Krönung jeder Gärtnerin, jedes Gärtners.' },
+  // Kreuzungen mit Event-Blumen (Eltern aus Samen oder dem Event)
+  { a: 'crocus', b: 'rainbowTulip', result: 'candyCrocus', when: 'morning', diff: 2, cost: 120, ms: 6 * M, hint: 'Der erste Frühlingsbote in allen Farben des Regenbogens.' },
+  { a: 'hibiscus', b: 'firePoppy', result: 'lavaHibiscus', when: 'day', diff: 3, cost: 260, ms: 14 * M, hint: 'Tropische Hitze trifft Feuer.' },
+  { a: 'poinsettia', b: 'iceLily', result: 'frostStar', diff: 4, cost: 450, ms: 22 * M, hint: 'Ein Stern aus Eis – nur im Winter denkbar.' },
+  { a: 'heartRose', b: 'goldRose', result: 'queenRose', when: 'evening', diff: 5, cost: 800, ms: 32 * M, hint: 'Herz und Gold – die Königin aller Rosen.' },
 ];
 export const GREENHOUSE = { cost: 400, level: 4 };
 
@@ -385,9 +405,12 @@ export const DECO = {
   fireworks:   { name: 'Raketenkiste', size: [1.0, 0.8], desc: 'Funkelnde Raketen – exklusiv von den Silvesterfunken.', event: 'newyear' },
   snowman:     { name: 'Schneemann', size: [0.9, 0.9], desc: 'Mit Möhre und Schal – exklusiv vom Wintermarkt.', event: 'winter' },
   xmasTree:    { name: 'Tannenbaum', size: [1.3, 1.3], desc: 'Geschmückt mit Lichtern und Kugeln – exklusiv vom Wintermarkt.', event: 'winter' },
+  trophy:      { name: 'Züchter-Pokal', size: [0.7, 0.7], desc: 'Goldener Pokal auf Marmorsockel – nur für Meisterzüchter.', event: 'album' },
+  goldenBench: { name: 'Goldene Gartenbank', size: [1.9, 0.8], desc: 'Vergoldete Bank mit Blumenranken – nur für Jahresgärtner.', event: 'album' },
+  flowerPress: { name: 'Blumenpresse', size: [0.8, 0.6], desc: 'Alte Holzpresse mit getrockneten Blüten – für Sammler aller Gartenblumen.', event: 'album' },
 };
 export const DECO_ORDER = ['pathStone', 'groundLights', 'pinwheel', 'hedgeBlock', 'flowerpots', 'hoseReel', 'lantern', 'torch', 'lampPost', 'planter', 'rainBarrel', 'compostBin', 'birdhouse', 'bench', 'insectHotel', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'stringLights', 'tableSet', 'arch', 'fountain'];
-export const ALL_DECO = [...DECO_ORDER, 'pumpkinLantern', 'leafPile', 'heartBalloons', 'loveSeat', 'eggBasket', 'eggTree', 'bouquetVase', 'parasol', 'ghostLantern', 'cauldron', 'fireworks', 'snowman', 'xmasTree'];
+export const ALL_DECO = [...DECO_ORDER, 'pumpkinLantern', 'leafPile', 'heartBalloons', 'loveSeat', 'eggBasket', 'eggTree', 'bouquetVase', 'parasol', 'ghostLantern', 'cauldron', 'fireworks', 'snowman', 'xmasTree', 'flowerPress', 'trophy', 'goldenBench'];
 export const MAX_DECO = 80; // Deko-Teile insgesamt (Leistung auf dem Handy)
 // Bevorzugte Plätze (Übernahme alter Spielstände, erste Käufe)
 export const DECO_PLACE = {
@@ -521,7 +544,7 @@ export const STORY = [
 // Saison-Events und Anlässe im Jahreslauf. Feste Daten als 'MM-TT'; bewegliche über anchor (easter/mothers) + Tage davor/danach.
 // Reihenfolge = Vorrang bei Überschneidung (Anlässe vor Jahreszeiten).
 const MS = (list) => list.map(([at, reward]) => ({ at, reward }));
-const SHOP_BASIC = [{ id: 'fert3', items: { fert: 3 }, price: 15 }, { id: 'turbo1', items: { turbo: 1 }, price: 25 }, { id: 'lucky1', items: { lucky: 1 }, price: 45 }];
+const SHOP_BASIC = [{ id: 'seeds', seedPack: true, price: 40 }, { id: 'fert3', items: { fert: 3 }, price: 15 }, { id: 'turbo1', items: { turbo: 1 }, price: 25 }, { id: 'lucky1', items: { lucky: 1 }, price: 45 }];
 export const EVENTS = [
   { id: 'valentine', name: 'Herzblüte', start: '02-07', end: '02-16', token: 'Herzen', color: '#ff4d7a',
     desc: 'Valentinstag im Garten: Herzen sammeln, Freunde beschenken und ein Herzballon-Bund als Deko.',
@@ -578,3 +601,30 @@ export const IAP = {
 export const REWARDED_VIDEO = { reward: 25, perDay: 3 };
 
 export const GROWTH_STAGE_AT = [0, 0.25, 0.6, 1.0]; // Fortschritt -> Stufe 0..3
+
+// ---------- Sammel-Album: Erfolge und Titel ----------
+export const TITLES = {
+  sammler: 'Sammler', gartenfreund: 'Gartenfreund', meisterzuechter: 'Meisterzüchter', jahresgaertner: 'Jahresgärtner', funkelfinder: 'Funkelfinder',
+  glitzerkoenig: 'Glitzerkönig', gestalter: 'Gestalter', tierfreund: 'Tierfreund', erntekoenig: 'Erntekönig', nachbar: 'Guter Nachbar', haendler: 'Tauschprofi',
+  vollmond: 'Mondgärtner', ophelia: 'Ophelias Freund',
+};
+// progress(s) liefert [erreicht, Ziel]; reward wie überall (+ title, seeds, unlock)
+const nDisc = (s, list) => list.filter((k) => (s.collection[k]?.count || 0) > 0).length;
+const nShiny = (s, list) => list.filter((k) => (s.collection[k]?.shiny || 0) > 0).length;
+export const ACHIEVEMENTS = [
+  { id: 'disc10', name: 'Erste Blüten', desc: '10 verschiedene Blumen entdeckt', icon: 'flower:daisy', progress: (s) => [nDisc(s, SEED_ORDER), 10], reward: { coins: 300, items: { fert: 3 } } },
+  { id: 'disc20', name: 'Bunte Vielfalt', desc: '20 verschiedene Blumen entdeckt', icon: 'flower:hydrangea', progress: (s) => [nDisc(s, SEED_ORDER), 20], reward: { coins: 800, items: { turbo: 2 }, title: 'sammler' } },
+  { id: 'disc30', name: 'Großes Album', desc: '30 verschiedene Blumen entdeckt', icon: 'flower:peony', progress: (s) => [nDisc(s, SEED_ORDER), 30], reward: { coins: 1500, items: { lucky: 2, pollen: 2 } } },
+  { id: 'garden', name: 'Gartenfreund', desc: 'Alle Gartenblumen geerntet', icon: 'flower:sunflower', progress: (s) => [nDisc(s, BASE_SEEDS), BASE_SEEDS.length], reward: { coins: 500, deco: 'flowerPress', title: 'gartenfreund' } },
+  { id: 'breeder', name: 'Meisterzüchter', desc: 'Alle Züchtungen gelungen', icon: 'flower:crystalRose', progress: (s) => [BRED_SEEDS.filter((k) => s.bred.includes(k)).length, BRED_SEEDS.length], reward: { coins: 1500, deco: 'trophy', title: 'meisterzuechter' } },
+  { id: 'events', name: 'Jahresgärtner', desc: 'Alle Event-Blumen geerntet', icon: 'flower:sparkler', progress: (s) => [nDisc(s, EVENT_SEEDS), EVENT_SEEDS.length], reward: { coins: 2000, deco: 'goldenBench', title: 'jahresgaertner' } },
+  { id: 'shiny10', name: 'Funkelfinder', desc: '10 verschiedene Funkelblüten gefunden', icon: 'sparkle', progress: (s) => [nShiny(s, SEED_ORDER), 10], reward: { coins: 600, items: { lucky: 3 }, title: 'funkelfinder' } },
+  { id: 'shinyAll', name: 'Glitzerkönig', desc: 'Jede Blume als Funkelblüte gefunden', icon: 'sparkle', progress: (s) => [nShiny(s, SEED_ORDER), SEED_ORDER.length], reward: { coins: 3000, items: { lucky: 5 }, title: 'glitzerkoenig' } },
+  { id: 'deco', name: 'Gestalter', desc: 'Alle Deko-Arten aus dem Shop besessen', icon: 'deco:fountain', progress: (s) => [DECO_ORDER.filter((k) => s.deco.includes(k)).length, DECO_ORDER.length], reward: { coins: 1000, title: 'gestalter' } },
+  { id: 'animals', name: 'Tierfreund', desc: 'Alle Tiere im Garten gesehen und beide Skins', icon: 'animal:fox', progress: (s) => [Object.keys(ANIMALS).filter((k) => s.seenAnimals.includes(k)).length + s.skins.length, Object.keys(ANIMALS).length + Object.keys(SKINS).length], reward: { coins: 800, items: { rain: 3 }, title: 'tierfreund' } },
+  { id: 'harvest1000', name: 'Erntekönig', desc: '1.000 Blumen geerntet', icon: 'basket', progress: (s) => [s.stats.harvested, 1000], reward: { coins: 1000, items: { compost: 3 }, title: 'erntekoenig' } },
+  { id: 'friends5', name: 'Guter Nachbar', desc: '5 Freunde und 25× geholfen', icon: 'heart', progress: (s) => [Math.min(s.stats.friends, 5) + Math.min(s.stats.helped, 25), 30], reward: { coins: 500, items: { rain: 3 }, title: 'nachbar' } },
+  { id: 'trades10', name: 'Tauschprofi', desc: '10 Tauschgeschäfte in der Tauschbörse', icon: 'cart', progress: (s) => [s.stats.trades || 0, 10], reward: { coins: 800, items: { pollen: 2 }, title: 'haendler' } },
+  { id: 'moon', name: 'Mondgärtner', desc: 'Mondscheinrose, Mondorchidee und Mondwinde geerntet', icon: 'flower:moonRose', progress: (s) => [nDisc(s, ['moonRose', 'moonOrchid', 'moonflower']), 3], reward: { coins: 1200, items: { pollen: 3 }, title: 'vollmond' } },
+  { id: 'complete', name: 'Ophelias Album', desc: 'Jede Blume entdeckt – das ganze Album voll', icon: 'animal:owl', progress: (s) => [nDisc(s, SEED_ORDER.filter((k) => !SEEDS[k].exclusive)), SEED_ORDER.filter((k) => !SEEDS[k].exclusive).length], reward: { coins: 5000, unlock: 'opheliaBloom', title: 'ophelia' } },
+];

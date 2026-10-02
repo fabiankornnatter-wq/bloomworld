@@ -8,6 +8,7 @@ import { PHASE_LABEL } from './world/sky.js';
 import { PRIVACY_HTML } from './legal.js';
 import { Detail } from './detail.js';
 import { pTrader, onTraderAct, traderBadge, TRADER_ACTS } from './traderui.js';
+import { pTrade, onTradeAct, onTradeForm, loadTrades, TRADE_ACTS, seedGiftOptions } from './tradeui.js';
 import { pFriends, pChat, chatTitle, pAdmin, onSocialAct, onSocialForm, updateChat, newsCard, avatar, SOCIAL_ACTS } from './friendsui.js';
 
 const $ = (id) => document.getElementById(id);
@@ -30,7 +31,7 @@ const TIER = { selten: ['Selten', 't1'], episch: ['Episch', 't2'], legendär: ['
 const tierTag = (d) => (d.tier ? `<span class="tier ${TIER[d.tier][1]}">${TIER[d.tier][0]}</span>` : d.rare ? '<span class="tier t0">Selten</span>' : '');
 
 const NAV_ITEMS = [['garden', 'Garten'], ['quests', 'Aufgaben'], ['events', 'Events'], ['collection', 'Sammlung'], ['shop', 'Shop'], ['friends', 'Freunde']];
-const TITLES = { quests: 'Aufgaben', events: 'Events', collection: 'Sammlung', shop: 'Shop', friends: 'Freunde', settings: 'Einstellungen', breed: 'Gewächshaus', chat: 'Chat', admin: 'Admin', trader: 'Händler', notify: 'Nachrichten' };
+const TITLES = { quests: 'Aufgaben', events: 'Events', collection: 'Sammlung', shop: 'Shop', friends: 'Freunde', settings: 'Einstellungen', breed: 'Gewächshaus', chat: 'Chat', admin: 'Admin', trader: 'Händler', notify: 'Nachrichten', trade: 'Tauschbörse' };
 const GH = C.BED_COUNT; // Index der Gewächshaus-Blase
 
 export class UI {
@@ -72,7 +73,7 @@ export class UI {
     $('harvestAll').onclick = () => (this.haRain ? this.api.act.useRain() : this.api.act.harvestAll());
     $('quest').onclick = () => this.api.act.questTracker();
     for (const el of [$('panel'), $('sheet'), $('modal'), $('toast'), $('modeBar'), $('editBar'), $('visitBar')]) el.addEventListener('click', (e) => this.onAct(e));
-    document.addEventListener('submit', (e) => { const f = e.target.closest?.('form[data-form]'); if (!f) return; e.preventDefault(); const sb = e.submitter; if (sb?.name) f.dataset[sb.name] = sb.value; else { delete f.dataset.on; delete f.dataset.stop; delete f.dataset.clear; } onSocialForm(this, f); });
+    document.addEventListener('submit', (e) => { const f = e.target.closest?.('form[data-form]'); if (!f) return; e.preventDefault(); const sb = e.submitter; if (sb?.name) f.dataset[sb.name] = sb.value; else { delete f.dataset.on; delete f.dataset.stop; delete f.dataset.clear; } if (f.dataset.form === 'tradeOffer') onTradeForm(this, f); else onSocialForm(this, f); });
     $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') this.closeModal(); });
     $('panel').addEventListener('input', (e) => this.onInput(e));
     for (const id of ['hud', 'side', 'nav']) $(id).hidden = false;
@@ -126,6 +127,7 @@ export class UI {
 
   // ---------- Navigation ----------
   nav(id, tab) {
+    if (id === 'trade') setTimeout(() => loadTrades(this, true), 0);
     this.api.sound.play('open');
     this.closeSheet();
     if (this.mode) this.setMode(null, true);
@@ -287,7 +289,7 @@ export class UI {
   pNotify() {
     const n = this.api.notify?.(), acc = this.api.account();
     if (!n) return '<div class="card center"><p>Keine Benachrichtigungen.</p></div>';
-    const ICONS = { bell: I.bell, flower: this.icons.flower.daisy, drop: I.drop, greenhouse: I.greenhouse, cart: I.cart, gift: I.gift, chat: I.chat, friend: I.NAV.friends, news: I.megaphone };
+    const ICONS = { bell: I.bell, flower: this.icons.flower.daisy, drop: I.drop, greenhouse: I.greenhouse, cart: I.cart, gift: I.gift, chat: I.chat, friend: I.NAV.friends, news: I.megaphone, star: I.sparkle };
     const ic = (k) => (ICONS[k] || I.bell).startsWith('data:') ? `<img alt="" src="${ICONS[k]}">` : svg(ICONS[k] || I.bell, 30);
     const fmt = (ts) => { const d = this.api.now() - ts; return d < 60_000 ? 'gerade eben' : d < 3600_000 ? `vor ${Math.floor(d / 60_000)} Min` : d < 86400_000 ? `vor ${Math.floor(d / 3600_000)} Std` : new Date(ts).toLocaleDateString('de-DE'); };
     const p = n.push;
@@ -453,7 +455,7 @@ export class UI {
       const act = st.available ? 'plant' : st.shop ? 'gotoShop' : st.breed ? 'gotoBreed' : 'seedLocked';
       const nightLock = d.nightOnly && this.api.breedCtx?.().time !== 'night';
       return `<button class="seed ${st.available ? '' : 'lock'} ${d.rare || d.bred ? 'rare' : ''} ${d.slow ? 'slow' : ''} ${d.event ? 'evseed' : ''}" data-act="${act}" data-id="${id}" aria-label="${esc(plain(d.name))}">
-        ${tierTag(d)}${d.event ? '<span class="tier tev">🎉 Event ×2</span>' : ''}${d.slow ? `<span class="tier tslow">${nightLock ? '🌙 nachts' : '⏳ Geduld'}</span>` : ''}<img alt="" src="${this.icons.flower[id]}" style="background:${this.icons.flowerBg[id]}"><b>${esc(d.name)}</b>
+        ${tierTag(d)}${d.event ? (st.useSeed ? `<span class="tier tev">🌱 ${st.seeds} Samen</span>` : `<span class="tier tev">🎉 Event ×2${st.seeds ? ` · ${st.seeds} 🌱` : ''}</span>`) : ''}${d.slow ? `<span class="tier tslow">${nightLock ? '🌙 nachts' : '⏳ Geduld'}</span>` : ''}<img alt="" src="${this.icons.flower[id]}" style="background:${this.icons.flowerBg[id]}"><b>${esc(d.name)}</b>
         <span class="meta"><span>⏱ ${growLabel(G.growTime(s.beds[i] || {}, id))}</span><span>${I.coin()}${Math.round(d.reward * C.BED_LEVELS[(s.beds[i]?.lvl || 1) - 1].mult)}</span>${d.water && !s.beds[i]?.sprinkler ? `<span class="wneed" title="Muss ${d.water}× gegossen werden">${I.drop}${d.water}</span>` : ''}</span>
         <span class="price ${st.available && !afford ? 'poor' : ''}">${label}</span></button>`;
     }).join('');
@@ -533,7 +535,7 @@ export class UI {
     const el = $('panel');
     // Im Chat nur die Nachrichten auffrischen – das Eingabefeld bleibt unberührt
     if (soft && id === 'chat' && $('chatList')) { updateChat(this); const p = el.querySelector('.pill span'); if (p) p.textContent = num(this.s.coins); return; }
-    const body = { quests: () => this.pQuests(), events: () => this.pEvents(), collection: () => this.pCollection(), friends: () => pFriends(this), shop: () => this.pShop(), settings: () => this.pSettings(), breed: () => this.pBreed(), chat: () => pChat(this), admin: () => pAdmin(this), trader: () => pTrader(this), notify: () => this.pNotify() }[id]();
+    const body = { quests: () => this.pQuests(), events: () => this.pEvents(), collection: () => this.pCollection(), friends: () => pFriends(this), shop: () => this.pShop(), settings: () => this.pSettings(), breed: () => this.pBreed(), chat: () => pChat(this), admin: () => pAdmin(this), trader: () => pTrader(this), notify: () => this.pNotify(), trade: () => pTrade(this) }[id]();
     const prevScroll = el.querySelector('.pbody')?.scrollTop || 0;
     // Eingaben (z. B. halb getippter Spielername) beim Neuzeichnen behalten
     const keep = {}; let focus = null;
@@ -693,8 +695,10 @@ export class UI {
         ${m.claimed ? '<button class="btn small off" disabled>✓</button>' : `<button class="btn small" data-act="milestone" data-id="${m.i}" ${m.reached ? '' : 'disabled'}>Abholen</button>`}</div>`).join('');
       h += `<div class="sec">Event-Shop</div><div class="grid2">` + a.shop.map((it) => {
         const owned = it.deco && s.deco.includes(it.deco);
-        const icon = it.deco ? `<img alt="" src="${this.icons.deco[it.deco]}">` : svg(I.ITEM[Object.keys(it.items)[0]], 64);
-        const label = it.deco ? C.DECO[it.deco].name : Object.entries(it.items).map(([k, n]) => `${n}× ${C.ITEMS[k].name}`).join(', ');
+        const packSeed = it.seedPack ? C.EVENT_SEEDS.find((k) => C.SEEDS[k].event === a.id) : null;
+        if (it.seedPack && !packSeed) return '';
+        const icon = packSeed ? `<img alt="" src="${this.icons.flower[packSeed]}" style="background:${this.icons.flowerBg[packSeed]};border-radius:50%">` : it.deco ? `<img alt="" src="${this.icons.deco[it.deco]}">` : svg(I.ITEM[Object.keys(it.items)[0]], 64);
+        const label = packSeed ? `${C.SEED_PACK.n}× ${plain(C.SEEDS[packSeed].name)}-Samen` : it.deco ? C.DECO[it.deco].name : Object.entries(it.items).map(([k, n]) => `${n}× ${C.ITEMS[k].name}`).join(', ');
         return `<div class="tile">${icon}<b>${esc(label)}</b>${owned ? '<button class="btn small off" disabled>✓ Im Garten</button>' : `<button class="btn small" data-act="eventBuy" data-id="${it.id}" ${ev.tokens >= it.price ? '' : 'disabled'}>${svg(I.leaf(a.color), 20)} ${it.price}</button>`}</div>`;
       }).join('') + `</div><p class="note">${esc(a.token)} bekommst du bei jeder Ernte – je wertvoller die Blume, desto mehr.</p>`;
     } else {
@@ -714,7 +718,8 @@ export class UI {
   // ----- Sammlung -----
   pCollection() {
     const s = this.s, cur = this.tab.collection || 'flowers';
-    let h = this.tabs('collection', [['flowers', 'Blumen'], ['shiny', 'Funkeln'], ['animals', 'Tiere'], ['deco', 'Deko']]);
+    const ready = G.achievementList(s).filter((a) => a.ready && !a.done).length;
+    let h = this.tabs('collection', [['flowers', 'Blumen'], ['shiny', 'Funkeln'], ['animals', 'Tiere'], ['deco', 'Deko'], ['album', 'Album', ready]]);
     if (cur === 'flowers') {
       const found = C.SEED_ORDER.filter((k) => s.collection[k]?.count).length;
       h += `<div class="card"><h4>${found} von ${C.SEED_ORDER.length} Blumen entdeckt</h4><p>Geerntet: ${num(s.stats.harvested)} · Gezüchtet: ${s.bred.length} von ${C.BRED_SEEDS.length}</p><div class="prog"><i style="width:${(found / C.SEED_ORDER.length) * 100}%"></i></div></div>`;
@@ -734,6 +739,8 @@ export class UI {
       const n = C.SEED_ORDER.filter((k) => s.collection[k]?.shiny).length;
       h += `<div class="card row">${svg(I.sparkle, 54)}<div class="grow"><h4>Funkelblüten: ${n} von ${C.SEED_ORDER.length}</h4><p>Mit etwas Glück blüht eine Blume funkelnd. Sie glitzert im Beet und bringt die dreifache Belohnung. Glücksdünger, Prachtbeete und das Funkel-Wochenende erhöhen die Chance.</p></div></div><div class="grid3">`;
       h += C.SEED_ORDER.map((k) => { const e = s.collection[k]; return `<div class="tile tap ${e?.shiny ? '' : 'unknown'}" role="button" tabindex="0" data-act="detail" data-kind="flower" data-shiny="1" data-id="${k}"><img alt="" src="${this.icons.shiny[k]}" ${e?.shiny ? `style="background:${this.icons.shinyBg[k]}"` : ''}><b>${esc(C.SEEDS[k].name)}</b><small>${e?.shiny ? `${e.shiny}× gefunden` : '???'}</small></div>`; }).join('') + '</div>';
+    } else if (cur === 'album') {
+      h += this.albumHtml();
     } else if (cur === 'animals') {
       h += Object.entries(C.ANIMALS).map(([k, d]) => {
         const seen = s.seenAnimals.includes(k);
@@ -929,7 +936,7 @@ export class UI {
       <div class="card set"><div class="lab">Spielstand</div><p>Wird automatisch gespeichert${acc.user ? ' – in deinem Konto und auf diesem Gerät' : ' – auf diesem Gerät'}.</p><button class="btn red small" style="align-self:flex-start;margin-top:6px" data-act="reset">Garten neu beginnen</button></div>
       <div class="card set"><div class="lab">Als App auf dem Handy</div><p>${standalone ? 'BloomWorld läuft als App. 🌸' : 'Mit eigenem Symbol auf dem Startbildschirm, ohne Browserleiste.'}</p>${standalone ? '' : '<button class="btn small" style="align-self:flex-start;margin-top:6px" data-act="install">Zum Startbildschirm hinzufügen</button>'}</div>
       <div class="btnrow center"><button class="btn small ghost" data-act="legal" data-id="impressum">Impressum</button><button class="btn small ghost" data-act="legal" data-id="datenschutz">Datenschutz</button><button class="btn small ghost" data-act="legal" data-id="agb">AGB</button></div>
-      <p class="note">BloomWorld · Version 3.8<br>Schrift: Poppins (SIL Open Font License)</p>`;
+      <p class="note">BloomWorld · Version 3.9<br>Schrift: Poppins (SIL Open Font License)</p>`;
   }
 
   // ---------- Klicks in Panels, Leisten, Dialogen ----------
@@ -941,6 +948,7 @@ export class UI {
     const { act: a, id } = el.dataset;
     const bed = el.dataset.bed !== undefined ? +el.dataset.bed : this.sheetBed;
     if (SOCIAL_ACTS.has(a)) { onSocialAct(this, a, el); return; }
+    if (TRADE_ACTS.has(a)) { onTradeAct(this, a, el); return; }
     if (TRADER_ACTS.has(a)) { onTraderAct(this, a, el); return; }
     const A = this.api.act;
     switch (a) {
@@ -1021,7 +1029,8 @@ export class UI {
       case 'pushOn': A.pushOn(); break;
       case 'pushOff': A.pushOff(); break;
       case 'pushTest': A.pushTest(); break;
-      case 'noteGo': if (id === 'garden') this.nav('garden'); else if (id) this.nav(id); break;
+      case 'noteGo': if (id === 'garden') this.nav('garden'); else if (id === 'album') this.nav('collection', 'album'); else if (id) this.nav(id); break;
+      case 'setTitle': A.setTitle(id); break;
       case 'noteClear': this.api.notify?.().clear(); this.renderPanel(true); break;
       case 'install': A.install(); break;
       case 'storyOk': this.closeModal(); A.storySeen(); break;
@@ -1081,6 +1090,25 @@ export class UI {
   levelUp(up) {
     const unlocks = up.unlocks.map((u) => `<li>${this.unlockIcon(u)}<span>${esc(u.label)}</span></li>`).join('');
     this.modal({ queue: true, title: `Level ${up.level}!`, html: `<span class="bigstar huge">${I.star(up.level)}</span><p>Glückwunsch! Dein Garten wächst.</p>${this.chips({ coins: up.reward, items: up.items })}${(up.gifts || []).map((g) => `<p class="lvgift">🎁 Geschenk: ${this.chips(g)}</p>`).join('')}${unlocks ? `<ul class="unl">${unlocks}</ul>` : ''}`, buttons: [['Weiter', 'closeModal', '']] });
+  }
+
+  albumIcon(a, size = 56) {
+    const [kind, id] = a.icon.split(':');
+    if (kind === 'flower') return `<img alt="" src="${this.icons.flower[id]}" style="width:${size}px;height:${size}px;background:${this.icons.flowerBg[id]};border-radius:50%">`;
+    if (kind === 'deco') return `<img alt="" src="${this.icons.deco[id]}" style="width:${size}px;height:${size}px">`;
+    if (kind === 'animal') return `<img alt="" src="${this.icons.animal[id]}" style="width:${size}px;height:${size}px">`;
+    return svg(I[a.icon] || I.sparkle, size);
+  }
+  albumHtml() {
+    const s = this.s, list = G.achievementList(s);
+    const done = list.filter((a) => a.done).length;
+    let h = `<div class="card"><h4>Ophelias Album: ${done} von ${list.length} Erfolgen</h4><p>Sammle Blumen, Funkelblüten, Deko und Tiere – jeder Erfolg bringt eine Belohnung und einen Titel für deinen Namen.</p><div class="prog"><i style="width:${(done / list.length) * 100}%"></i></div></div>`;
+    if (s.titles.length) h += `<div class="card set"><div class="lab">${svg(I.sparkle, 24)} Dein Titel</div><div class="titles"><button class="tag ${!s.title ? 'on' : ''}" data-act="setTitle" data-id="">Kein Titel</button>${s.titles.map((t) => `<button class="tag ${s.title === t ? 'on' : ''}" data-act="setTitle" data-id="${t}">${esc(C.TITLES[t])}</button>`).join('')}</div><p class="note">Der Titel steht in der Freundesliste neben deinem Namen.</p></div>`;
+    h += list.map((a) => `<div class="card ach ${a.done ? 'done' : ''}">${this.albumIcon(a)}<div class="grow"><h4>${esc(a.name)}${a.done ? ' ✓' : ''}</h4><p>${esc(a.desc)}</p><div class="prog"><i style="width:${(a.have / a.need) * 100}%"></i></div><small>${a.have} / ${a.need}</small>${this.chips({ coins: a.reward.coins, items: a.reward.items, deco: a.reward.deco, skin: a.reward.skin })}${a.reward.title ? `<span class="chip">🏷️ Titel „${esc(C.TITLES[a.reward.title])}“</span>` : ''}${a.reward.unlock ? `<span class="chip"><img alt="" src="${this.icons.flower[a.reward.unlock]}"> ${esc(plain(C.SEEDS[a.reward.unlock].name))}</span>` : ''}</div></div>`).join('');
+    return h;
+  }
+  achievementDialog(a) {
+    this.modal({ queue: true, cls: 'owl', title: 'Erfolg!', html: `<h3 class="dhead">${esc(a.name)}</h3><div class="achbig">${this.albumIcon(a, 96)}</div><p>${esc(a.desc)}</p>${this.chips({ coins: a.reward.coins, items: a.reward.items, deco: a.reward.deco, skin: a.reward.skin })}${a.reward.title ? `<p class="lvgift">🏷️ Neuer Titel: <b>${esc(C.TITLES[a.reward.title])}</b></p>` : ''}${a.reward.unlock ? `<p class="lvgift">🌸 Neue Blume: <b>${esc(plain(C.SEEDS[a.reward.unlock].name))}</b></p>` : ''}`, buttons: [['Zum Album', 'noteGo', '', 'data-id="album"'], ['Super!', 'closeModal', '']] });
   }
 
   owlDialog({ title, heading, text, reward, button = 'Weiter', act = 'closeModal', queue = true }) {

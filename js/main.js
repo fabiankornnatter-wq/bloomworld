@@ -264,7 +264,7 @@ async function showNews(first = true) {
   fresh.forEach((n) => notifier?.add('news', n.title, { icon: 'news', act: 'events', key: 'news' + n.id }));
   // Von einer Push-Nachricht aus geöffnet? (?open=friends / events)
   const open = new URLSearchParams(location.search).get('open');
-  if (open && ['friends', 'events', 'trader'].includes(open)) { history.replaceState(null, '', location.pathname + (DEBUG ? '?debug=1' : '')); setTimeout(() => ui.nav(open), 600); }
+  if (open && ['friends', 'events', 'trader', 'trade'].includes(open)) { history.replaceState(null, '', location.pathname + (DEBUG ? '?debug=1' : '')); setTimeout(() => ui.nav(open), 600); }
   if (ui.panel === 'events') ui.renderPanel(true);
 }
 export const BOOST_NAMES = { doubleXp: 'Doppelte Erfahrung', doubleCoins: 'Doppelte Münzen', shinyDay: 'Funkel-Tag', traderSale: 'Händler zahlt mehr' };
@@ -318,6 +318,9 @@ function receiveInbox(items) {
     else if (e.k === 'help' && e.beds.length) notifier?.add('help', `${e.name} hat ${e.beds.length === 1 ? 'eine Blume' : `${e.beds.length} Blumen`} bei dir gegossen.`, { icon: 'drop', key: 'h' + Math.random() });
     else if (e.k === 'like') notifier?.add('like', `${e.name} findet deinen Garten wunderschön.`, { icon: 'friend', key: 'l' + Math.random() });
     else if (e.k === 'teamgift') notifier?.add('teamgift', `Geschenk vom Team: ${e.title}`, { icon: 'gift', key: 't' + Math.random() });
+    else if (e.k === 'seeds') notifier?.add('gift', `${e.name} hat dir ${e.n}× ${seedName(e.seed)}-Samen geschenkt.`, { icon: 'gift', key: 's' + Math.random() });
+    else if (e.k === 'tradeDone') notifier?.add('trade', `${e.name} hat dein Tauschangebot angenommen: ${e.offer.wantN}× ${seedName(e.offer.want)}-Samen erhalten.`, { icon: 'cart', key: 'td' + Math.random(), act: 'trade' });
+    else if (e.k === 'tradeBack') notifier?.add('trade', `Dein Tauschangebot ist abgelaufen – ${e.offer.giveN}× ${seedName(e.offer.give)}-Samen sind zurück.`, { icon: 'cart', key: 'tb' + Math.random(), act: 'trade' });
   });
   ev.forEach((e, k) => later(() => {
     if (e.k === 'gift') { sound.play('buy'); ui.toast(`🎁 ${escapeHtml(e.name)} hat dir ${e.n}× ${C.ITEMS[e.item].name} geschenkt!`, 'good'); }
@@ -326,6 +329,9 @@ function receiveInbox(items) {
       if (e.beds.length) { sound.play('water'); ui.toast(`💧 ${escapeHtml(e.name)} hat ${e.beds.length === 1 ? 'eine Blume' : `${e.beds.length} Blumen`} in deinem Garten gegossen!`, 'good'); }
     } else if (e.k === 'teamgift') { teamGiftDialog(e); }
     else if (e.k === 'like') { sound.play('magic'); ui.toast(`💖 ${escapeHtml(e.name)} findet deinen Garten wunderschön!${e.coins ? ` +${e.coins} Münzen` : ''}`, 'good'); ui.bumpCoins(); }
+    else if (e.k === 'seeds') { sound.play('buy'); ui.toast(`🌱 ${escapeHtml(e.name)} hat dir ${e.n}× ${seedName(e.seed)}-Samen geschenkt!`, 'good'); }
+    else if (e.k === 'tradeDone') { sound.play('buy'); ui.toast(`🔄 Tausch abgeschlossen: ${e.offer.wantN}× ${seedName(e.offer.want)}-Samen von ${escapeHtml(e.name)}!`, 'good'); }
+    else if (e.k === 'tradeBack') { ui.toast(`Tauschangebot abgelaufen – ${e.offer.giveN}× ${seedName(e.offer.give)}-Samen zurück im Beutel.`, ''); }
   }, k * 3200));
   changed();
 }
@@ -596,7 +602,17 @@ function newerSave(a, b) {
   if (ma !== mb) return ma > mb ? a : b;
   return (a?.updatedAt || 0) >= (b?.updatedAt || 0) ? a : b;
 }
-function changed() { persist(); if (!visit) { world.syncLayout(state); world.setTrader(state.level >= C.TRADER.level); } ui.refresh(); }
+const seedName = (k) => (C.SEEDS[k]?.name || k).replace(/\u00ad/g, '');
+function changed() { persist(); if (!visit) { world.syncLayout(state); world.setTrader(state.level >= C.TRADER.level); } albumCheck(); ui.refresh(); }
+// Album: neue Erfolge sofort feiern
+function albumCheck() {
+  if (!state || visit) return;
+  const got = G.checkAchievements(state);
+  if (!got.length) return;
+  persist(false);
+  got.forEach((a, k) => later(() => { sound.play('level'); ui.achievementDialog(a); afterLevelUps(a.levelUps); ui.refresh(); }, 600 + k * 400));
+  got.forEach((a) => notifier?.add('album', `Erfolg erreicht: ${a.name}`, { icon: 'star', key: 'ach' + a.id, act: 'album' }));
+}
 function fail(r) {
   sound.play('error');
   if (r.code === 'noCoins') ui.toast(r.message, 'err', { label: state?.level >= C.TRADER.level ? 'Händler' : 'Aufgaben', fn: () => ui.nav(state?.level >= C.TRADER.level ? 'trader' : 'quests', 'daily') });
@@ -744,7 +760,8 @@ const actions = {
     world.coinRain(i, r.shiny ? 12 : C.SEEDS[r.seed].slow ? 10 : 5);
     sound.play(r.shiny ? 'gold' : 'harvest');
     ui.floatReward(i, r.reward, r.shiny, r.tokens, eventColor());
-    if (r.shiny) ui.toast(`Funkelblüte: ${plain(C.SEEDS[r.seed].name)}! Dreifache Belohnung.`, 'good');
+    if (r.seedsWon) ui.toast(`🌱 ${r.seedsWon}× ${plain(C.SEEDS[r.seed].name)}-Samen gewonnen! Damit kannst du sie auch nach dem Event säen oder tauschen.`, 'good');
+    else if (r.shiny) ui.toast(`Funkelblüte: ${plain(C.SEEDS[r.seed].name)}! Dreifache Belohnung.`, 'good');
     else if (!r.basket && state.level >= C.TRADER.level && !basketWarned) { basketWarned = true; ui.toast('Dein Blumenkorb ist voll – verkaufe Blumen beim Händler.', '', { label: 'Händler', fn: () => ui.nav('trader') }); }
     changed();
     afterLevelUps(r.levelUps);
@@ -797,6 +814,8 @@ const actions = {
     return true;
   },
 
+  afterTrade() { changed(); },
+  setTitle(id) { const r = G.setTitle(state, id); if (r.ok) { sound.play('buy'); changed(); } },
   growBed(i) {
     const r = G.growBed(state, i);
     if (!r.ok) { fail(r); return false; }

@@ -821,3 +821,31 @@ body.visiting #maint { display: none; }
 .lvgift .chips { display: inline-flex; margin-left: 4px; }
 .tier.tev { background: #ffe9a8; color: #8a5a00; }
 .seed.evseed { border-color: #ffd23f; }
+
+/* Tauschbörse & Album */
+.trintro { display: flex; gap: 10px; align-items: flex-start; }
+.seedbag { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.seedchip { background: #fff; border-radius: 16px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 84px; box-shadow: 0 3px 0 #d8c7ee; color: var(--blue); }
+.seedchip small { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.15; }
+.tradeform .trrow { display: flex; gap: 8px; }
+.tradeform .fld { flex: 1; } .tradeform .fld.num { flex: 0 0 84px; }
+.tradeform select, .tradeform input[type=number] { width: 100%; }
+.tradeform .chk { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-weight: 600; }
+.card.trade .trline { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.card.trade .trside { display: flex; align-items: center; gap: 8px; flex: 1; font-size: 14px; }
+.card.trade .arrow { font-size: 22px; color: var(--pink); }
+.card.trade .trmeta { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; gap: 8px; }
+.card.trade.mine { border: 2px solid #ffd23f; }
+.seg.small { display: inline-flex; margin-left: 8px; vertical-align: middle; }
+.seg.small button { padding: 3px 10px; font-size: 13px; }
+.tradecard { width: 100%; text-align: left; font: inherit; cursor: pointer; }
+.tradecard .chev { font-size: 26px; color: var(--muted); }
+.ftitle { font-size: 12px; background: #ffe9a8; color: #8a5a00; border-radius: 999px; padding: 1px 8px; margin-left: 4px; vertical-align: middle; font-weight: 700; }
+.titles { display: flex; flex-wrap: wrap; gap: 6px; }
+.titles .tag { border: 2px solid #e6dcff; background: #fff; border-radius: 999px; padding: 5px 12px; font: inherit; font-weight: 700; color: var(--blue); cursor: pointer; }
+.titles .tag.on { background: #ffe9a8; border-color: #ffd23f; color: #8a5a00; }
+.card.ach { display: flex; gap: 12px; align-items: flex-start; }
+.card.ach.done { background: #f1fbe9; }
+.card.ach .prog { margin: 6px 0 2px; }
+.card.ach small { color: var(--muted); }
+.achbig { display: flex; justify-content: center; margin: 6px 0; }

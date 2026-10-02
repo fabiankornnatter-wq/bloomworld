@@ -179,6 +179,11 @@ Object.assign(FLOWER_LOOK, {
   poinsettia: { petal: '#e0202e', tip: '#ff4a55', center: '#ffd23f' },
   sparkler: { petals: ['#ff3d6e', '#ffd23f', '#4aa3ff', '#5fd35a', '#ff9f1c', '#b48cff'], petal: '#ff3d6e', tip: '#ffffff', center: '#fff2a8', glow: 0.5 },
   crocus: { petal: '#8f5fd9', tip: '#b99af0', center: '#ffb81c' },
+  candyCrocus: { petals: ['#ff8fb8', '#ffd97a', '#8fe0ff', '#b9f5a8', '#d9b3ff'], petal: '#ff8fb8', tip: '#ffffff', center: '#ffb81c' },
+  lavaHibiscus: { petal: '#ff3b1f', tip: '#ffc93a', center: '#ffe27a', glow: 0.45 },
+  frostStar: { petal: '#dff2ff', tip: '#ffffff', center: '#8fd6ff', glow: 0.6 },
+  queenRose: { petal: '#c2102e', tip: '#ffd25a', center: '#6e0618', glow: 0.3 },
+  opheliaBloom: { petals: ['#ffd1dc', '#fff0b3', '#d4f5d0', '#cfe6ff', '#e6d6ff'], petal: '#ffd1dc', tip: '#ffffff', center: '#ffe27a', glow: 0.5 },
 });
 const brighten = (look) => {
   const b = (c) => { const v = col(c); return v.map((x) => Math.min(1, x * 1.12 + 0.04)); };
@@ -365,8 +370,8 @@ function headShape(type, look, s) {
     const rings = [[5, 0.07, -1.35, 0.65], [7, 0.1, -1.05, 0.55], [9, 0.13, -0.7, 0.45], [11, 0.16, -0.38, 0.35], [12, 0.18, -0.1, 0.25]].slice(hi(0, 1));
     const bloom = new Geo();
     rings.forEach(([n, l, tilt, cup], ri) => {
-      const c = mixHex(look.center, look.petal, Math.min(1, ri / 3));
-      for (let i = 0; i < n; i++) bloom.add(petal(l * s, l * 0.85 * s, c, { cup, curl: 0.42, tip: 0.08, colorTip: look.tip, fold: 0.12, under: 0.92 }), T(0, ri * 0.004, 0, (i / n) * P * 2 + ri * GOLD, tilt));
+      const c0 = mixHex(look.center, look.petal, Math.min(1, ri / 3));
+      for (let i = 0; i < n; i++) bloom.add(petal(l * s, l * 0.85 * s, look.petals ? pc(look, i + ri) : c0, { cup, curl: 0.42, tip: 0.08, colorTip: look.tip, fold: 0.12, under: 0.92 }), T(0, ri * 0.004, 0, (i / n) * P * 2 + ri * GOLD, tilt));
     });
     roundNormals(bloom, 0.07 * s);
     g.add(bloom);
@@ -1363,5 +1368,34 @@ DECO_MODELS.xmasTree = () => {
   for (let i = 0; i < 14; i++) { const a = i * 2.4, y = 0.5 + (i / 14) * 1.25, r = (0.58 - (i / 14) * 0.45); g.add(sphere(0.055, cs[i % cs.length], 7, 6), T(Math.cos(a) * r, y, Math.sin(a) * r), { emissive: 0.5 }); }
   for (let i = 0; i < 12; i++) { const a = i * 1.9 + 1, y = 0.6 + (i / 12) * 1.15, r = (0.55 - (i / 12) * 0.42); g.add(sphere(0.03, '#fff2a8', 5, 4), T(Math.cos(a) * r, y, Math.sin(a) * r), { emissive: 1 }); }
   g.add(sparkle('#ffe27a', 0.16), T(0, 1.98, 0), { emissive: 1 });
+  return g;
+};
+
+// ---------------- Album-Belohnungen ----------------
+DECO_MODELS.trophy = () => {
+  const g = new Geo();
+  g.add(roundedBox(0.6, 0.18, 0.6, 0.03, '#e9e4dc', 1), T(0, 0.09, 0));
+  g.add(cylinder(0.14, 0.18, 0.12, '#d9b24a', 12), T(0, 0.18, 0));
+  g.add(cylinder(0.04, 0.05, 0.25, '#e8c35a', 8), T(0, 0.3, 0));
+  g.add(lathe([[0.05, 0], [0.2, 0.05], [0.26, 0.3], [0.22, 0.5], [0.25, 0.52], [0.21, 0.52], [0.18, 0.3], [0.04, 0.05]], '#f2cd5c', 20), T(0, 0.55, 0), { emissive: 0.15 });
+  for (const sx of [-1, 1]) { g.add(lathe([[0.03, 0], [0.03, 0.3]], '#e8c35a', 8).displace((q) => [q[0] + Math.sin(q[1] / 0.3 * P) * 0.12, q[1], q[2]]), T(sx * 0.27, 0.7, 0, 0, 0, sx * 0.1)); }
+  g.add(sparkle('#fff6c8', 0.1), T(0.2, 1.08, 0.2), { emissive: 1 });
+  g.add(sparkle('#fff6c8', 0.07), T(-0.22, 0.9, 0.15), { emissive: 1 });
+  return g;
+};
+DECO_MODELS.goldenBench = () => {
+  const g = DECO_MODELS.bench ? DECO_MODELS.bench() : new Geo();
+  g.paint((p, n, c) => (c[0] > 0.5 && c[1] > 0.4 && c[2] < 0.45 ? col('#e8bf4e') : c[0] < 0.3 ? col('#b8902a') : c));
+  for (let i = 0; i < 5; i++) g.add(petal(0.12, 0.05, '#ff6f9a', { cup: 0.2, curl: 0.2, tip: 0.4, colorTip: '#ffd1dc' }), T(-0.7 + i * 0.35, 0.9 + (i % 2) * 0.08, -0.32, 0, -0.4));
+  for (let i = 0; i < 6; i++) g.add(leaf(0.12, 0.05), T(-0.8 + i * 0.32, 0.82, -0.33, i * 1.3, -0.3));
+  return g;
+};
+DECO_MODELS.flowerPress = () => {
+  const g = new Geo();
+  g.add(roundedBox(0.7, 0.06, 0.5, 0.02, PAL.woodDark, 1), T(0, 0.03, 0));
+  for (let i = 0; i < 4; i++) g.add(box(0.66, 0.02, 0.46, i % 2 ? '#fff6e0' : '#f3e3c3'), T(0, 0.08 + i * 0.03, 0));
+  g.add(roundedBox(0.7, 0.06, 0.5, 0.02, PAL.wood, 1), T(0, 0.23, 0));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { g.add(cylinder(0.02, 0.02, 0.3, '#8a8a8a', 6), T(sx * 0.3, 0.02, sz * 0.2)); g.add(cylinder(0.045, 0.045, 0.04, '#d9b24a', 6), T(sx * 0.3, 0.27, sz * 0.2)); }
+  for (let i = 0; i < 5; i++) g.add(petal(0.09, 0.04, ['#ff6f9a', '#ffd23f', '#9a7be8', '#4aa3ff', '#ff5a3c'][i], { cup: 0, curl: 0, tip: 0.5 }), T(-0.2 + i * 0.1, 0.265, 0.05, i * 1.2));
   return g;
 };

@@ -1,6 +1,7 @@
 // Oberfläche für Freunde, Chat, Gartenbesuche und den Admin-Bereich.
 import * as C from './config.js';
 import * as I from './icons.js';
+import { seedGiftOptions } from './tradeui.js';
 import { adminApi, socialApi } from './social.js';
 import { AGB_TEXT, PRIVACY_TEXT, IMPRESSUM_TEXT } from './legaltexts.js';
 
@@ -33,14 +34,15 @@ export function pFriends(ui) {
   if (d.incoming.length) {
     h += `<div class="sec">Freundschaftsanfragen <i class="dot">${d.incoming.length}</i></div>` + d.incoming.map((f) => `<div class="card frow">${avatar(f)}<div class="grow"><h4>${esc(f.name)}</h4><small>Level ${f.level}</small></div><button class="btn small" data-act="frAccept" data-id="${f.id}">Annehmen</button><button class="btn small ghost" data-act="frDecline" data-id="${f.id}" aria-label="Ablehnen">✕</button></div>`).join('');
   }
+  h += `<button class="card row tap tradecard" data-act="openTrade">${svg(I.cart, 44)}<div class="grow"><h4>Tauschbörse</h4><p>Samen von Event-Blumen mit anderen Gärtnern tauschen – für ein volles Album.</p></div><span class="chev">›</span></button>`;
   h += `<div class="sec">Deine Freunde${d.friends.length ? ` (${d.friends.length})` : ''}</div>`;
   if (!d.friends.length) h += `<div class="card center">${svg(I.NAV.friends, 72)}<h4>Noch keine Freunde</h4><p>Frag deine Freunde nach ihrem Spielernamen und schick ihnen oben eine Anfrage – oder teile deinen Namen.</p></div>`;
   h += d.friends.map((f) => `<div class="card friend">
-      <div class="frow">${avatar(f)}<div class="grow"><h4>${esc(f.name)}</h4><small><i class="odot ${f.online ? 'on' : ''}"></i>${f.online ? 'Online' : 'Offline'} · Level ${f.level}</small></div><button class="more" data-act="frMenu" data-id="${f.id}" aria-label="Mehr">⋯</button></div>
+      <div class="frow">${avatar(f)}<div class="grow"><h4>${esc(f.name)}${f.title && C.TITLES[f.title] ? ` <span class="ftitle">${esc(C.TITLES[f.title])}</span>` : ''}</h4><small><i class="odot ${f.online ? 'on' : ''}"></i>${f.online ? 'Online' : 'Offline'} · Level ${f.level}</small></div><button class="more" data-act="frMenu" data-id="${f.id}" aria-label="Mehr">⋯</button></div>
       <div class="fbtns">
         <button class="btn small blue" data-act="openChat" data-id="${f.id}">${svg(I.chat, 22)} Chat${f.unread ? `<i class="dot">${f.unread}</i>` : ''}</button>
         <button class="btn small" data-act="visit" data-id="${f.id}">${svg(I.house, 22)} Besuchen</button>
-        <button class="btn small pink" data-act="giftMenu" data-id="${f.id}" ${f.gifted ? 'disabled' : ''}>${svg(I.gift, 22)} ${f.gifted ? 'Geschenkt ✓' : 'Schenken'}</button>
+        <button class="btn small pink" data-act="giftMenu" data-id="${f.id}">${svg(I.gift, 22)} ${f.gifted ? 'Geschenkt ✓' : 'Schenken'}</button>
       </div></div>`).join('');
   if (d.outgoing.length) h += `<div class="sec">Gesendete Anfragen</div>` + d.outgoing.map((f) => `<div class="card frow">${avatar(f, 36)}<div class="grow"><h4>${esc(f.name)}</h4><small>wartet auf Antwort</small></div><button class="btn small ghost" data-act="frCancel" data-id="${f.id}">Zurückziehen</button></div>`).join('');
   if (d.blocked.length) h += `<div class="sec">Blockiert</div>` + d.blocked.map((f) => `<div class="card frow">${avatar(f, 36)}<div class="grow"><h4>${esc(f.name)}</h4></div><button class="btn small ghost" data-act="frUnblock" data-id="${f.id}">Aufheben</button></div>`).join('');
@@ -57,7 +59,7 @@ export function giftDialog(ui, id) {
   const f = ui.api.social().friend(id);
   if (!f) return;
   ui.modal({ title: 'Geschenk schicken', cls: 'giftdlg', html: `<p>Was möchtest du <b>${esc(f.name)}</b> schenken? Es kostet dich nichts – einmal am Tag pro Freund.</p>
-    <div class="giftopts">${Object.entries(C.GIFTS).map(([k, g]) => `<button class="giftopt" data-act="sendGift" data-id="${id}" data-kind="${k}">${svg(I.ITEM[g.item], 54)}<b>${esc(g.label)}</b><small>${esc(C.ITEMS[g.item].desc)}</small></button>`).join('')}</div>`, buttons: [['Abbrechen', 'closeModal', 'ghost']] });
+    <div class="giftopts">${Object.entries(C.GIFTS).map(([k, g]) => `<button class="giftopt" data-act="sendGift" data-id="${id}" data-kind="${k}" ${f.gifted ? 'disabled' : ''}>${svg(I.ITEM[g.item], 54)}<b>${esc(g.label)}</b><small>${esc(C.ITEMS[g.item].desc)}</small></button>`).join('')}</div>${seedGiftOptions(ui, id)}`, buttons: [['Abbrechen', 'closeModal', 'ghost']] });
 }
 
 export function friendMenu(ui, id) {
