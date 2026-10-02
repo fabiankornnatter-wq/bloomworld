@@ -194,6 +194,7 @@ class MemoryKV {
     switch (n) {
       case 'PING': return 'PONG';
       case 'GET': return has ? this.m.get(k) : null;
+      case 'SETNX': { if (has) return 0; this.m.set(k, String(a[1])); return 1; }
       case 'SET': {
         const opts = a.slice(2).map((x) => String(x).toUpperCase());
         if (opts.includes('NX') && has) return null;

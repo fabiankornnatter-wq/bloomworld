@@ -153,3 +153,16 @@ test('Push: Abo nur mit Schlüsseln, Erinnerungen planen, Cron geschützt', asyn
   assert.equal(ok.ok, true);
   assert.equal(ok.skipped, 'push_off');
 });
+
+test('Cron: Event-Start wird einmalig angekündigt', async () => {
+  process.env.BW_DEV_MEMORY_DB = '1';
+  const cron = (await import('../api/cron.js')).default;
+  const G = await import('../js/game.js');
+  if (!G.activeEvent(Date.now())) return; // ohne laufendes Event nichts zu prüfen
+  const call = () => new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, end: (t) => resolve(JSON.parse(t)) }; cron({ headers: { authorization: `Bearer ${process.env.CRON_SECRET || ''}` }, method: 'GET' }, res); });
+  await call(); const b = await call();
+  assert.equal(b.ann?.started, 0, JSON.stringify(b)); // zweiter Lauf: keine zweite Ankündigung
+  const { kv } = await import('../api/_lib/kv.js');
+  const news = (await kv().cmd('LRANGE', 'bw:news', 0, 9)).map((x) => JSON.parse(x));
+  assert.ok(news.some((n) => n.kind === 'event' && n.title.includes('begonnen')), JSON.stringify(news));
+});
