@@ -807,3 +807,15 @@ body.visiting #maint { display: none; }
 .dlg.surprise .spicon { font-size: 64px; line-height: 1; margin: 4px 0 8px; animation: bob 1.4s ease-in-out infinite; }
 .seed.slow { background: linear-gradient(#fff, #fff4fa); }
 .tier.tslow { background: linear-gradient(#b48cff, #7a4dff); }
+/* Mini-Tutorial */
+#tut { position: absolute; inset: 0; z-index: 70; pointer-events: none; }
+#tut .tut-hole { position: absolute; border-radius: 22px; box-shadow: 0 0 0 9999px rgba(30, 10, 60, 0.62), 0 0 0 4px #fff, 0 0 24px 6px rgba(255, 200, 240, 0.9); transition: all 0.25s; }
+#tut.free .tut-hole { display: none; }
+#tut.free::before { content: ''; position: absolute; inset: 0; background: rgba(30, 10, 60, 0.55); }
+#tut .tut-card { position: absolute; left: 50%; transform: translateX(-50%); width: min(92vw, 420px); display: flex; gap: 10px; align-items: flex-start; padding: 12px 12px 10px; border-radius: 22px; background: linear-gradient(#fff9fc, #f3e6ff); border: 3px solid #fff; box-shadow: 0 6px 0 #c7a6ee, 0 14px 30px rgba(0, 0, 0, 0.4); color: var(--ink); pointer-events: auto; flex-wrap: wrap; transition: top 0.25s, bottom 0.25s; }
+#tut .tut-owl { width: 54px; height: 54px; flex: none; }
+#tut .tut-text { flex: 1; min-width: 0; font-size: 15px; line-height: 1.4; padding-top: 4px; }
+#tut .tut-btns { width: 100%; display: flex; justify-content: flex-end; gap: 8px; }
+
+.lvgift { margin: 6px 0 0; font-weight: 700; color: var(--pink, #e0407a); }
+.lvgift .chips { display: inline-flex; margin-left: 4px; }

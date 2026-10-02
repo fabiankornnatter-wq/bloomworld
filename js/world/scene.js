@@ -194,10 +194,10 @@ export class World {
   }
 
   placeBed(i, [x, z, r], lift = 0) {
-    const b = this.beds[i], ry = (r || 0) * PI / 2;
+    const b = this.beds[i], ry = (r || 0) * PI / 2, sc = b.scale || 1;
     b.pos = [x, z, r || 0];
-    const m = T(x, lift, z, ry);
-    b.frame.model = m; b.wild.model = m;
+    const m = T(x, lift, z, ry, 0, 0, sc, 1, sc);
+    b.frame.model = m; b.wild.model = T(x, lift, z, ry);
     b.plants.model = T(x, BED_TOP + lift, z, ry);
     const c = m4.point(m, [-1.02, 0, 1.02]); // Sprinkler an der vorderen linken Ecke
     b.sp = [c[0], c[2]];
@@ -335,10 +335,12 @@ export class World {
       bed.frame.visible = !info.locked;
       bed.wild.visible = !!info.locked && !info.hidden;
       if (bed.lvl !== info.lvl) { bed.lvl = info.lvl; bed.frame.mesh = this.bedMeshes[(info.lvl || 1) - 1]; }
+      const sc = C.BED_SIZES[(info.size || 1) - 1]?.scale || 1;
+      if (bed.scale !== sc) { bed.scale = sc; bed.key = null; this.placeBed(i, bed.pos); }
       bed.spr.visible = bed.head.visible = !info.locked && !!info.sprinkler;
       bed.plants.visible = !info.locked;
       let key = 'empty';
-      if (info.seed) key = `${info.seed}|${info.stage}|${info.shiny ? 1 : 0}|${info.var}`;
+      if (info.seed) key = `${info.seed}|${info.stage}|${info.shiny ? 1 : 0}|${info.var}|${info.size || 1}`;
       if (key === bed.key) return;
       const wasStage = bed.stage; bed.stage = info.stage;
       // Wachstums-Sprung: Pflanzen „ploppen“ kurz, wenn sie eine Stufe weiter sind
@@ -348,8 +350,10 @@ export class World {
       bed.h = !info.seed ? 0 : info.stage === 0 ? 0.35 : (tall ? 1.7 : 0.95) * (info.stage === 1 ? 0.55 : info.stage === 2 ? 0.8 : 1);
       const g = new Geo();
       if (info.seed) {
-        const n = tall ? 4 : 5;
-        const spots = n === 4 ? [[-0.45, -0.45], [0.45, -0.45], [0.45, 0.45], [-0.45, 0.45]] : [[0, 0], [-0.55, -0.5], [0.55, -0.5], [0.55, 0.5], [-0.55, 0.5]];
+        const sz = info.size || 1, sc = C.BED_SIZES[sz - 1]?.scale || 1;
+        const base = tall ? [[-0.45, -0.45], [0.45, -0.45], [0.45, 0.45], [-0.45, 0.45]] : [[0, 0], [-0.55, -0.5], [0.55, -0.5], [0.55, 0.5], [-0.55, 0.5]];
+        const extra = sz === 2 ? [[0, -0.72], [0, 0.72]] : sz === 3 ? [[0, -0.8], [0, 0.8], [-0.8, 0], [0.8, 0]] : [];
+        const spots = [...base.map(([a, b]) => [a * sc, b * sc]), ...extra.map(([a, b]) => [a * sc, b * sc])];
         const R = rng(info.var + 1);
         spots.forEach(([x, z], k) => {
           const pg = this.plantGeo(info.seed, info.stage, info.shiny, (info.var + k) % 3);
@@ -651,11 +655,12 @@ export class World {
     this.beds.forEach((b, i) => {
       if (!b.shown) return;
       const [x, z] = b.pos;
-      if (ts > 0 && Math.abs(hp[0] - x) < 1.2 && Math.abs(hp[2] - z) < 1.2) consider(ts, { type: 'bed', index: i });
-      const tf = rayBox(o, d, [x - 1.2, 0, z - 1.2], [x + 1.2, BED_TOP, z + 1.2]);
+      const hw = 1.2 * (b.scale || 1);
+      if (ts > 0 && Math.abs(hp[0] - x) < hw && Math.abs(hp[2] - z) < hw) consider(ts, { type: 'bed', index: i });
+      const tf = rayBox(o, d, [x - hw, 0, z - hw], [x + hw, BED_TOP, z + hw]);
       if (tf !== null) consider(tf, { type: 'bed', index: i });
       if (b.h) {
-        const tp = rayBox(o, d, [x - 0.95, BED_TOP, z - 0.95], [x + 0.95, BED_TOP + b.h, z + 0.95]);
+        const tp = rayBox(o, d, [x - hw + 0.25, BED_TOP, z - hw + 0.25], [x + hw - 0.25, BED_TOP + b.h, z + hw - 0.25]);
         if (tp !== null) consider(tp, { type: 'bed', index: i });
       }
     });
@@ -703,7 +708,7 @@ export class World {
     let best = null;
     const consider = (t, ref) => { if (t !== null && t > 0 && (!best || t < best.t)) best = { t, ref }; };
     const boxAt = (x, z, w, dd, h) => rayBox(o, d, [x - w / 2, 0, z - dd / 2], [x + w / 2, h, z + dd / 2]);
-    this.beds.forEach((b, i) => { if (b.shown) consider(boxAt(b.pos[0], b.pos[1], 2.4, 2.4, BED_TOP + Math.max(0.3, b.h || 0)), { type: 'bed', i }); });
+    this.beds.forEach((b, i) => { if (b.shown) consider(boxAt(b.pos[0], b.pos[1], 2.4 * (b.scale || 1), 2.4 * (b.scale || 1), BED_TOP + Math.max(0.3, b.h || 0)), { type: 'bed', i }); });
     { const [gx, gz, gr] = this.ghPos, [w, dd] = gr % 2 ? [C.GH_SIZE[1], C.GH_SIZE[0]] : C.GH_SIZE; consider(boxAt(gx, gz, w, dd, 3.2), { type: 'gh' }); }
     s.decor.forEach((dc, k) => {
       if (dc.stored) return;
@@ -748,7 +753,8 @@ export class World {
         if (!cache[i]) {
           const yaw = m.yaw + (i / frames) * PI * 2;
           const eye = [c[0] + Math.sin(yaw) * Math.cos(pitch) * dist, c[1] + Math.sin(pitch) * dist, c[2] + Math.cos(yaw) * Math.cos(pitch) * dist];
-          cache[i] = this.r.renderCanvas([o], { eye, target: c, fovy: 0.52, near: 0.05, far: 200 }, env, size);
+          const ld = v3.norm([eye[0] - c[0] - dist * 0.35, eye[1] - c[1] + dist * 0.6, eye[2] - c[2]]);
+          cache[i] = this.r.renderCanvas([o], { eye, target: c, fovy: 0.52, near: 0.05, far: 200 }, { ...env, lightDir: ld, skyCol: v3.scale(env.skyCol, 1.08), gndCol: v3.scale(env.gndCol, 1.15) }, size);
         }
         return cache[i];
       },
@@ -768,7 +774,7 @@ export class World {
     };
     if (kind === 'flower') {
       if (!SEEDS[id]) return null;
-      return { geo: new Geo().add(M.plant(id, stage, shiny, 2)), yaw: PI / 4, pitch: SEEDS[id].model === 'sunflower' ? 0.3 : 0.5 };
+      return { geo: new Geo().add(M.plant(id, stage, shiny, 2, 1)), yaw: PI / 4, pitch: SEEDS[id].model === 'sunflower' ? 0.3 : 0.5 };
     }
     if (kind === 'deco') return M.DECO_MODELS[id] ? { geo: M.DECO_MODELS[id](), yaw: PI / 4, pitch: 0.38 } : null;
     if (kind === 'animal') {
@@ -790,15 +796,20 @@ export class World {
       const yaw = opts.yaw ?? PI / 4, pitch = opts.pitch ?? 0.38, dist = rad / Math.tan(0.26);
       const eye = [c[0] + Math.sin(yaw) * Math.cos(pitch) * dist, c[1] + Math.sin(pitch) * dist, c[2] + Math.cos(yaw) * Math.cos(pitch) * dist];
       const o = this.r.addObject(this.r.mesh(geo), m4.identity(), { iconOnly: true, visible: false });
-      const url = this.r.renderIcon([o], { eye, target: c, fovy: 0.52, near: 0.05, far: 200 }, env, 128);
+      // Licht von schräg vorn-oben (Kameraseite), damit Blütenblätter nicht im Schatten liegen
+      const ld = v3.norm([eye[0] - c[0] - dist * 0.35, eye[1] - c[1] + dist * 0.6, eye[2] - c[2]]);
+      const url = this.r.renderIcon([o], { eye, target: c, fovy: 0.52, near: 0.05, far: 200 }, { ...env, lightDir: ld, skyCol: v3.scale(env.skyCol, 1.08), gndCol: v3.scale(env.gndCol, 1.15) }, opts.size || 128, opts.bg);
       this.r.removeObject(o); this.r.freeMesh(o.mesh);
       return url;
     };
     const icons = { flower: {}, shiny: {}, deco: {}, animal: {}, skin: {}, bedLvl: {} };
     for (const id of Object.keys(SEEDS)) {
-      const pitch = SEEDS[id].model === 'sunflower' ? 0.3 : 0.5;
-      icons.flower[id] = shot(new Geo().add(M.plant(id, 3, false, 2)), { pitch });
-      icons.shiny[id] = shot(new Geo().add(M.plant(id, 3, true, 2)), { pitch });
+      // Porträt: Blüte groß, leicht von vorn-oben
+      const cup = ['tulip', 'rose', 'peony', 'dahlia', 'magnolia', 'hydrangea', 'lavender'].includes(SEEDS[id].model);
+      const bg = ICON_BG[SEEDS[id].tier || (SEEDS[id].rare ? 'selten' : SEEDS[id].slow ? 'slow' : 'normal')];
+      const o = { yaw: 0.35, pitch: cup ? 0.42 : 0.62, pad: 0.92, size: 160, bg };
+      icons.flower[id] = shot(new Geo().add(M.portrait(id, false)), o);
+      icons.shiny[id] = shot(new Geo().add(M.portrait(id, true)), { ...o, bg: ICON_BG.shiny });
     }
     for (const id of Object.keys(M.DECO_MODELS)) icons.deco[id] = shot(M.DECO_MODELS[id]());
     const assemble = (rig, legs) => {
@@ -824,6 +835,12 @@ export class World {
     return icons;
   }
 }
+
+// Hintergrundfarben der Blumen-Symbole nach Seltenheit
+const ICON_BG = {
+  normal: ['#ffffff', '#e4f6d6'], slow: ['#ffffff', '#fdebc8'], selten: ['#ffffff', '#ffe0ec'],
+  episch: ['#ffffff', '#e6dcff'], 'legendär': ['#fff9e0', '#ffe39a'], shiny: ['#ffffff', '#fff3b8'],
+};
 
 // ---------- Hilfsfunktionen ----------
 function mulM(a, b) { return m4.mul(a, b); }

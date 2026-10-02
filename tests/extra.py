@@ -18,17 +18,17 @@ def check(n, ok, d=''):
 def start_offline(pg):
     pg.bring_to_front()
     pg.route('**/api/**', lambda r: r.abort())
-    pg.goto(URL + '/?debug=1')
+    pg.goto(URL + '/?debug=1&notut=1')
     pg.wait_for_selector('#authBox [data-offline]', timeout=90000)
     pg.locator('#authBox [data-offline]').click()
     pg.wait_for_function('window.BW && document.getElementById("loader").hidden', timeout=60000)
     pg.wait_for_timeout(700)
-    pg.evaluate('BW.G.markIntroSeen(BW.state); BW.ui.closeModal()')
+    pg.evaluate('BW.G.markIntroSeen(BW.state); BW.state.tutorialDone = 1; BW.ui.closeModal()')
     pg.wait_for_timeout(400)
 
 
 def login(pg, ident, pw, register=None):
-    pg.goto(URL + '/?debug=1')
+    pg.goto(URL + '/?debug=1&notut=1')
     pg.wait_for_selector('#authBox:not([hidden])', timeout=90000)
     if register:
         pg.locator('#authBox [data-tab=register]').click()
@@ -44,7 +44,7 @@ def login(pg, ident, pw, register=None):
         pg.locator('#loginForm button[type=submit]').click()
     pg.wait_for_function('window.BW && document.getElementById("loader").hidden', timeout=60000)
     pg.wait_for_timeout(700)
-    pg.evaluate('BW.G.markIntroSeen(BW.state); BW.ui.closeModal()')
+    pg.evaluate('BW.G.markIntroSeen(BW.state); BW.state.tutorialDone = 1; BW.ui.closeModal()')
     pg.wait_for_timeout(400)
 
 
@@ -56,7 +56,7 @@ with sync_playwright() as p:
     pg = ctx.new_page()
     errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
     pg.route('**/api/**', lambda r: r.abort())
-    pg.goto(URL + '/?debug=1')
+    pg.goto(URL + '/?debug=1&notut=1')
     pg.wait_for_selector('#authBox [data-offline]', timeout=90000)
     pg.locator('#authBox [data-offline]').scroll_into_view_if_needed()
     bb = pg.locator('#authBox [data-offline]').bounding_box()
@@ -65,7 +65,7 @@ with sync_playwright() as p:
     pg.locator('#authBox [data-offline]').click()
     pg.wait_for_function('window.BW && document.getElementById("loader").hidden', timeout=60000)
     pg.wait_for_timeout(600)
-    pg.evaluate('BW.G.markIntroSeen(BW.state); BW.ui.closeModal(); BW.state.tutorial = 2; BW.ui.openSeedSheet(4)'); pg.wait_for_timeout(1500)
+    pg.evaluate('BW.G.markIntroSeen(BW.state); BW.state.tutorialDone = 1; BW.ui.closeModal(); BW.state.tutorial = 2; BW.ui.openSeedSheet(4)'); pg.wait_for_timeout(1500)
     top = pg.evaluate("document.querySelector('#sheet .inner').getBoundingClientRect().top")
     check('Querformat: Saat-Auswahl oben sichtbar', 0 <= top < 340, str(top))
     pg.screenshot(path=SH + 'land_sheet.png')
@@ -168,7 +168,7 @@ with sync_playwright() as p:
     B.evaluate('BW.state.coins = 1; BW.actions.setting("soundVol", 0.4); BW.cloud.flush()'); B.wait_for_timeout(2500)
     check('Zwei Geräte: Stand mit mehr Fortschritt gewinnt', B.evaluate('BW.state.coins') == 999 and B.evaluate("fetch('/api/save').then(r => r.json()).then(j => j.save.coins)") == 999, str(B.evaluate('BW.state.coins')))
     # 6) Angemeldet bleiben: Neu laden startet direkt im Garten
-    B.goto(URL + '/?debug=1')
+    B.goto(URL + '/?debug=1&notut=1')
     B.wait_for_function('window.BW && document.getElementById("loader").hidden', timeout=90000)
     check('Angemeldet bleiben: direkt im Garten ohne Anmeldung', B.locator('#authBox').is_hidden() and B.evaluate('BW.user && BW.user.name') == name)
     A.context.close(); B.context.close()

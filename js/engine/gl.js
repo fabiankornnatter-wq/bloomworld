@@ -392,8 +392,17 @@ export class Renderer {
   }
 
   // Rendert ausgewählte Objekte in ein Bild (für Symbole in der Oberfläche)
-  renderIcon(objects, camera, env, size = 128) {
-    return this.renderCanvas(objects, camera, env, size).toDataURL('image/png');
+  renderIcon(objects, camera, env, size = 128, bg = null) {
+    const c = this.renderCanvas(objects, camera, env, size);
+    if (!bg) return c.toDataURL('image/png');
+    // weicher Farbkreis als Hintergrund (Sammelbuch-Look), Motiv darüber
+    const out = document.createElement('canvas'); out.width = out.height = size;
+    const ctx = out.getContext('2d');
+    const g = ctx.createRadialGradient(size * 0.5, size * 0.48, size * 0.05, size * 0.5, size * 0.48, size * 0.47);
+    g.addColorStop(0, bg[0]); g.addColorStop(0.75, bg[1]); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(c, 0, 0);
+    return out.toDataURL('image/png');
   }
 
   // Wie renderIcon, liefert aber eine Canvas (für Drehansichten ohne PNG-Umweg)

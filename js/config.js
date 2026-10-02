@@ -17,10 +17,10 @@ export const SEEDS = {
   lily:       { name: 'Lilie',               cost: 65,  growMs: 8 * M,   reward: 210, xp: 26, level: 8,  model: 'lily', water: 1 },
   hydrangea:  { name: 'Hor­tensie',     cost: 100, growMs: 14 * M,  reward: 360, xp: 40, level: 10, model: 'hydrangea', rare: true, unlockCoins: 600, water: 2 },
   // Langzeit-Blumen: wachsen Stunden, bringen pro Stunde mehr – ideal für Arbeit, Schule, Nacht
-  dahlia:     { name: 'Dahlie',              cost: 150, growMs: 2 * H,   reward: 3200, xp: 120, level: 7,  model: 'hydrangea', slow: true, water: 1 },
-  peony:      { name: 'Pfingst­rose',   cost: 260, growMs: 4 * H,   reward: 7400, xp: 240, level: 9,  model: 'rose', slow: true, water: 1 },
-  magnolia:   { name: 'Magnolie',            cost: 420, growMs: 8 * H,   reward: 17500, xp: 480, level: 11, model: 'lily', slow: true, water: 1 },
-  moonflower: { name: 'Mond­winde',     cost: 600, growMs: 10 * H,  reward: 26000, xp: 700, level: 14, model: 'orchid', slow: true, water: 0, nightOnly: true },
+  dahlia:     { name: 'Dahlie',              cost: 150, growMs: 2 * H,   reward: 3200, xp: 120, level: 7,  model: 'dahlia', slow: true, water: 1 },
+  peony:      { name: 'Pfingst­rose',   cost: 260, growMs: 4 * H,   reward: 7400, xp: 240, level: 9,  model: 'peony', slow: true, water: 1 },
+  magnolia:   { name: 'Magnolie',            cost: 420, growMs: 8 * H,   reward: 17500, xp: 480, level: 11, model: 'magnolia', slow: true, water: 1 },
+  moonflower: { name: 'Mond­winde',     cost: 600, growMs: 10 * H,  reward: 26000, xp: 700, level: 14, model: 'moonflower', slow: true, water: 0, nightOnly: true },
   // Züchtungen (im Gewächshaus)
   rainbowTulip:     { name: 'Regenbogen­tulpe',     cost: 25,  growMs: 90 * S,  reward: 70,   xp: 10,  level: 3,  model: 'tulip', bred: true, tier: 'selten', water: 0 },
   sunTulip:         { name: 'Sonnen­tulpe',         cost: 30,  growMs: 150 * S, reward: 90,   xp: 12,  level: 4,  model: 'tulip', bred: true, tier: 'selten', water: 1 },
@@ -211,6 +211,16 @@ export const BED_LEVELS = [
   { name: 'Prachtbeet', mult: 2, shiny: 0.05, cost: 900, level: 9 },
 ];
 export const SPRINKLER = { cost: 250, level: 3, speed: 0.7 };
+// Beet-Größe: mehr Pflanzen je Beet = mehr Ertrag je Ernte (Faktor), braucht mehr Platz im Garten
+export const BED_SIZES = [
+  { name: 'Klein', scale: 1, plants: 5, mult: 1 },
+  { name: 'Mittel', scale: 1.25, plants: 7, mult: 1.4, cost: 450, level: 6 },
+  { name: 'Groß', scale: 1.5, plants: 9, mult: 1.8, cost: 1300, level: 12 },
+];
+export const bedSize = (sz) => BED_SIZE.map((v) => v * (BED_SIZES[(sz || 1) - 1]?.scale || 1));
+
+// Echtgeld-Angebote: erst später – solange false, zeigt das Spiel keinen Angebote-Tab und keinen Saisonpass
+export const MONEY_ENABLED = false;
 
 // Gartenbedarf (Verbrauchsgegenstände)
 export const ITEMS = {
@@ -234,12 +244,47 @@ export const LEVELS = (() => {
   for (let l = 1; l < MAX_LEVEL; l++) a.push(a[l - 1] + Math.round((18 * Math.pow(l, 1.5) + 10) / 5) * 5);
   return a;
 })();
+// Besondere Level-Geschenke: Deko, Skins und Item-Pakete – jedes Level fühlt sich wie ein Meilenstein an
+export const LEVEL_SPECIAL = {
+  2: { items: { fert: 3 } },
+  3: { deco: 'pinwheel', items: { turbo: 1 } },
+  4: { items: { rain: 2 } },
+  5: { deco: 'lantern', items: { lucky: 1 } },
+  6: { items: { compost: 2, turbo: 1 } },
+  7: { deco: 'birdhouse' },
+  8: { items: { turbo: 2, pollen: 1 } },
+  9: { deco: 'torch', items: { rain: 2 } },
+  10: { deco: 'bench', items: { lucky: 2, boost: 1 } },
+  11: { items: { compost: 2, rain: 2 } },
+  12: { deco: 'insectHotel', items: { pollen: 1 } },
+  13: { items: { turbo: 3 } },
+  14: { deco: 'birdbath', items: { compost: 2 } },
+  15: { skin: 'arctic', items: { lucky: 2, pollen: 2 } },
+  16: { items: { compost: 3, rain: 2 } },
+  17: { deco: 'lampPost', items: { turbo: 2 } },
+  18: { items: { turbo: 3, rain: 3, boost: 1 } },
+  19: { deco: 'tableSet' },
+  20: { skin: 'autumn', deco: 'stringLights', items: { lucky: 3, pollen: 2 } },
+  21: { items: { compost: 3, turbo: 2 } },
+  22: { deco: 'arch', items: { rain: 3 } },
+  23: { items: { lucky: 2, pollen: 2 } },
+  24: { items: { turbo: 4, compost: 3 } },
+  25: { deco: 'fountain', items: { lucky: 3, boost: 2 } },
+  26: { items: { rain: 4, pollen: 2 } },
+  27: { items: { turbo: 4, compost: 4 } },
+  28: { deco: 'beehive', items: { lucky: 3 } },
+  29: { items: { turbo: 5, pollen: 3 } },
+  30: { items: { lucky: 5, pollen: 5, boost: 3, compost: 5 } },
+};
 export function levelReward(lvl) {
-  const items = {};
-  if (lvl % 3 === 0) items.fert = 2;
-  if (lvl % 5 === 0) items.turbo = 1;
-  if (lvl % 10 === 0) items.lucky = 1;
-  return { coins: 20 + lvl * 15, items };
+  const sp = LEVEL_SPECIAL[lvl] || {};
+  const items = { ...(sp.items || {}) };
+  if (lvl % 2 === 0) items.fert = (items.fert || 0) + 2;
+  const coins = 40 + lvl * 30 + (lvl % 5 === 0 ? lvl * 40 : 0) + (lvl === 30 ? 3000 : 0);
+  const r = { coins, items };
+  if (sp.deco) r.deco = sp.deco;
+  if (sp.skin) r.skin = sp.skin;
+  return r;
 }
 
 export const DAILY_TASKS = [
@@ -307,9 +352,20 @@ export const DECO = {
   stringLights: { name: 'Lichterkette', price: 220, level: 6, size: [2.4, 0.5], desc: 'Warme Lichter für gemütliche Abende.' },
   pumpkinLantern: { name: 'Kürbislaterne', size: [1.1, 1.1], desc: 'Exklusiv vom Herbstfest. Leuchtet nachts.', event: 'autumn' },
   leafPile:    { name: 'Laubhaufen', size: [1.6, 1.5], desc: 'Exklusiv vom Herbstfest.', event: 'autumn' },
+  heartBalloons: { name: 'Herzballons', size: [0.7, 0.7], desc: 'Drei rote Herzballons – exklusiv zur Herzblüte.', event: 'valentine' },
+  loveSeat:    { name: 'Herzbank', size: [1.9, 0.8], desc: 'Bank mit Herz-Lehne für zwei – exklusiv zur Herzblüte.', event: 'valentine' },
+  eggBasket:   { name: 'Osterkorb', size: [0.9, 0.9], desc: 'Korb voller bunter Eier – exklusiv zur Osterwiese.', event: 'easter' },
+  eggTree:     { name: 'Eierbaum', size: [1.1, 1.1], desc: 'Zweige mit bemalten Eiern – exklusiv zur Osterwiese.', event: 'easter' },
+  bouquetVase: { name: 'Blumenstrauß', size: [0.7, 0.7], desc: 'Vase mit üppigem Strauß – exklusiv zum Muttertag.', event: 'mothers' },
+  parasol:     { name: 'Sonnenschirm', size: [1.6, 1.6], desc: 'Gestreifter Schirm mit Liegestuhl – exklusiv vom Sommerfest.', event: 'summer' },
+  ghostLantern: { name: 'Geisterlicht', size: [0.8, 0.8], desc: 'Freundlicher Geist, der nachts leuchtet – exklusiv zur Gruselnacht.', event: 'halloween' },
+  cauldron:    { name: 'Hexenkessel', size: [1.0, 1.0], desc: 'Blubbert grün und leuchtet – exklusiv zur Gruselnacht.', event: 'halloween' },
+  fireworks:   { name: 'Raketenkiste', size: [1.0, 0.8], desc: 'Funkelnde Raketen – exklusiv von den Silvesterfunken.', event: 'newyear' },
+  snowman:     { name: 'Schneemann', size: [0.9, 0.9], desc: 'Mit Möhre und Schal – exklusiv vom Wintermarkt.', event: 'winter' },
+  xmasTree:    { name: 'Tannenbaum', size: [1.3, 1.3], desc: 'Geschmückt mit Lichtern und Kugeln – exklusiv vom Wintermarkt.', event: 'winter' },
 };
 export const DECO_ORDER = ['pathStone', 'groundLights', 'pinwheel', 'hedgeBlock', 'flowerpots', 'hoseReel', 'lantern', 'torch', 'lampPost', 'planter', 'rainBarrel', 'compostBin', 'birdhouse', 'bench', 'insectHotel', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'stringLights', 'tableSet', 'arch', 'fountain'];
-export const ALL_DECO = [...DECO_ORDER, 'pumpkinLantern', 'leafPile'];
+export const ALL_DECO = [...DECO_ORDER, 'pumpkinLantern', 'leafPile', 'heartBalloons', 'loveSeat', 'eggBasket', 'eggTree', 'bouquetVase', 'parasol', 'ghostLantern', 'cauldron', 'fireworks', 'snowman', 'xmasTree'];
 export const MAX_DECO = 80; // Deko-Teile insgesamt (Leistung auf dem Handy)
 // Bevorzugte Plätze (Übernahme alter Spielstände, erste Käufe)
 export const DECO_PLACE = {
@@ -440,38 +496,51 @@ export const STORY = [
 ];
 
 // ---------- Events (jährlich, Datum MM-TT, lokale Zeit) ----------
+// Saison-Events und Anlässe im Jahreslauf. Feste Daten als 'MM-TT'; bewegliche über anchor (easter/mothers) + Tage davor/danach.
+// Reihenfolge = Vorrang bei Überschneidung (Anlässe vor Jahreszeiten).
+const MS = (list) => list.map(([at, reward]) => ({ at, reward }));
+const SHOP_BASIC = [{ id: 'fert3', items: { fert: 3 }, price: 15 }, { id: 'turbo1', items: { turbo: 1 }, price: 25 }, { id: 'lucky1', items: { lucky: 1 }, price: 45 }];
 export const EVENTS = [
-  { id: 'autumn', name: 'Herbstfest', start: '10-01', end: '10-31', token: 'Herbstblätter', color: '#e8641f',
-    desc: 'Sammle beim Ernten Herbstblätter und tausche sie gegen exklusive Belohnungen.',
-    milestones: [
-      { at: 20, reward: { coins: 100 } },
-      { at: 50, reward: { items: { fert: 3 } } },
-      { at: 100, reward: { deco: 'pumpkinLantern' } },
-      { at: 180, reward: { items: { turbo: 2 } } },
-      { at: 300, reward: { skin: 'autumn', coins: 300 } },
-    ],
-    shop: [
-      { id: 'leafPile', deco: 'leafPile', price: 40 },
-      { id: 'fert3', items: { fert: 3 }, price: 15 },
-      { id: 'turbo1', items: { turbo: 1 }, price: 25 },
-      { id: 'lucky1', items: { lucky: 1 }, price: 45 },
-    ] },
-  { id: 'winter', name: 'Wintermarkt', start: '12-01', end: '12-31', token: 'Schneeflocken', color: '#4aa3ff',
-    desc: 'Gemütliche Winterwochen mit Lichterketten und Belohnungen.',
-    milestones: [{ at: 20, reward: { coins: 100 } }, { at: 60, reward: { items: { fert: 3 } } }, { at: 150, reward: { items: { turbo: 2 } } }, { at: 300, reward: { coins: 600, items: { lucky: 1 } } }],
-    shop: [{ id: 'fert3', items: { fert: 3 }, price: 15 }, { id: 'turbo1', items: { turbo: 1 }, price: 25 }] },
-  { id: 'spring', name: 'Frühlingsblüte', start: '03-15', end: '04-15', token: 'Knospen', color: '#ff6fa0',
+  { id: 'valentine', name: 'Herzblüte', start: '02-07', end: '02-16', token: 'Herzen', color: '#ff4d7a',
+    desc: 'Valentinstag im Garten: Herzen sammeln, Freunde beschenken und ein Herzballon-Bund als Deko.',
+    milestones: MS([[15, { coins: 120 }], [40, { items: { fert: 3 } }], [90, { deco: 'heartBalloons' }], [160, { items: { lucky: 1, turbo: 2 } }], [260, { deco: 'loveSeat', coins: 400 }]]),
+    shop: [{ id: 'heartBalloons', deco: 'heartBalloons', price: 45 }, ...SHOP_BASIC] },
+  { id: 'easter', name: 'Osterwiese', anchor: 'easter', from: -10, to: 1, token: 'Ostereier', color: '#ffb81c',
+    desc: 'Bunte Eier verstecken sich in jeder Ernte. Sammle sie für Osterkorb und Eierbaum.',
+    milestones: MS([[15, { coins: 120 }], [40, { items: { rain: 2 } }], [90, { deco: 'eggBasket' }], [160, { items: { lucky: 1, compost: 2 } }], [260, { deco: 'eggTree', coins: 400 }]]),
+    shop: [{ id: 'eggBasket', deco: 'eggBasket', price: 45 }, ...SHOP_BASIC] },
+  { id: 'mothers', name: 'Muttertag', anchor: 'mothers', from: -6, to: 1, token: 'Sträuße', color: '#ff7eb6',
+    desc: 'Eine Woche voller Blumensträuße – und ein Dankeschön für die beste Gärtnerin.',
+    milestones: MS([[15, { coins: 120 }], [40, { items: { fert: 3 } }], [90, { deco: 'bouquetVase' }], [160, { items: { lucky: 1, pollen: 1 } }]]),
+    shop: [{ id: 'bouquetVase', deco: 'bouquetVase', price: 45 }, ...SHOP_BASIC] },
+  { id: 'halloween', name: 'Gruselnacht', start: '10-24', end: '11-02', token: 'Geisterlichter', color: '#8d4dff',
+    desc: 'Freundliche Geister, leuchtende Kessel und Süßes statt Saures – schaurig schön bei Nacht.',
+    milestones: MS([[15, { coins: 120 }], [40, { items: { turbo: 2 } }], [90, { deco: 'ghostLantern' }], [160, { items: { lucky: 1, boost: 1 } }], [260, { deco: 'cauldron', coins: 400 }]]),
+    shop: [{ id: 'ghostLantern', deco: 'ghostLantern', price: 45 }, ...SHOP_BASIC] },
+  { id: 'newyear', name: 'Silvesterfunken', start: '12-27', end: '01-03', token: 'Funken', color: '#ffd23f',
+    desc: 'Das Jahr endet mit Feuerwerk über dem Garten. Sammle Funken für die Raketenkiste.',
+    milestones: MS([[15, { coins: 150 }], [40, { items: { turbo: 2 } }], [90, { deco: 'fireworks' }], [160, { items: { lucky: 2 } }], [260, { coins: 800, items: { pollen: 2 } }]]),
+    shop: [{ id: 'fireworks', deco: 'fireworks', price: 45 }, ...SHOP_BASIC] },
+  { id: 'spring', name: 'Frühlingsblüte', start: '03-01', end: '03-20', token: 'Knospen', color: '#ff6fa0',
     desc: 'Der Garten erwacht – doppelt so viele Knospen für frühe Gärtner.',
-    milestones: [{ at: 20, reward: { coins: 100 } }, { at: 60, reward: { items: { fert: 3 } } }, { at: 150, reward: { items: { turbo: 2 } } }, { at: 300, reward: { coins: 600, items: { lucky: 1 } } }],
-    shop: [{ id: 'fert3', items: { fert: 3 }, price: 15 }, { id: 'turbo1', items: { turbo: 1 }, price: 25 }] },
+    milestones: MS([[20, { coins: 100 }], [60, { items: { fert: 3 } }], [150, { items: { turbo: 2 } }], [300, { coins: 600, items: { lucky: 1 } }]]),
+    shop: SHOP_BASIC },
   { id: 'summer', name: 'Sommerfest', start: '07-01', end: '07-31', token: 'Sonnenstrahlen', color: '#ffb81c',
-    desc: 'Lange Sommertage und warme Nächte im Garten.',
-    milestones: [{ at: 20, reward: { coins: 100 } }, { at: 60, reward: { items: { fert: 3 } } }, { at: 150, reward: { items: { turbo: 2 } } }, { at: 300, reward: { coins: 600, items: { lucky: 1 } } }],
-    shop: [{ id: 'fert3', items: { fert: 3 }, price: 15 }, { id: 'turbo1', items: { turbo: 1 }, price: 25 }] },
+    desc: 'Lange Sommertage und warme Nächte im Garten – mit Sonnenschirm und Limonade.',
+    milestones: MS([[20, { coins: 100 }], [60, { items: { fert: 3 } }], [150, { deco: 'parasol' }], [300, { coins: 600, items: { lucky: 1 } }]]),
+    shop: [{ id: 'parasol', deco: 'parasol', price: 60 }, ...SHOP_BASIC] },
+  { id: 'autumn', name: 'Herbstfest', start: '09-20', end: '10-23', token: 'Herbstblätter', color: '#e8641f',
+    desc: 'Sammle beim Ernten Herbstblätter und tausche sie gegen exklusive Belohnungen.',
+    milestones: MS([[20, { coins: 100 }], [50, { items: { fert: 3 } }], [100, { deco: 'pumpkinLantern' }], [180, { items: { turbo: 2 } }], [300, { skin: 'autumn', coins: 300 }]]),
+    shop: [{ id: 'leafPile', deco: 'leafPile', price: 40 }, ...SHOP_BASIC] },
+  { id: 'winter', name: 'Wintermarkt', start: '12-01', end: '12-26', token: 'Schneeflocken', color: '#4aa3ff',
+    desc: 'Adventszeit mit Lichterglanz: Schmücke den Garten mit Tannenbaum und Schneemann.',
+    milestones: MS([[20, { coins: 100 }], [60, { items: { fert: 3 } }], [120, { deco: 'snowman' }], [200, { items: { turbo: 2, lucky: 1 } }], [320, { deco: 'xmasTree', coins: 600 }]]),
+    shop: [{ id: 'snowman', deco: 'snowman', price: 50 }, ...SHOP_BASIC] },
 ];
 // Jedes Wochenende: doppelte Chance auf Funkelblüten
 // Lichtquellen im Garten (Höhe und Reichweite in Metern) – leuchten automatisch ab der Dämmerung
-export const LIGHTS = { lantern: [1.7, 5], torch: [1.1, 4], lampPost: [2.0, 6.5], groundLights: [0.3, 3.2], stringLights: [1.75, 5.5], pumpkinLantern: [0.5, 3.5] };
+export const LIGHTS = { lantern: [1.7, 5], torch: [1.1, 4], lampPost: [2.0, 6.5], groundLights: [0.3, 3.2], stringLights: [1.75, 5.5], pumpkinLantern: [0.5, 3.5], ghostLantern: [0.9, 4], cauldron: [0.7, 3.5], xmasTree: [1.2, 5], fireworks: [0.6, 3] };
 
 export const WEEKEND_BONUS = { name: 'Funkel-Wochenende', shinyFactor: 2 };
 

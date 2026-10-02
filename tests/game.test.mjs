@@ -5,7 +5,7 @@ import * as G from '../js/game.js';
 import * as C from '../js/config.js';
 import { LocalStore, SaveManager } from '../js/storage.js';
 
-const T0 = new Date(2026, 8, 30, 10, 0, 0).getTime(); // Mittwoch, 30.9. (kein Event, kein Wochenende)
+const T0 = new Date(2026, 8, 2, 10, 0, 0).getTime(); // Mittwoch, 2.9. (kein Event, kein Wochenende)
 const OCT = new Date(2026, 9, 7, 10, 0, 0).getTime();  // Mittwoch, 7.10. (Herbstfest)
 const never = () => 0.99;
 const always = () => 0.0;
@@ -602,4 +602,46 @@ test('Wochenziele, Tiere streicheln, Überraschungen, Nacht-Blume', () => {
   assert.equal(s.beds[5].dur, 10 * 3600000);
   const back = G.migrate(JSON.parse(JSON.stringify(s)), mon).state;
   assert.equal(back.pets.ever.length, 3);
+});
+
+test('Beete vergrößern: Platzprüfung, mehr Ertrag, Speichern', () => {
+  const s = G.newState(T0);
+  s.coins = 9999; s.level = 12;
+  assert.ok(G.growBed(s, 0).ok, 'Mittel passt ins Standard-Raster');
+  assert.equal(s.beds[0].size, 2);
+  assert.ok(G.growBed(s, 0).ok, 'Groß passt am Rand noch');
+  // Nachbarbeet kann jetzt nicht mehr groß werden – zu wenig Platz
+  G.growBed(s, 1);
+  assert.equal(G.growBed(s, 1).code, 'noSpace', 'zwei große Beete nebeneinander passen nicht');
+  assert.equal(G.growBed(s, 0).code, 'maxLevel');
+  assert.deepEqual(G.footprint(s, { type: 'bed', i: 0 }, 0), [2.4 * 1.5, 2.4 * 1.5]);
+  // Ertrag ×1,8
+  assert.ok(G.plant(s, 0, 'daisy', T0, never).ok);
+  const r = G.harvest(s, 0, T0 + 60000);
+  assert.equal(r.reward, Math.round(12 * 1.8));
+  const back = G.migrate(JSON.parse(JSON.stringify(s)), T0).state;
+  assert.equal(back.beds[0].size, 3);
+  assert.equal(back.beds[1].size, 1);
+});
+
+test('Anlass-Events: Ostern beweglich, Gruselnacht, Silvester über den Jahreswechsel', () => {
+  assert.equal(G.easterSunday(2026).getDate(), 5); assert.equal(G.easterSunday(2027).getDate(), 28);
+  assert.equal(G.mothersDay(2026).getDate(), 10);
+  assert.equal(G.activeEvent(new Date(2026, 2, 29).getTime()).id, 'easter');
+  assert.equal(G.activeEvent(new Date(2027, 2, 20).getTime()).id, 'easter');
+  assert.equal(G.activeEvent(new Date(2026, 9, 31).getTime()).id, 'halloween');
+  assert.equal(G.activeEvent(new Date(2027, 0, 2).getTime()).id, 'newyear');
+  assert.equal(G.activeEvent(new Date(2027, 0, 20).getTime()), null);
+  for (const ev of C.EVENTS) for (const m of ev.milestones) if (m.reward.deco) assert.ok(C.DECO[m.reward.deco], `${ev.id}: Deko ${m.reward.deco} fehlt`);
+  for (const ev of C.EVENTS) for (const it of ev.shop) if (it.deco) assert.ok(C.DECO[it.deco]);
+});
+
+test('Level-Belohnungen: Deko und Skins als Geschenk', () => {
+  const s = G.newState(T0);
+  s.xp = C.LEVELS[4]; // Level 5 erreicht
+  const ups = G.addXp(s, 0);
+  assert.equal(s.level, 5);
+  assert.ok(s.deco.includes('lantern') && s.deco.includes('pinwheel'));
+  assert.ok(ups.find((u) => u.level === 5).deco === 'lantern');
+  for (let l = 2; l <= C.MAX_LEVEL; l++) { const r = C.levelReward(l); assert.ok(r.coins > 0); if (r.deco) assert.ok(C.DECO[r.deco]); if (r.skin) assert.ok(C.SKINS[r.skin]); }
 });

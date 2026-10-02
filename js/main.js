@@ -7,6 +7,7 @@ import { LocalStore, SaveManager, accountKey } from './storage.js';
 import { api as Net, CloudSync, call } from './account.js';
 import { SocialHub, socialApi, loadNews, loadLegal } from './social.js';
 import { Notifier } from './notify.js';
+import { Tutorial } from './tutorial.js';
 import { showAuth } from './authui.js';
 import { Sound } from './audio.js';
 import { UI, fmtTime } from './ui.js';
@@ -27,7 +28,7 @@ const guestStore = new LocalStore();
 let store = null, state, world, ui, saver, cloud = null, user = null, icons;
 let hub = null;    // Freunde & Chat (nur mit Konto)
 let basketWarned = false;
-let notifier = null, savedAtBefore = 0, surpriseTick = 0;
+let notifier = null, savedAtBefore = 0, surpriseTick = 0, tutorial = null;
 
 function surprise(sp) {
   sound.play('level');
@@ -377,6 +378,21 @@ function loop(t) {
 // Neues Story-Kapitel? Ophelia stellt es vor, sobald nichts anderes offen ist
 function storyCheck() {
   if (!started || ui.busy || ui.panel || ui.sheetBed >= 0 || ui.mode) return;
+  if (tutorial?.active) return;
+  // Allererster Start: kurzes Tutorial vor Ophelias erstem Kapitel
+  if (state.tutorial < 2 && !state.tutorialDone && !visit && !params.has('notut')) {
+    state.tutorialDone = 1; persist(false);
+    tutorial = new Tutorial({
+      ui, get state() { return state; }, owlIcon: icons.animal.owl,
+      firstEmptyBubble: () => { const i = state.beds.findIndex((b) => !b.locked && !b.seed); return i >= 0 ? ui.bubbles[i] : null; },
+      firstGrowingBubble: () => { const i = state.beds.findIndex((b) => b.seed); return i >= 0 ? ui.bubbles[i] : null; },
+      firstReadyBubble: () => { const n = now(); const i = state.beds.findIndex((b, k) => b.seed && G.bedInfo(state, k, n).ready); return i >= 0 ? ui.bubbles[i] : null; },
+      readyCount: () => { const n = now(); return state.beds.filter((b, k) => b.seed && G.bedInfo(state, k, n).ready).length; },
+      onEnd: () => { tutorial = null; setTimeout(storyCheck, 400); },
+    });
+    tutorial.start();
+    return;
+  }
   const st = G.storyStatus(state);
   if (st.finished || !st.showIntro) return;
   G.markIntroSeen(state);
@@ -583,7 +599,7 @@ function newerSave(a, b) {
 function changed() { persist(); if (!visit) { world.syncLayout(state); world.setTrader(state.level >= C.TRADER.level); } ui.refresh(); }
 function fail(r) {
   sound.play('error');
-  if (r.code === 'noCoins') ui.toast(r.message, 'err', { label: 'Shop', fn: () => ui.nav('shop', 'offers') });
+  if (r.code === 'noCoins') ui.toast(r.message, 'err', { label: state?.level >= C.TRADER.level ? 'Händler' : 'Aufgaben', fn: () => ui.nav(state?.level >= C.TRADER.level ? 'trader' : 'quests', 'daily') });
   else ui.toast(r.message, 'err');
 }
 // Mehrere Level-Aufstiege werden zu einem Dialog zusammengefasst
@@ -591,9 +607,11 @@ let pendingLevel = null, levelTimer = null;
 function afterLevelUps(ups) {
   if (!ups || !ups.length) return;
   for (const up of ups) {
-    if (!pendingLevel) pendingLevel = { level: up.level, reward: 0, items: {}, unlocks: [] };
+    if (!pendingLevel) pendingLevel = { level: up.level, reward: 0, items: {}, unlocks: [], gifts: [] };
     pendingLevel.level = Math.max(pendingLevel.level, up.level);
     pendingLevel.reward += up.reward;
+    if (up.deco) pendingLevel.gifts.push({ deco: up.deco });
+    if (up.skin) pendingLevel.gifts.push({ skin: up.skin });
     for (const [k, v] of Object.entries(up.items || {})) pendingLevel.items[k] = (pendingLevel.items[k] || 0) + v;
     pendingLevel.unlocks.push(...up.unlocks);
   }
@@ -686,6 +704,8 @@ const actions = {
       if (actions.buySprinkler(i) && !state.beds.some((b) => !b.locked && !b.sprinkler)) ui.setMode(null);
     } else if (m.kind === 'upgrade') {
       if (actions.upgradeBed(i) && !state.beds.some((b) => !b.locked && b.lvl < C.BED_LEVELS.length)) ui.setMode(null);
+    } else if (m.kind === 'grow') {
+      if (actions.growBed(i) && !state.beds.some((b) => !b.locked && (b.size || 1) < C.BED_SIZES.length)) ui.setMode(null);
     } else if (m.kind === 'item') {
       if (actions.useItem(m.id, i) && !state.items[m.id]) ui.setMode(null);
     }
@@ -773,6 +793,17 @@ const actions = {
     sound.play('water');
     world.burst(i, 'water');
     ui.toast('Bewässerung installiert – dieses Beet wächst jetzt 30 % schneller!', 'good');
+    changed();
+    return true;
+  },
+
+  growBed(i) {
+    const r = G.growBed(state, i);
+    if (!r.ok) { fail(r); return false; }
+    sound.play('unlock');
+    world.syncLayout(state);
+    world.burst(i, 'plant');
+    ui.toast(`Beet vergrößert (${r.name}): Platz für ${r.plants} Pflanzen!`, 'good');
     changed();
     return true;
   },

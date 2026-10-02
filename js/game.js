@@ -39,7 +39,7 @@ export function dayKey(now) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const newBed = (i) => ({ locked: i >= C.STARTING_BEDS, seed: null, plantedAt: 0, dur: 0, shiny: false, var: 0, lvl: 1, sprinkler: false, drinks: 0, compost: false });
+const newBed = (i) => ({ locked: i >= C.STARTING_BEDS, seed: null, plantedAt: 0, dur: 0, shiny: false, var: 0, lvl: 1, size: 1, sprinkler: false, drinks: 0, compost: false });
 
 export function newState(now = Date.now()) {
   return {
@@ -76,6 +76,7 @@ export function newState(now = Date.now()) {
     breedFails: {},      // Fehlversuche je Züchtung (machen den nächsten Versuch leichter)
     seenAnimals: [],
     tutorial: 0,
+    tutorialDone: 0,
     settings: { cycle: 'real', rt: true, cycleMin: 8, cycleEpoch: now, quality: 'auto', music: true, musicVol: 0.5, sound: true, soundVol: 0.8 },
   };
 }
@@ -140,9 +141,8 @@ export function addXp(s, n) {
   while (s.level < C.MAX_LEVEL && s.xp >= C.LEVELS[s.level]) {
     s.level++;
     const reward = C.levelReward(s.level);
-    addCoins(s, reward.coins);
-    addItems(s, reward.items);
-    ups.push({ level: s.level, reward: reward.coins, items: reward.items, unlocks: levelUnlocks(s.level) });
+    grant(s, { coins: reward.coins, items: reward.items, deco: reward.deco, skin: reward.skin });
+    ups.push({ level: s.level, reward: reward.coins, items: reward.items, deco: reward.deco, skin: reward.skin, unlocks: levelUnlocks(s.level) });
   }
   return ups;
 }
@@ -176,14 +176,30 @@ export function seedStatus(s, id) {
 // ---------- Wochenende & Events ----------
 export const isWeekend = (now) => { const d = new Date(now).getDay(); return d === 0 || d === 6; };
 
+// Ostersonntag (Gauß) und Muttertag (zweiter Sonntag im Mai) – für bewegliche Feiertage
+export function easterSunday(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(y, month - 1, day);
+}
+export function mothersDay(y) { const d = new Date(y, 4, 1); return new Date(y, 4, 1 + ((7 - d.getDay()) % 7) + 7); }
+const DAY = 86_400_000;
 function eventRange(ev, year) {
+  if (ev.anchor) {
+    // beweglich: Tage relativ zu einem Stichtag
+    const base = (ev.anchor === 'easter' ? easterSunday(year) : mothersDay(year)).getTime();
+    const s0 = new Date(base + ev.from * DAY), e0 = new Date(base + ev.to * DAY);
+    return { start: new Date(s0.getFullYear(), s0.getMonth(), s0.getDate()).getTime(), end: new Date(e0.getFullYear(), e0.getMonth(), e0.getDate(), 23, 59, 59, 999).getTime() };
+  }
   const [sm, sd] = ev.start.split('-').map(Number), [em, ed] = ev.end.split('-').map(Number);
-  return { start: new Date(year, sm - 1, sd, 0, 0, 0).getTime(), end: new Date(year, em - 1, ed, 23, 59, 59, 999).getTime() };
+  const wrap = em < sm || (em === sm && ed < sd) ? 1 : 0; // über den Jahreswechsel
+  return { start: new Date(year, sm - 1, sd, 0, 0, 0).getTime(), end: new Date(year + wrap, em - 1, ed, 23, 59, 59, 999).getTime() };
 }
 
 export function activeEvent(now) {
   const y = new Date(now).getFullYear();
-  for (const ev of C.EVENTS) { const r = eventRange(ev, y); if (now >= r.start && now <= r.end) return { ...ev, ...r, year: y }; }
+  for (const ev of C.EVENTS) for (const yy of [y, y - 1]) { const r = eventRange(ev, yy); if (now >= r.start && now <= r.end) return { ...ev, ...r, year: yy }; }
   return null;
 }
 
@@ -310,7 +326,7 @@ export const thirstyBeds = (s, now) => s.beds.map((b, i) => (!b.locked && b.seed
 export function bedInfo(s, i, now) {
   const b = s.beds[i];
   if (!b) return null;
-  const base = { i, lvl: b.lvl, sprinkler: b.sprinkler };
+  const base = { i, lvl: b.lvl, size: b.size || 1, sprinkler: b.sprinkler };
   if (!bedVisible(s, i)) return { ...base, locked: true, hidden: true, price: C.BED_UNLOCK[i].cost, needLevel: C.BED_UNLOCK[i].level, needLand: C.BED_UNLOCK[i].land };
   if (b.locked) { const u = C.BED_UNLOCK[i]; return { ...base, locked: true, price: u.cost, needLevel: s.level < u.level ? u.level : 0 }; }
   if (!b.seed) return { ...base, empty: true };
@@ -349,8 +365,8 @@ export function harvest(s, i, now) {
   if (g.thirsty) return err('thirsty');
   if (g.p < 1) return err('notReady', { remaining: g.remaining });
   const shiny = !!b.shiny, seed = b.seed, compost = !!b.compost;
-  const reward = Math.round(d.reward * C.BED_LEVELS[b.lvl - 1].mult * (shiny ? C.SHINY_MULTIPLIER : 1) * (compost ? C.COMPOST_BONUS : 1) * boost('doubleCoins'));
-  const xp = d.xp * (shiny ? 2 : 1);
+  const reward = Math.round(d.reward * C.BED_LEVELS[b.lvl - 1].mult * C.BED_SIZES[(b.size || 1) - 1].mult * (shiny ? C.SHINY_MULTIPLIER : 1) * (compost ? C.COMPOST_BONUS : 1) * boost('doubleCoins'));
+  const xp = Math.round(d.xp * (shiny ? 2 : 1) * C.BED_SIZES[(b.size || 1) - 1].mult);
   b.seed = null; b.plantedAt = 0; b.dur = 0; b.shiny = false; b.drinks = 0; b.compost = false;
   addCoins(s, reward);
   const entry = (s.collection[seed] ||= { count: 0, shiny: 0 });
@@ -402,6 +418,22 @@ export function upgradeBed(s, i) {
   if (!spend(s, next.cost)) return noCoins(s, next.cost, `das ${next.name}`);
   b.lvl++;
   return { ok: true, name: next.name, lvl: b.lvl };
+}
+
+// Beet vergrößern: braucht freien Platz rundherum
+export function growBed(s, i) {
+  const b = s.beds[i];
+  if (!b || b.locked) return err('locked');
+  const cur = b.size || 1;
+  if (cur >= C.BED_SIZES.length) return err('maxLevel', { message: 'Dieses Beet hat schon die größte Größe.' });
+  const next = C.BED_SIZES[cur];
+  if (s.level < next.level) return needLevel(next.level, `Die Beetgröße „${next.name}“`);
+  const p = s.layout.beds[i];
+  const test = canPlace(s, { type: 'bed', i, size: cur + 1 }, p[0], p[1], p[2]);
+  if (!test.ok) return err('noSpace', { message: 'Dafür ist rund um das Beet nicht genug Platz. Verschiebe es im Gestalten-Modus oder räume Deko weg.' });
+  if (!spend(s, next.cost)) return noCoins(s, next.cost, `die Beetgröße „${next.name}“`);
+  b.size = cur + 1;
+  return { ok: true, name: next.name, size: b.size, plants: next.plants };
 }
 
 // ---------- Gartenbedarf ----------
@@ -648,7 +680,7 @@ const EPS = 1e-6;
 const hits = (a, b) => a[0] < b[2] - EPS && b[0] < a[2] - EPS && a[1] < b[3] - EPS && b[1] < a[3] - EPS;
 
 export function footprint(s, ref, r) {
-  const [w, d] = ref.type === 'bed' ? C.BED_SIZE : ref.type === 'gh' ? C.GH_SIZE : C.DECO[ref.id ?? s.decor[ref.k]?.id]?.size || [1, 1];
+  const [w, d] = ref.type === 'bed' ? C.bedSize(ref.size || s.beds[ref.i]?.size || 1) : ref.type === 'gh' ? C.GH_SIZE : C.DECO[ref.id ?? s.decor[ref.k]?.id]?.size || [1, 1];
   return r % 2 ? [d, w] : [w, d];
 }
 export function objectPos(s, ref) {
@@ -662,7 +694,7 @@ const same = (a, b) => a && b && a.type === b.type && (a.type === 'gh' || (a.typ
 // Alle belegten Flächen (außer dem Objekt „skip“)
 export function occupied(s, skip) {
   const out = C.OBSTACLES.map((r) => ({ r, what: 'fixed' }));
-  s.layout.beds.forEach((p, i) => { if (bedVisible(s, i) && !same(skip, { type: 'bed', i })) out.push({ r: RECT(p[0], p[1], footprint(s, { type: 'bed' }, p[2])), what: 'bed' }); });
+  s.layout.beds.forEach((p, i) => { if (bedVisible(s, i) && !same(skip, { type: 'bed', i })) out.push({ r: RECT(p[0], p[1], footprint(s, { type: 'bed', i }, p[2])), what: 'bed' }); });
   if (!same(skip, { type: 'gh' })) { const g = s.layout.gh; out.push({ r: RECT(g[0], g[1], footprint(s, { type: 'gh' }, g[2])), what: 'gh' }); }
   s.decor.forEach((d, k) => { if (!d.stored && !same(skip, { type: 'deco', k })) out.push({ r: RECT(d.x, d.z, footprint(s, { type: 'deco', id: d.id }, d.r)), what: 'deco' }); });
   return out;
@@ -1241,6 +1273,7 @@ export function repair(s, now) {
       seed, plantedAt: seed ? num(b.plantedAt, now) : 0, dur: 0,
       shiny: seed ? !!(b.shiny ?? b.golden) : false, var: ok ? num(b.var, 0) : 0,
       lvl: ok ? Math.min(C.BED_LEVELS.length, Math.max(1, num(b.lvl, 1, 1))) : 1,
+      size: ok ? Math.min(C.BED_SIZES.length, Math.max(1, num(b.size, 1, 1))) : 1,
       sprinkler: ok ? !!b.sprinkler : false,
       drinks: ok ? Math.min(2, num(b.drinks, 0)) : 0,
       compost: seed && ok ? !!b.compost : false,
@@ -1319,6 +1352,7 @@ export function repair(s, now) {
   if (typeof s.tasks.date !== 'string') s.tasks.date = base.tasks.date;
   if (s.dailyGift !== null && typeof s.dailyGift !== 'string') s.dailyGift = null;
   s.tutorial = Math.min(2, num(s.tutorial, 0));
+  s.tutorialDone = num(s.tutorialDone, 0);
   if (!obj(s.settings)) s.settings = { ...base.settings };
   for (const [k, rule] of Object.entries(SETTING_RULES)) if (!rule(s.settings[k])) s.settings[k] = base.settings[k];
   // Einmalig: automatischer Zyklus wird zu Echtzeit (Tag & Nacht wie draußen)

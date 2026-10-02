@@ -86,6 +86,11 @@ with sync_playwright() as p:
     click('#registerForm button[type=submit]', 200)
     wait_game()
     check('Nach Registrierung im Spiel', ev('BW.user && BW.user.name') == NAME, str(ev('BW.user')))
+    pg.wait_for_timeout(1500)
+    check('Tutorial beim ersten Start', pg.locator('#tut').count() == 1 and 'Garten' in pg.locator('#tut .tut-text').inner_text())
+    shot('02_tutorial')
+    click('#tut [data-tut=skip]', 1500)
+    check('Tutorial übersprungen', pg.locator('#tut').count() == 0 and ev('BW.state.tutorialDone') == 1)
     check('Story-Einleitung von Ophelia', ev('BW.ui.modalOpen') and 'Ophelia' in pg.locator('#modal').inner_text())
     shot('02_intro')
     click('#modal [data-act=storyOk]', 500)
@@ -256,7 +261,7 @@ with sync_playwright() as p:
     check('Gestalten-Modus beendet', not ev('BW.ui.edit') and pg.locator('#editBar').is_hidden())
 
     # ---------- Alle Menüs ----------
-    panels = [('quests', ['story', 'daily', 'levels']), ('events', []), ('collection', ['flowers', 'shiny', 'animals', 'deco']), ('shop', ['offers', 'supplies', 'flowers', 'deco', 'animals']), ('friends', [])]
+    panels = [('quests', ['story', 'daily', 'levels']), ('events', []), ('collection', ['flowers', 'shiny', 'animals', 'deco']), ('shop', ['supplies', 'flowers', 'deco', 'animals', 'daily']), ('friends', [])]
     for nav, tabs in panels:
         click(f'#nav [data-nav={nav}]', 600)
         check(f'Menü {nav} offen', ev('BW.ui.panel') == nav)
@@ -272,11 +277,14 @@ with sync_playwright() as p:
         check('Event-Belohnung abgeholt', 0 in ev('BW.state.event.claimed'))
         click('#panel [data-act=eventBuy][data-id=leafPile]', 600)
         check('Laubhaufen eingetauscht', 'leafPile' in ev('BW.state.deco'))
-    # Echtgeld nur Hinweis
+    # Echtgeld ausgeblendet (MONEY_ENABLED=false), Beete vergrößern
     click('#nav [data-nav=shop]', 500)
-    click('#panel [data-act=tab][data-id=offers]', 400)
-    click('#panel [data-act=iap]', 600)
-    check('Echtgeld-Angebot zeigt Hinweis', 'nicht aktiv' in pg.locator('#modal').inner_text())
+    check('Kein Echtgeld-Tab im Shop', pg.locator('#panel [data-act=tab][data-id=offers]').count() == 0 and 'Saisonpass' not in pg.locator('#panel').inner_text())
+    ev('BW.state.coins += 2000; BW.state.level = Math.max(BW.state.level, 6); BW.ui.refresh()')
+    r = ev('(() => { for (let i = 0; i < 6; i++) { const r = BW.actions.growBed(i); if (r) return i; } return -1; })()')
+    check('Beet vergrößert (Mittel)', r >= 0 and ev(f'BW.state.beds[{r}].size') == 2, str(r))
+    shot('13_bed_medium')
+    close_modals()
     close_modals()
 
     # ---------- Einstellungen ----------

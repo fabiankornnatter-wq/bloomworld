@@ -12,7 +12,7 @@ def check(n, ok, d=''):
     res.append(bool(ok)); print(('OK   ' if ok else 'FEHL ') + n + (f'  [{d}]' if d else ''))
 
 def register(pg, name, email):
-    pg.goto(URL + '/?debug=1')
+    pg.goto(URL + '/?debug=1&notut=1')
     pg.wait_for_selector('#authBox:not([hidden])', timeout=90000)
     pg.locator('#authBox [data-tab=register]').click()
     pg.fill('#registerForm [name=name]', name)
@@ -22,7 +22,7 @@ def register(pg, name, email):
     pg.locator('#registerForm button[type=submit]').click()
     pg.wait_for_function('window.BW && document.getElementById("loader").hidden', timeout=90000)
     pg.wait_for_timeout(800)
-    pg.evaluate('BW.G.markIntroSeen(BW.state); BW.ui.modalQueue.length = 0; BW.ui.closeModal()')
+    pg.evaluate('BW.G.markIntroSeen(BW.state); BW.state.tutorialDone = 1; BW.ui.modalQueue.length = 0; BW.ui.closeModal()')
 
 def sync(pg):
     pg.evaluate('BW.hub.tick()'); pg.wait_for_timeout(900)
@@ -121,7 +121,7 @@ with sync_playwright() as p:
     check('Ankündigung veröffentlicht', 'Freunde sind da!' in A.locator('#panel').inner_text())
     A.screenshot(path=SH + 's7_admin_news.png')
     B.evaluate("localStorage.setItem('bw_news_seen', '1')")
-    B.goto(URL + '/?debug=1')
+    B.goto(URL + '/?debug=1&notut=1')
     B.wait_for_function('window.BW && document.getElementById("loader").hidden', timeout=90000)
     B.wait_for_timeout(2500)
     mt = B.locator('#modal').inner_text() if B.evaluate('BW.ui.modalOpen') else ''
@@ -151,7 +151,7 @@ with sync_playwright() as p:
     A.locator('#panel form[data-form=legal][data-id=impressum] button[type=submit]').click(); A.wait_for_timeout(1200)
     check('Impressum gespeichert', 'eigener Text' in A.locator('#panel form[data-form=legal][data-id=impressum]').inner_text())
     # Spieler B: Wartungsbanner + Event + Impressum + Passwort per Code zurücksetzen
-    B.evaluate("BW.ui.closeModal(); BW.ui.nav('garden')"); B.goto(URL + '/?debug=1')
+    B.evaluate("BW.ui.closeModal(); BW.ui.nav('garden')"); B.goto(URL + '/?debug=1&notut=1')
     B.wait_for_function('window.BW && document.getElementById("loader").hidden', timeout=90000); B.wait_for_timeout(3000)
     check('Spieler sieht Wartungshinweis', 'Testwartung' in B.locator('#maint').inner_text() and B.locator('#maint').is_visible())
     check('Event wirkt (doppelte EP)', B.evaluate('BW.G.boost("doubleXp")') == 2)
