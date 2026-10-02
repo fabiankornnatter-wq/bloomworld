@@ -15,5 +15,5 @@ export default async function handler(req, res) {
       scripts = Number(await kv().cmd('EVAL', 'return 7', 0)) === 7;
     } catch (e) { error = String(e.message || e).replace(/[^\w .:-]/g, '').slice(0, 80); }
   }
-  send(res, 200, { ok: true, service: 'BloomWorld', version: '3.11.0', storage: kvConfigured(), reachable, writable, scripts, error, source: kvSource(), vars: kvSchemes(), time: Date.now() });
+  send(res, 200, { ok: true, service: 'BloomWorld', version: '3.11.1', storage: kvConfigured(), reachable, writable, scripts, error, source: kvSource(), vars: kvSchemes(), time: Date.now() });
 }

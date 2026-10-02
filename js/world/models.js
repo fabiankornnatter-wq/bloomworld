@@ -1451,18 +1451,24 @@ export function tropicInterior() {
   const g = new Geo(), R = rng(31);
   const W = 11, D = 8, H = 3.4;
   // Wiese rund um das Haus, damit kein Nichts zu sehen ist
-  g.add(disk(30, PAL.lawnA, 24), T(0, -0.06, 0));
+  g.add(disk(70, PAL.lawnA, 28), T(0, -0.06, 0));
+  for (let i = 0; i < 14; i++) { const a = i * 0.45, d = 16 + (i % 3) * 5; g.add(tree(i + 2, i % 2 ? 'round' : 'apple'), T(Math.cos(a) * d, 0, Math.sin(a) * d - 6, 0, 0, 0, 0.9 + (i % 3) * 0.15)); }
   // Boden aus Terrakotta-Fliesen
   for (let x = 0; x < 11; x++) for (let z = 0; z < 8; z++) g.add(box(0.98, 0.08, 0.98, (x + z) % 2 ? '#d99a6c' : '#c98855'), T(-W / 2 + 0.5 + x, 0.04, -D / 2 + 0.5 + z));
-  // Glaswände mit Rahmen (nur drei Seiten, Vorderseite offen zur Kamera)
-  const glass = '#bfe9f2', frame = '#f4efe4';
-  for (const [w, x, z, ry] of [[W, 0, -D / 2, 0], [D, W / 2, 0, P / 2], [D, -W / 2, 0, P / 2]]) g.add(roundedBox(w, H, 0.06, 0.02, '#d6f0f6', 1), T(x, H / 2, z, ry), { emissive: 0.4 });
-  // Dach aus Glas
-  g.add(roundedBox(W, 0.05, D, 0.02, '#d6f0f6', 1), T(0, H + 0.12, 0), { emissive: 0.4 });
+  // Wände: kniehohe Glasbrüstung, darüber nur Rahmen – so sieht man Himmel und Landschaft (der Renderer kennt kein durchsichtiges Glas)
+  const frame = '#f4efe4', sill = '#cfe9f0';
+  for (const [w, x, z, ry] of [[W, 0, -D / 2, 0], [D, W / 2, 0, P / 2], [D, -W / 2, 0, P / 2]]) { // Vorderseite offen – dort steht die Kamera
+    g.add(roundedBox(w, 0.9, 0.06, 0.02, sill, 1), T(x, 0.45, z, ry), { emissive: 0.35 });
+    g.add(roundedBox(w, 0.08, 0.14, 0.02, frame, 1), T(x, 0.92, z, ry));
+    g.add(roundedBox(w, 0.1, 0.14, 0.02, frame, 1), T(x, H, z, ry));
+  }
   for (let i = 0; i <= 11; i++) g.add(roundedBox(0.1, H, 0.1, 0.02, frame, 1), T(-W / 2 + i, H / 2, -D / 2));
+  for (const x of [W / 2, -W / 2]) g.add(roundedBox(0.1, H, 0.1, 0.02, frame, 1), T(x, H / 2, D / 2));
   for (let i = 0; i <= 8; i++) for (const x of [W / 2, -W / 2]) g.add(roundedBox(0.1, H, 0.1, 0.02, frame, 1), T(x, H / 2, -D / 2 + i));
-  // Dachbalken
-  for (let i = 0; i <= 11; i += 1) g.add(roundedBox(0.08, 0.1, D, 0.02, frame, 1), T(-W / 2 + i, H + 0.05, 0));
+  // Dach: Firstbalken und Sparren (offen, kein Glas – der Himmel bleibt sichtbar)
+  for (let i = 0; i <= 11; i += 1) g.add(roundedBox(0.08, 0.1, D + 0.2, 0.02, frame, 1), T(-W / 2 + i, H + 0.05, 0));
+  g.add(roundedBox(W + 0.2, 0.14, 0.14, 0.02, frame, 1), T(0, H + 0.55, 0));
+  for (let i = 0; i <= 11; i += 1) for (const sz of [-1, 1]) g.add(roundedBox(0.07, 0.07, Math.hypot(D / 2, 0.5) + 0.05, 0.02, frame, 1), T(-W / 2 + i, H + 0.3, sz * D / 4, 0, sz * Math.atan2(0.5, D / 2)));
   // Regal hinten mit Töpfen und Gießkannen
   g.add(roundedBox(6, 0.08, 0.7, 0.02, PAL.wood, 1), T(0, 1.0, -D / 2 + 0.5));
   g.add(roundedBox(6, 0.08, 0.7, 0.02, PAL.wood, 1), T(0, 1.8, -D / 2 + 0.5));

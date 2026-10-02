@@ -115,7 +115,7 @@ export class World {
     const dummy = this.r.addObject({ buf: this.r.gl.createBuffer(), count: 0 }, m4.identity(), { visible: false });
     for (let k = 0; k < C.TROPIC.pots; k++) {
       const col = k % 4, row = Math.floor(k / 4);
-      const x = IX - 4.2 + col * 2.8, z = IZ - 2.4 + row * 2.3;
+      const x = IX - 4.2 + col * 2.8, z = IZ - 2.7 + row * 2.0;
       const frame = this.r.addObject(potMesh, T(x, IY, z), { fog: 0 });
       const plants = this.r.addObject({ buf: this.r.gl.createBuffer(), count: 0 }, T(x, IY + POT_TOP, z), { fog: 0 });
       this.beds.push({ frame, wild: dummy, plants, spr: dummy, head: dummy, sp: [0, 0], pos: [x, z, 0], shown: true, key: '', lvl: 1, sparkles: [], pot: true, top: IY + POT_TOP, base: IY, scale: 0.75 });
@@ -659,11 +659,11 @@ export class World {
     this.camAnim = null;
   }
 
-  zoomBy(f) { this.cam.zoom = clamp(this.cam.zoom * f, 0.5, 1.45 * Math.max(1, this.G / 10.2)); this.camAnim = null; }
+  zoomBy(f) { this.cam.zoom = clamp(this.cam.zoom * f, this.inside ? 0.22 : 0.5, this.inside ? 0.55 : 1.45 * Math.max(1, this.G / 10.2)); this.camAnim = null; }
 
   clampTarget() {
     const t = this.cam.target;
-    if (this.inside) { const [ix, iz] = C.TROPIC.inside; t[0] = clamp(t[0], ix - 3.5, ix + 3.5); t[2] = clamp(t[2], iz - 2.5, iz + 2.5); return; }
+    if (this.inside) { const [ix, iz] = C.TROPIC.inside; t[0] = clamp(t[0], ix - 3.0, ix + 3.0); t[2] = clamp(t[2], iz - 3.0, iz + 0.5); return; }
     const lim = this.G - 1.7;
     t[0] = clamp(t[0], -lim, lim); t[2] = clamp(t[2], -lim, lim);
   }
@@ -675,7 +675,8 @@ export class World {
     this.inside = true;
     this.savedCam = { target: [...this.cam.target], zoom: this.cam.zoom, yaw: this.cam.yaw, pitch: this.cam.pitch };
     const [ix, iz, iy] = C.TROPIC.inside;
-    this.cam.target = [ix, iy || 0, iz - 0.6]; this.cam.zoom = 0.8; this.cam.yaw = 0.35; this.cam.pitch = 0.52;
+    // Kamera steht im Raum: nah dran, flacher Blick – Töpfe vorn, Palmen und Regal hinten, Himmel über den Sparren
+    this.cam.target = [ix, (iy || 0) + 0.3, iz - 1.9]; this.cam.zoom = 0.42; this.cam.yaw = 0.12; this.cam.pitch = 0.42;
     this.camAnim = null;
     this.interior.visible = true;
     for (const b of this.beds) { for (const sp of b.sparkles) sp.o.visible = !!b.pot; if (b.pot) { b.frame.visible = b.plants.visible = b.shown; } }
