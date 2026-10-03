@@ -399,7 +399,9 @@ export class World {
         const R = rng(info.var + 1);
         spots.forEach(([x, z], k) => {
           const pg = this.plantGeo(info.seed, info.stage, info.shiny, (info.var + k) % 3);
-          g.add(pg, T(x + (R() - 0.5) * 0.12, 0, z + (R() - 0.5) * 0.12, R() * PI * 2, 0, 0, 0.88 + R() * 0.24));
+          // jede Pflanze ein klein wenig anders getönt – wirkt natürlicher
+          const tone = 0.93 + R() * 0.13, warm = (R() - 0.5) * 0.05;
+          g.add(new Geo().add(pg, T(x + (R() - 0.5) * 0.12, 0, z + (R() - 0.5) * 0.12, R() * PI * 2, 0, 0, 0.88 + R() * 0.24)).paint((p, n, c) => [Math.min(1, c[0] * (tone + warm)), Math.min(1, c[1] * tone), Math.min(1, c[2] * (tone - warm))]));
         });
       }
       this.r.updateMesh(bed.plants.mesh, g);
@@ -407,14 +409,24 @@ export class World {
       bed.sparkles = [];
       const look = info.seed ? M.FLOWER_LOOK[info.seed] || M.FLOWER_LOOK[SEEDS[info.seed]?.model] : null;
       bed.plants.glow = 0; bed.plants.glowCol = null; bed.glowing = false; bed.lightCol = null;
-      if (info.seed && info.stage === 3 && (info.shiny || (look?.glow || 0) >= 0.5)) {
-        // Funkelblüten und leuchtende Sorten: Funken in Blütenfarbe kreisen um das Beet, die Pflanzen pulsieren leicht
-        const col = info.shiny ? mixCol(look?.petal || '#ffffff', '#fff4b0', 0.5) : (look?.tip || look?.petal || '#ffffff');
+      const vis = !!bed.pot === !!this.inside, sc = bed.scale || 1, top = bed.top ?? BED_TOP;
+      if (info.seed && info.stage === 3 && info.shiny) {
+        // Funkelblüte: goldener Lichtkreis am Boden, goldene und weiße Funken (kreisend und aufsteigend), Pflanzen schimmern golden
+        const gold = this.mesh('sparkGold', () => M.sparkle('#ffd84a', 0.15)), white = this.mesh('sparkWhite', () => M.sparkle('#ffffff', 0.12));
+        const add = (mesh, o) => { const obj = this.r.addObject(mesh, m4.identity(), { mode: 2, shadow: false, visible: vis }); obj.glow = 0.9; bed.sparkles.push({ o: obj, ...o }); };
+        for (let k = 0; k < 7; k++) { const a = (k / 7) * PI * 2; add(k % 2 ? white : gold, { rel: [Math.cos(a) * 0.85 * sc, top + 0.55 + (k % 3) * 0.18, Math.sin(a) * 0.75 * sc], s: k * 1.7, a, orbit: 0.7 }); }
+        for (let k = 0; k < 6; k++) add(k % 2 ? gold : white, { rel: [((k % 3) - 1) * 0.55 * sc, top, (k < 3 ? -0.35 : 0.35) * sc], s: k * 0.37, rise: 1.5 });
+        const halo = this.r.addObject(this.haloMesh || (this.haloMesh = this.r.mesh(haloGeo())), m4.identity(), { mode: 2, shadow: false, visible: vis });
+        halo.glow = 0.7; bed.sparkles.push({ o: halo, halo: 1.55 * (bed.pot ? 0.6 : sc), y: bed.pot ? (bed.base ?? 0) + 0.09 : 0.09, s: 0 });
+        bed.glowing = true; bed.plants.glowCol = [1, 0.84, 0.32]; bed.glowStrength = 0.95;
+        bed.lightCol = '#ffd86a';
+      } else if (info.seed && info.stage === 3 && (look?.glow || 0) >= 0.5) {
+        // Leuchtende Sorten: Funken in Blütenfarbe kreisen um das Beet, die Pflanzen pulsieren leicht
+        const col = look?.tip || look?.petal || '#ffffff';
         const mesh = this.mesh('spark' + col, () => M.sparkle(col, 0.11));
-        const n = info.shiny ? 8 : 5;
-        for (let k = 0; k < n; k++) { const a = (k / n) * PI * 2; bed.sparkles.push({ o: this.r.addObject(mesh, m4.identity(), { mode: 2, shadow: false, visible: !!bed.pot === !!this.inside }), rel: [Math.cos(a) * 0.75 * (bed.scale || 1), (bed.top ?? BED_TOP) + 0.55 + (k % 3) * 0.15, Math.sin(a) * 0.65 * (bed.scale || 1)], s: k * 1.7, a, orbit: info.shiny ? 0.6 : 0.3 }); }
-        bed.glowing = true; bed.plants.glowCol = colOf(col); bed.glowStrength = info.shiny ? 0.6 : 0.3;
-        if ((look?.glow || 0) >= 0.5) bed.lightCol = col; // nachts eine kleine Lichtquelle
+        for (let k = 0; k < 5; k++) { const a = (k / 5) * PI * 2; bed.sparkles.push({ o: this.r.addObject(mesh, m4.identity(), { mode: 2, shadow: false, visible: vis }), rel: [Math.cos(a) * 0.75 * sc, top + 0.55 + (k % 3) * 0.15, Math.sin(a) * 0.65 * sc], s: k * 1.7, a, orbit: 0.3 }); }
+        bed.glowing = true; bed.plants.glowCol = colOf(col); bed.glowStrength = 0.3;
+        bed.lightCol = col; // nachts eine kleine Lichtquelle
       }
       this.syncLights();
     });
@@ -595,6 +607,8 @@ export class World {
     for (const bed of this.beds) {
       if (bed.glowing) bed.plants.glow = bed.glowStrength * (0.55 + 0.45 * Math.sin(t * 2.2 + bed.pos[0]));
       for (const s of bed.sparkles) {
+        if (s.halo) { const pu = 1 + 0.05 * Math.sin(t * 2.4 + bed.pos[0]); s.o.model = T(bed.pos[0], s.y, bed.pos[1], t * 0.25, 0, 0, s.halo * pu, 1, s.halo * pu); s.o.glow = 0.45 + 0.35 * Math.abs(Math.sin(t * 1.6)); continue; }
+        if (s.rise) { const f = (t * 0.45 + s.s) % 1, sz = Math.sin(f * PI) * 0.9; s.o.model = T(bed.pos[0] + s.rel[0] + Math.sin(t * 2 + s.s * 9) * 0.08, s.rel[1] + 0.2 + f * s.rise, bed.pos[1] + s.rel[2], t * 1.5 + s.s, 0.5, 0, sz); continue; }
         const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 2.5 + s.s));
         const a = (s.a || 0) + t * (s.orbit || 0), r = Math.hypot(s.rel[0], s.rel[2]);
         s.o.model = T(bed.pos[0] + Math.cos(a) * r, s.rel[1] + Math.sin(t * 1.5 + s.s) * 0.1, bed.pos[1] + Math.sin(a) * r, t * 0.8 + s.s, 0.5, 0, tw);
@@ -959,6 +973,16 @@ function coinGeo() {
   const g = new Geo();
   g.add(cylinder(0.11, 0.11, 0.035, '#ffd23f', 12), T(0, 0, 0, 0, PI / 2));
   g.add(cylinder(0.07, 0.07, 0.04, '#f0a810', 10), T(0, 0, 0, 0, PI / 2));
+  return g;
+}
+// Goldener Lichtkreis unter Funkelblüten (Radius 1)
+function haloGeo() {
+  const g = new Geo(), seg = 40;
+  for (let i = 0; i < seg; i++) {
+    const a = ((i + 0.5) / seg) * PI * 2;
+    g.add(box(0.17, 0.015, 0.07, i % 2 ? '#ffe27a' : '#ffd23f'), T(Math.cos(a), 0, Math.sin(a), -a));
+    if (i % 5 === 0) g.add(box(0.05, 0.015, 0.05, '#fff6c8'), T(Math.cos(a) * 1.12, 0, Math.sin(a) * 1.12, -a));
+  }
   return g;
 }
 function ringGeo() {

@@ -53,7 +53,7 @@ void main(){
   vec3 n = normalize(vNrm);
   vec3 base = vCol.rgb;
   if (uMode > 1.5) {                       // unbeleuchtet (Glühwürmchen, Funkeln)
-    gl_FragColor = vec4(base * (0.4 + uEmis), 1.0); return;
+    gl_FragColor = vec4(base * min(1.6, 0.4 + uEmis + uGlow), 1.0); return;
   }
   vec3 L = normalize(uSunDir);
   vec3 V = normalize(uCamPos - vWorld);

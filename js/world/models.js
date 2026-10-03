@@ -205,9 +205,11 @@ Object.assign(FLOWER_LOOK, {
   cactusFlower: { petal: '#ff2d8a', tip: '#ff8fc2', center: '#ffe27a', glow: 0.2 },
   opheliaBloom: { petals: ['#ffd1dc', '#fff0b3', '#d4f5d0', '#cfe6ff', '#e6d6ff'], petal: '#ffd1dc', tip: '#ffffff', center: '#ffe27a', glow: 0.5 },
 });
+// Funkelblüten: perlmuttheller Grundton, goldene Spitzen, goldene Mitte, leuchten nachts
 const brighten = (look) => {
-  const b = (c) => { const v = col(c); return v.map((x) => Math.min(1, x * 1.12 + 0.04)); };
-  return { ...look, petal: b(look.petal), tip: b(look.tip), petals: look.petals && look.petals.map(b) };
+  const b = (c, t = 0.1) => { const v = col(mixHex(typeof c === 'string' ? c : '#' + c.map((x) => Math.round(x * 255).toString(16).padStart(2, '0')).join(''), '#fff3c4', t)); return v.map((x) => Math.min(1, x * 1.1 + 0.03)); };
+  const hex = (c) => (typeof c === 'string' ? c : '#' + c.map((x) => Math.round(x * 255).toString(16).padStart(2, '0')).join(''));
+  return { ...look, shiny: true, petal: b(look.petal), tip: col(mixHex(hex(look.tip || look.petal), '#ffd23f', 0.55)), center: col(mixHex(hex(look.center || '#ffcf3a'), '#ffc21a', 0.55)), petals: look.petals && look.petals.map((c) => b(c)), glow: Math.max(look.glow || 0, 0.35) };
 };
 const setEmissive = (g, e) => { for (let i = 9; i < g.d.length; i += 11) g.d[i] = e; return g; };
 
@@ -229,9 +231,18 @@ let LOD = 1;
 const hi = (a, b) => (LOD ? a : b);
 function head(type, look, s = 1) {
   const g = headShape(type, look, s);
-  return look.glow ? setEmissive(g, 1 + look.glow) : g;
+  // Tiefe: zur Blütenmitte und nach unten etwas dunkler – wirkt plastischer und detailreicher
+  const rr = 0.16 * s;
+  g.paint((p, n, c) => { const d = Math.min(1, Math.hypot(p[0], p[2]) / rr), up = Math.max(0, Math.min(1, (p[1] / (0.06 * s)) * 0.5 + 0.5)); return v3.scale(c, 0.72 + 0.2 * d + 0.12 * up); });
+  if (look.glow) setEmissive(g, 1 + look.glow);
+  if (look.shiny) {
+    // Glitzerpunkte auf den Blütenblättern (leuchten nachts am stärksten)
+    const R = rng(Math.round(s * 97) + 5), n = hi(16, 9);
+    for (let i = 0; i < n; i++) { const a = i * GOLD + R(), r = (0.04 + R() * 0.11) * s; g.add(setEmissive(sphere((0.006 + R() * 0.005) * s, i % 3 ? '#fff6c8' : '#ffffff', 4, 3), 2), T(Math.cos(a) * r, (0.03 + R() * 0.05) * s, Math.sin(a) * r)); }
+  }
+  return g;
 }
-const mixHex = (a, b, t) => { const A = col(a), B = col(b); return '#' + A.map((v, k) => Math.round((v + (B[k] - v) * t) * 255).toString(16).padStart(2, '0')).join(''); };
+const mixHex = (a, b, t) => { const A = Array.isArray(a) ? a : col(a), B = Array.isArray(b) ? b : col(b); return '#' + A.map((v, k) => Math.round((v + (B[k] - v) * t) * 255).toString(16).padStart(2, '0')).join(''); };
 const pc = (look, i) => (look.petals ? look.petals[i % look.petals.length] : look.petal);
 const GOLD = 2.399963; // goldener Winkel – Samen- und Blütenstände wie in der Natur
 
