@@ -819,6 +819,142 @@ export function buyDeco(s, id, near) {
   return { ok: true, k, stored: s.decor[k].stored };
 }
 
+// ---------- Gartenpläne ----------
+// Baut einen schönen Garten aus dem, was der Spieler hat: Haus hinten links, Gewächshaus hinten rechts,
+// Weg vom Tor zum Haus, Beete in ordentlichen Reihen links und rechts davon, Deko nach Stil.
+// Nichts geht verloren: eigene Deko, die der Plan nicht braucht, bleibt an ihrem Platz oder kommt ins Lager.
+const PATH_X = 0.4; // Tor in der Mitte vorn
+function planWishes(style, A) {
+  const { b, H, Gh, cz, P } = A, front = b[3];
+  const W = [];
+  const w = (id, x, z, r = 0, opt = {}) => W.push({ id, x, z, r, ...opt });
+  if (style === 'classic') {
+    w('fountain', P, cz + 0.1);
+    w('lantern', P - 0.75, front - 0.4); w('lantern', P + 0.75, front - 0.4);
+    w('planter', P - 1.6, front - 0.6); w('planter', P + 1.6, front - 0.6);
+    w('flowerpots', H[0] + 1.8, H[1] + 3.0); w('bench', H[0] + 1.2, cz + 1.4);
+    w('lampPost', Gh[0] - 3.0, cz + 0.2); w('birdbath', Gh[0] + 2.4, cz + 1.5);
+    w('roundBedPink', b[0] + 1.6, front - 1.6); w('roundBedViolet', b[2] - 1.4, front - 1.4);
+    w('appleTree', b[0] + 1.1, front - 4.2); w('roundTree', b[2] - 1.0, front - 4.2);
+    w('beehive', Gh[0] - 2.7, Gh[1] - 0.8); w('insectHotel', b[2] - 0.5, Gh[1] + 2.6, 1);
+    w('wateringcan', H[0] + 3.1, H[1] + 1.3); w('pinwheel', P + 2.2, cz + 1.2);
+  } else if (style === 'romantic') {
+    w('arch', P, front - 1.2);
+    w('roseBush', P - 1.2, front - 0.7); w('roseBush', P + 1.2, front - 0.7);
+    w('lantern', P - 0.75, cz + 1.4); w('lantern', P + 0.75, cz + 1.4);
+    w('woodDeck', Gh[0] - 3.4, cz + 1.6, 0, { flat: true }); w('woodDeck', Gh[0] - 1.4, cz + 1.6, 0, { flat: true });
+    w('tableSet', Gh[0] - 2.4, cz + 1.6); w('stringLights', Gh[0] - 2.4, cz + 3.0);
+    w('hydrangeaBush', H[0] + 2.0, H[1] + 3.0); w('bushPink', H[0] + 3.3, H[1] + 1.2);
+    w('cherryTree', b[0] + 1.3, front - 1.3); w('cherryTree', b[2] - 1.1, front - 1.1);
+    w('loveSeat', H[0] + 0.9, cz + 1.4, 0, { ownOnly: true }); w('heartBalloons', H[0] + 2.4, cz + 1.4, 0, { ownOnly: true });
+    w('birdbath', b[2] - 1.0, front - 3.6); w('bushWhite', b[0] + 0.9, front - 3.4);
+    w('roundBedPink', b[0] + 1.6, front - 5.6);
+  } else {
+    w('pond', b[2] - 2.6, front - 2.0); w('willow', b[2] - 1.3, front - 4.9);
+    w('rockGroup', b[2] - 4.8, front - 0.8); w('tallGrass', P - 1.0, front - 0.6); w('tallGrass', P + 1.0, front - 0.6);
+    w('flowerMeadow', b[0] + 1.0, front - 1.0, 0, { flat: true }); w('flowerMeadow', b[0] + 3.0, front - 1.0, 0, { flat: true }); w('flowerMeadow', b[0] + 1.0, front - 3.0, 0, { flat: true });
+    w('birch', b[0] + 1.0, front - 1.1); w('fir', b[0] + 0.9, front - 4.4);
+    w('bushGreen', H[0] + 2.8, H[1] + 2.9); w('insectHotel', Gh[0] + 2.4, cz + 1.4); w('beehive', Gh[0] - 2.7, Gh[1] - 0.8);
+    w('birdhouse', H[0] + 3.4, H[1] + 0.8); w('groundLights', P - 0.8, cz + 1.4); w('groundLights', P + 0.8, front - 2.4);
+    w('rockGroup', Gh[0] - 3.2, cz + 1.4);
+  }
+  return W;
+}
+
+export function planGarden(s, style, { buy = true } = {}) {
+  if (!C.GARDEN_PLANS.some((p) => p.id === style)) return err('invalid');
+  const t = JSON.parse(JSON.stringify(s));
+  const b = gardenBounds(t), FAR = 1000;
+  // alles „wegräumen“: Beete weit weg, Deko ins Lager
+  const vis = t.layout.beds.map((_, i) => bedVisible(t, i));
+  t.layout.beds = t.layout.beds.map((p, i) => [FAR + i * 10, FAR, 0]);
+  t.layout.gh = [FAR, FAR + 50, 0]; t.layout.house = [FAR, FAR + 100, 0];
+  const pool = t.decor.map((d, k) => ({ ...d, k, used: false }));
+  t.decor.forEach((d) => { d.stored = true; });
+  const snap = (v) => Math.round(v / C.SNAP) * C.SNAP;
+  const tryAt = (ref, x, z, r, near = 0) => {
+    x = snap(x); z = snap(z);
+    if (canPlace(t, ref, x, z, r).ok) return [x, z, r];
+    if (!near) return null;
+    const f = findSpot(t, ref, [x, z], r);
+    return f && Math.hypot(f[0] - x, f[1] - z) <= near ? f : null;
+  };
+  // Haus hinten links, Gewächshaus hinten rechts
+  const [hw, hd] = C.HOUSE_SIZE, [gw, gd] = C.GH_SIZE;
+  const H = tryAt({ type: 'house' }, b[0] + hw / 2 + 0.2, b[1] + hd / 2 + 0.2, 0, 4) || [...C.DEFAULT_HOUSE];
+  t.layout.house = H;
+  const Gh = tryAt({ type: 'gh' }, b[2] - gw / 2 - 0.2, b[1] + gd / 2 + 0.2, 0, 4) || [...C.DEFAULT_GH];
+  t.layout.gh = Gh;
+  const cz = snap(Math.max(H[1] + hd / 2, Gh[1] + gd / 2) + 0.75); // Querweg vor Haus und Gewächshaus
+  const P = PATH_X;
+  // Beete: Reihen von hinten nach vorn, vom Weg nach außen
+  const idx = vis.map((v, i) => i).filter((i) => vis[i]).sort((a, c) => (t.beds[a].locked - t.beds[c].locked) || a - c);
+  const fp = (i) => footprint(t, { type: 'bed', i }, 0);
+  const fmax = Math.max(...idx.map((i) => Math.max(...fp(i))), 2.4), step = fmax + 0.7;
+  const slots = [];
+  for (let z = cz + 0.5 + 0.55 + fmax / 2; z + fmax / 2 <= b[3] + 1e-6; z += step) {
+    const row = [];
+    for (let x = P + 0.5 + 0.55 + fmax / 2; x + fmax / 2 <= b[2] + 1e-6; x += step) row.push([x, z]);
+    for (let x = P - 0.5 - 0.55 - fmax / 2; x - fmax / 2 >= b[0] - 1e-6; x -= step) row.push([x, z]);
+    row.sort((a, c) => Math.abs(a[0] - P) - Math.abs(c[0] - P));
+    slots.push(...row);
+  }
+  // Platz zwischen Haus und Gewächshaus für weitere Beete
+  for (let x = H[0] + hw / 2 + 0.4 + fmax / 2; x + fmax / 2 <= Gh[0] - gw / 2 - 0.4; x += step) slots.push([x, b[1] + fmax / 2 + 0.1]);
+  for (const i of idx) {
+    let pos = null;
+    while (!pos && slots.length) { const [x, z] = slots.shift(); pos = tryAt({ type: 'bed', i }, x, z, 0); }
+    if (!pos) pos = findSpot(t, { type: 'bed', i }, [P, (cz + b[3]) / 2], 0);
+    t.layout.beds[i] = pos || [...s.layout.beds[i]];
+  }
+  vis.forEach((v, i) => { if (!v) t.layout.beds[i] = [...s.layout.beds[i]]; });
+  // Deko: vorhandene Stücke zuerst, fehlende (wenn gewünscht) kaufen
+  const buyList = {}, used = [];
+  let cost = 0, count = t.decor.length;
+  const placeOne = (id, x, z, r, near) => {
+    const D = C.DECO[id]; if (!D) return false;
+    const own = pool.find((p) => !p.used && p.id === id);
+    if (!own && (!buy || !D.price || (D.level || 1) > t.level || count >= C.MAX_DECO)) return false;
+    const ref = { type: 'deco', id };
+    if (own) { own.used = true; ref.k = own.k; delete ref.id; }
+    else { t.decor.push({ id, x: 0, z: 0, r: 0, stored: true }); ref.k = t.decor.length - 1; delete ref.id; }
+    const pos = tryAt(ref, x, z, r, near);
+    if (!pos) { if (own) own.used = false; else t.decor.pop(); return false; }
+    Object.assign(t.decor[ref.k], { x: pos[0], z: pos[1], r: pos[2], stored: false });
+    if (!own) { buyList[id] = (buyList[id] || 0) + 1; cost += D.price; count++; }
+    used.push(id);
+    return true;
+  };
+  // Wege: Tor → Querweg, Querweg vom Haus zum Gewächshaus
+  const pathId = style === 'nature' ? 'pathStone' : 'brickPath';
+  const pLen = style === 'nature' ? 1.5 : 2.0;
+  for (let z = b[3] - pLen / 2; z - pLen / 2 >= cz + 0.5 - 1e-6; z -= pLen) placeOne(pathId, P, z, 1, 0);
+  for (let x = H[0] - 0.6; x <= Gh[0] + 0.01; x += 2) if (Math.abs(x - P) > 0.6 || style !== 'nature') placeOne(style === 'nature' ? 'gravelPatch' : pathId, x, cz, 0, 0);
+  for (const wsh of planWishes(style, { b, H, Gh, cz, P })) {
+    if (wsh.ownOnly && !pool.some((p) => !p.used && p.id === wsh.id)) continue;
+    placeOne(wsh.id, wsh.x, wsh.z, wsh.r, 2.2);
+  }
+  // Restliche eigene Deko: an alter Stelle lassen, wenn dort noch Platz ist – sonst ins Lager
+  let stored = 0;
+  for (const p of pool) {
+    if (p.used || p.stored) continue;
+    if (canPlace(t, { type: 'deco', k: p.k }, p.x, p.z, p.r).ok) Object.assign(t.decor[p.k], { x: p.x, z: p.z, r: p.r, stored: false });
+    else stored++;
+  }
+  return { ok: true, state: t, buy: buyList, cost, stored, newCount: Object.values(buyList).reduce((a, n) => a + n, 0) };
+}
+
+export function applyPlan(s, style, buy = true) {
+  const r = planGarden(s, style, { buy });
+  if (!r.ok) return r;
+  if (r.cost && !spend(s, r.cost)) return noCoins(s, r.cost, 'die neue Deko');
+  s.layout = r.state.layout;
+  s.decor = r.state.decor;
+  for (const id of Object.keys(r.buy)) if (!s.deco.includes(id)) s.deco.push(id);
+  track(s, 'move');
+  return { ok: true, cost: r.cost, newCount: r.newCount, stored: r.stored };
+}
+
 // Haus streichen: Farben aus C.HOUSE_COLORS
 export function paintHouse(s, colors) {
   const next = { ...s.house };

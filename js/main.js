@@ -433,7 +433,7 @@ function setupInput() {
     if (pts.size === 1) {
       g = { x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, t0: performance.now(), moved: false };
       // Gestalten: Objekt unter dem Finger greifen
-      if (ui?.edit && started) { const ref = world.pickEditable(e.clientX, e.clientY, state); if (ref) { dragStart(ref, e.clientX, e.clientY); g.drag = true; } }
+      if (ui?.edit && !ui.edit.plan && started) { const ref = world.pickEditable(e.clientX, e.clientY, state); if (ref) { dragStart(ref, e.clientX, e.clientY); g.drag = true; } }
     } else if (pts.size === 2 && g) { if (g.drag) dragEnd(true); g.drag = false; g.pinch = dist(); g.moved = true; }
   });
   cv.addEventListener('pointermove', (e) => {
@@ -562,6 +562,7 @@ function commitMove() {
 function tap(x, y) {
   if (!started) return;
   if (ui.edit) {
+    if (ui.edit.plan) return; // in der Plan-Vorschau nichts verschieben
     // Antippen im Gestalten-Modus: auswählen oder abwählen
     const ref = world.pickEditable(x, y, state);
     if (ref) editSelect(ref); else actions.editDeselect();
@@ -1251,8 +1252,43 @@ const actions = {
     ui.syncHistory();
   },
 
+  // ----- Gartenpläne -----
+  planPreview(id) {
+    if (!ui.edit) actions.toggleEdit(true);
+    if (ui.edit.sel) actions.editDeselect();
+    const r = G.planGarden(state, id);
+    if (!r.ok) return fail(r);
+    ui.closeModal();
+    ui.edit.plan = { id, r };
+    world.syncLayout(r.state);
+    world.focus(0.4, 0.4, 1.25);
+    sound.play('open');
+    ui.renderEditBar();
+  },
+  planCancel() {
+    if (!ui.edit?.plan) return;
+    ui.edit.plan = null;
+    world.syncLayout(state);
+    sound.play('tap');
+    ui.renderEditBar();
+  },
+  planApply(buy) {
+    const p = ui.edit?.plan;
+    if (!p) return;
+    const r = G.applyPlan(state, p.id, buy);
+    if (!r.ok) return fail(r);
+    ui.edit.plan = null;
+    sound.play('level'); ui.bumpCoins();
+    world.burstAt(0.4, 1);
+    const name = C.GARDEN_PLANS.find((x) => x.id === p.id).name;
+    ui.toast(`${name} ist fertig!${r.newCount ? ` ${r.newCount} neue Deko-Teile für ${r.cost.toLocaleString('de-DE')} Münzen.` : ''}${r.stored ? ` ${r.stored} Teile liegen jetzt im Lager.` : ''}`, 'good');
+    changed();
+    ui.renderEditBar();
+  },
+
   exitEdit(silent) {
     if (!ui.edit) return;
+    if (ui.edit.plan) actions.planCancel();
     if (ui.edit.sel) actions.editDeselect();
     ui.edit = null;
     world.hideMarker();

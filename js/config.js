@@ -278,6 +278,12 @@ export const HOUSE_COLORS = {
   roof: [['Ziegelrot', '#e2654a'], ['Blau', '#4d7fd6'], ['Grün', '#4fa86a'], ['Lila', '#9a6ad6'], ['Anthrazit', '#5b5f6e'], ['Rosa', '#e86fa0'], ['Orange', '#ec8a35'], ['Türkis', '#2fb3b0']],
   accent: [['Salbei', '#4aa58f'], ['Rot', '#d9434b'], ['Gelb', '#f2b62e'], ['Blau', '#3b78d8'], ['Rosa', '#ef6fa5'], ['Weiß', '#f4f1ea'], ['Lila', '#8a5cd1'], ['Braun', '#8b5a35']],
 };
+// Gartenpläne (Gestalten → Gartenplan): ordnen Haus, Gewächshaus, Beete und Deko automatisch schön an
+export const GARDEN_PLANS = [
+  { id: 'classic', name: 'Klassischer Bauerngarten', desc: 'Klinkerweg vom Tor zum Haus, Brunnen in der Mitte, Laternen, Zierbeete und Apfelbaum.' },
+  { id: 'romantic', name: 'Romantischer Rosengarten', desc: 'Rosenbogen am Eingang, Rosen und Hortensien am Weg, Sitzecke auf dem Holzdeck mit Lichterkette, Kirschbäume.' },
+  { id: 'nature', name: 'Naturgarten', desc: 'Trittsteine, Teich mit Trauerweide, Blumenwiesen, Felsen, Ziergras, Tannen und Insektenhotel.' },
+];
 // Feste Hindernisse: [x0, z0, x1, z1] (seit 3.13 keine mehr – auch das Haus ist verschiebbar)
 export const OBSTACLES = [];
 // Gartenstücke, die früher fest waren: werden einmalig als Deko in den Spielstand übernommen (frei verschiebbar, einlagerbar)

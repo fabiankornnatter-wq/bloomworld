@@ -211,9 +211,13 @@ export class UI {
     if (!e) { bar.hidden = true; return; }
     const stored = s.decor.filter((d) => d.stored).length;
     let html;
-    if (!e.sel) {
+    if (e.plan) {
+      const P = C.GARDEN_PLANS.find((x) => x.id === e.plan.id), r = e.plan.r, ok = s.coins >= r.cost;
+      html = `<div class="eb-msg">${svg(I.sparkle, 30)}<span><b>Vorschau: ${esc(P.name)}</b><br>${r.newCount ? `${r.newCount} neue Deko-Teile · ${I.coin()} ${num(r.cost)}` : 'Nur mit deiner eigenen Deko'}${r.stored ? ` · ${r.stored} Teile ins Lager` : ''}</span></div>
+        <div class="eb-btns"><button class="ebtn" data-act="planCancel">↩<span>Zurück</span></button>${r.newCount ? `<button class="ebtn" data-act="planApply" data-id="0">${I.crate}<span>Nur meine Deko</span></button>` : ''}<button class="btn small pink" data-act="planApply" data-id="1" ${ok ? '' : 'disabled'}>${ok ? 'Übernehmen' : `Fehlen ${num(r.cost - s.coins)}`}</button></div>`;
+    } else if (!e.sel) {
       html = `<div class="eb-msg">${svg(I.hand, 30)}<span>Tippe ein Beet, das Haus, das Gewächshaus oder eine Deko an und <b>ziehe</b> es an einen neuen Platz.</span></div>
-        <div class="eb-btns"><button class="ebtn" data-act="editStore">${I.crate}<span>Lager${stored ? ` (${stored})` : ''}</span></button><button class="ebtn" data-act="editShop">${I.NAV.shop}<span>Deko kaufen</span></button><button class="ebtn" data-act="editLand">${I.expand}<span>Vergrößern</span></button><button class="btn small pink" data-act="editDone">Fertig</button></div>`;
+        <div class="eb-btns"><button class="ebtn" data-act="editStore">${I.crate}<span>Lager${stored ? ` (${stored})` : ''}</span></button><button class="ebtn" data-act="editShop">${I.NAV.shop}<span>Deko kaufen</span></button><button class="ebtn" data-act="planMenu">${I.sparkle}<span>Gartenplan</span></button><button class="ebtn" data-act="editLand">${I.expand}<span>Vergrößern</span></button><button class="btn small pink" data-act="editDone">Fertig</button></div>`;
     } else {
       const name = this.objName(e.sel);
       html = `<div class="eb-msg">${svg(e.valid ? I.hand : I.lock, 30)}<span><b>${esc(name)}</b><br>${e.valid ? 'Ziehen zum Verschieben' : 'Hier ist kein Platz'}</span></div>
@@ -1044,6 +1048,10 @@ export class UI {
       case 'buyDeco': A.buyDeco(id); break;
       case 'decoCat': this.api.sound.play('tap'); this.decoCat = id; this.renderPanel(); break;
       case 'editPaint': this.paintDialog(); break;
+      case 'planMenu': this.planMenu(); break;
+      case 'planPreview': A.planPreview(id); break;
+      case 'planCancel': A.planCancel(); break;
+      case 'planApply': A.planApply(id === '1'); break;
       case 'paintPick': this.paintPick(el.dataset.key, +id); break;
       case 'paintHouse': A.paintHouse(this._paint); break;
       case 'buySkin': A.buySkin(id); break;
@@ -1110,6 +1118,12 @@ export class UI {
 
   confirm({ title, text, ok = 'OK', okClass = '', onOk }) {
     this.modal({ title, html: `<p>${esc(text)}</p>`, buttons: [['Abbrechen', 'closeModal', 'ghost'], [ok, 'modalOk', okClass]], onOk });
+  }
+
+  // Gartenpläne: Ophelia ordnet den Garten neu – erst Vorschau, dann übernehmen
+  planMenu() {
+    this.modal({ title: 'Gartenplan', cls: 'plandlg', html: `<p class="small center">Haus, Gewächshaus, Beete und Deko werden schön angeordnet. Deine Blumen wachsen einfach weiter. Fehlende Deko kannst du gleich mitkaufen – nichts geht verloren.</p>` +
+      C.GARDEN_PLANS.map((p) => `<div class="card plan"><div class="grow"><h4>${esc(p.name)}</h4><p class="small">${esc(p.desc)}</p></div><button class="btn small blue" data-act="planPreview" data-id="${p.id}">Vorschau</button></div>`).join(''), buttons: [['Schließen', 'closeModal', 'ghost']] });
   }
 
   // Haus streichen: Farben wählen (Vorschau sofort im Garten), dann bezahlen

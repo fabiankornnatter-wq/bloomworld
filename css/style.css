@@ -873,3 +873,6 @@ body.visiting #maint { display: none; }
 .paintdlg .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
 .paintdlg .sw { width: 36px; height: 36px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px #d8c9ee, 0 2px 4px rgba(0, 0, 0, 0.15); }
 .paintdlg .sw.on { box-shadow: 0 0 0 3px var(--pink), 0 2px 6px rgba(0, 0, 0, 0.2); transform: scale(1.08); }
+.plandlg .card.plan { display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 10px 12px; }
+.plandlg .card.plan h4 { font-size: 15px; margin: 0 0 2px; }
+.plandlg .card.plan .btn { flex: none; }

@@ -801,3 +801,27 @@ test('3.13: Haus verschiebbar und streichbar, flache Bodenteile unter Beeten und
   assert.ok(back.decor.some((d) => d.id === 'plaza'));
   assert.deepEqual(back.house, { wall: 0, roof: 0, accent: 0 });
 });
+
+test('Gartenpläne: alle Stile auf allen Gartengrößen gültig, nichts geht verloren', () => {
+  for (const land of [0, 1, 2, 3]) for (const p of C.GARDEN_PLANS) {
+    const s = G.newState(T0);
+    s.level = 40; s.coins = 1e6; s.land = land;
+    s.beds.forEach((b, i) => { if (i < 20) b.locked = false; if (i % 5 === 0) b.size = 3; });
+    G.buyDeco(s, 'snowman' in C.DECO && C.DECO.snowman.price ? 'snowman' : 'lantern');
+    const before = s.decor.length, ids = s.decor.map((d) => d.id).sort();
+    const r = G.applyPlan(s, p.id, true);
+    assert.ok(r.ok, p.id);
+    assert.deepEqual(allValid(s), [], `${p.id} Stufe ${land}`);
+    assert.equal(s.decor.length, before + r.newCount);
+    const after = s.decor.map((d) => d.id);
+    for (const id of ids) assert.ok(after.includes(id), `${id} fehlt nach ${p.id}`);
+  }
+  // ohne Kauf: keine Münzen weg
+  const s = G.newState(T0); s.level = 20; s.coins = 500;
+  const r = G.applyPlan(s, 'classic', false);
+  assert.ok(r.ok); assert.equal(r.cost, 0); assert.equal(s.coins, 500);
+  assert.deepEqual(allValid(s), []);
+  // zu wenig Münzen für den Kauf
+  const s2 = G.newState(T0); s2.level = 20; s2.coins = 10;
+  assert.equal(G.applyPlan(s2, 'romantic', true).code, 'noCoins');
+});
