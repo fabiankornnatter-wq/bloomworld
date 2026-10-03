@@ -40,12 +40,13 @@ export function pTrader(ui) {
   // Korb
   const entries = [...Object.entries(s.basketShiny).map(([k, n]) => [k, n, true]), ...Object.entries(s.basket).map(([k, n]) => [k, n, false])];
   h += `<div class="sec">Dein Blumenkorb</div><div class="card basket"><div class="row">${svg(I.basket, 48)}<div class="grow"><h4>${t.basket} / ${t.cap} Blumen</h4><div class="prog"><i style="width:${Math.min(100, (t.basket / t.cap) * 100)}%"></i></div><p class="small">Jede Ernte legt eine Blume in den Korb. ${t.basket >= t.cap ? '<b>Der Korb ist voll!</b> Verkaufe etwas, damit wieder Platz ist.' : ''}</p></div></div>
+    ${basketUp(s)}
     ${entries.length ? `<div class="blist">${entries.map(([k, n, sh]) => { const p = G.sellPrice(s, k, sh, now); return `<div class="bitem">${sh ? '<i class="shy">✨</i>' : ''}<img alt="" src="${(sh ? ui.icons.shiny : ui.icons.flower)[k]}"><div class="grow"><b>${esc(plain(C.SEEDS[k].name))}${k === t.flower ? ' <span class="trtag gold mini">×2</span>' : ''}</b><small>${n}× · je ${I.coin()} ${p}</small></div><button class="btn small ghost" data-act="trSell" data-id="${k}" data-shiny="${sh ? 1 : 0}" data-n="1">1×</button>${n > 1 ? `<button class="btn small" data-act="trSell" data-id="${k}" data-shiny="${sh ? 1 : 0}" data-n="${n}">Alle · ${I.coin()} ${p * n}</button>` : ''}</div>`; }).join('')}</div>
     <button class="btn wide gold" data-act="trSellAll" style="margin-top:10px">${I.coin()} Alles verkaufen</button><p class="small center">Blumen für offene Bestellungen und Funkelblüten bleiben im Korb.</p>` : '<p class="small center" style="margin-top:8px">Noch leer – ernte Blumen im Garten.</p>'}</div>`;
   // Ruf
   const next = t.nextRep;
   h += `<div class="sec">Dein Ruf</div><div class="card rep"><div class="row"><span class="repstars">${'★'.repeat(t.repLvl + 1)}${'☆'.repeat(4 - t.repLvl)}</span><div class="grow"><h4>${REP_NAMES[t.repLvl]}</h4><p class="small">${next !== null ? `${t.rep} / ${next} Ruf-Punkte bis zur nächsten Stufe` : `${t.rep} Ruf-Punkte – höchste Stufe!`}</p>${next !== null ? `<div class="prog"><i style="width:${Math.min(100, ((t.rep - C.TRADER.rep[t.repLvl]) / (next - C.TRADER.rep[t.repLvl])) * 100)}%"></i></div>` : ''}</div></div>
-    <p class="small">Jede Bestellung bringt Ruf (Sonderwünsche doppelt). Höhere Stufen: größerer Korb (bis ${C.TRADER.basket.at(-1)}), bis zu +${Math.round(C.TRADER.repBonus.at(-1) * 100)} % auf alle Preise und ab Stufe 4 eine Bestellung mehr pro Tag.</p></div>`;
+    <p class="small">Jede Bestellung bringt Ruf (Sonderwünsche doppelt). Höhere Stufen: größerer Korb (+${C.TRADER.basket.at(-1) - C.TRADER.basket[0]} Plätze), bis zu +${Math.round(C.TRADER.repBonus.at(-1) * 100)} % auf alle Preise und ab Stufe 4 eine Bestellung mehr pro Tag.</p></div>`;
   // Bedarf
   h += `<div class="sec">Bedarf vom Karren</div><div class="grid3">${C.TRADER_ITEMS.map((k) => {
     const it = C.ITEMS[k], p = G.traderItemPrice(k, now), lv = s.level >= it.level;
@@ -54,11 +55,19 @@ export function pTrader(ui) {
   return h;
 }
 
-export const TRADER_ACTS = new Set(['trDeliver', 'trSell', 'trSellAll', 'trOffer', 'trGift', 'trBuy']);
+function basketUp(s) {
+  const u = G.nextBasket(s);
+  if (!u) return `<p class="small center" style="margin:6px 0 0">${svg(I.basket, 18)} Größter Korb gekauft – alle ${C.BASKET_UPGRADES.length} Erweiterungen.</p>`;
+  const step = `Stufe ${(s.basketLvl || 0) + 1} von ${C.BASKET_UPGRADES.length}`;
+  return `<div class="bup"><div class="grow"><b>Korb erweitern: +${u.add} Plätze</b><small>${step}</small></div>${s.level < u.level ? `<button class="btn small" disabled>ab Lv ${u.level}</button>` : `<button class="btn small" data-act="trBasket">${I.coin()} ${u.cost.toLocaleString('de-DE')}</button>`}</div>`;
+}
+
+export const TRADER_ACTS = new Set(['trBasket', 'trDeliver', 'trSell', 'trSellAll', 'trOffer', 'trGift', 'trBuy']);
 
 export function onTraderAct(ui, a, el) {
   const A = ui.api.act, id = el.dataset.id;
   switch (a) {
+    case 'trBasket': A.trBasket(); break;
     case 'trDeliver': A.trDeliver(+id); break;
     case 'trSell': A.trSell(id, el.dataset.shiny === '1', +el.dataset.n || 1); break;
     case 'trSellAll': A.trSellAll(); break;

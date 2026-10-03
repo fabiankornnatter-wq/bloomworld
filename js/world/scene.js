@@ -95,7 +95,7 @@ export class World {
     }
 
     // Beete (Position kommt aus dem Spielstand, siehe syncLayout)
-    this.bedMeshes = [1, 2, 3].map((l) => this.mesh('bed' + l, () => M.raisedBed(false, l)));
+    this.bedMeshes = [1, 2, 3, 4, 5].map((l) => this.mesh('bed' + l, () => M.raisedBed(false, l)));
     const sprBody = this.mesh('spr', () => M.sprinkler()), sprHead = this.mesh('sprHead', () => M.sprinklerHead());
     for (let i = 0; i < BED_COUNT; i++) {
       const frame = this.r.addObject(this.bedMeshes[0], m4.identity());
@@ -352,7 +352,7 @@ export class World {
       if (bed.pot) { bed.frame.visible = !info.hidden && this.inside; bed.plants.visible = !info.hidden && this.inside; bed.shown = !info.hidden; }
       else { bed.frame.visible = !info.locked; bed.wild.visible = !!info.locked && !info.hidden; }
       if (!bed.pot) {
-        if (bed.lvl !== info.lvl) { bed.lvl = info.lvl; bed.frame.mesh = this.bedMeshes[(info.lvl || 1) - 1]; }
+        if (bed.lvl !== info.lvl) { bed.lvl = info.lvl; bed.frame.mesh = this.bedMeshes[(info.lvl || 1) - 1]; bed.frame.glow = info.lvl === 5 ? 0.6 : 0; bed.frame.glowCol = [0.55, 0.85, 1]; }
         const sc = C.BED_SIZES[(info.size || 1) - 1]?.scale || 1;
         if (bed.scale !== sc) { bed.scale = sc; bed.key = null; this.placeBed(i, bed.pos); }
         bed.spr.visible = bed.head.visible = !info.locked && !!info.sprinkler;
@@ -893,7 +893,7 @@ export class World {
     const bf = M.butterfly('#5ab4ff', '#ffd23f');
     icons.animal.butterfly = shot(new Geo().add(bf.body).add(bf.wingL, T(0, 0, 0, 0, 0, -0.5)).add(bf.wingR, T(0, 0, 0, 0, 0, 0.5)), { yaw: 0.3, pitch: 1.0 });
     icons.bed = shot(M.raisedBed(false));
-    for (const l of [1, 2, 3]) icons.bedLvl[l] = shot(M.raisedBed(false, l));
+    for (const l of [1, 2, 3, 4, 5]) icons.bedLvl[l] = shot(M.raisedBed(false, l));
     icons.sprinkler = shot(new Geo().add(M.sprinkler()).add(M.sprinklerHead(), T(0, 0.83, 0)), { pitch: 0.45 });
     icons.greenhouse = shot(M.greenhouse(true), { pitch: 0.42 });
     return icons;

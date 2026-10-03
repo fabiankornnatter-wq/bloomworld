@@ -111,7 +111,7 @@ with sync_playwright() as p:
     pg.evaluate('BW.actions.harvestAll(); BW.actions.harvestAll();'); pg.wait_for_timeout(300)
     c1 = pg.evaluate('BW.state.coins')
     toast = pg.locator('#toast').inner_text()
-    check('Alle ernten: genau 6 × 12 Münzen, kein Fehler-Hinweis bei Doppeltipp', c1 - c0 == 72 and 'leer' not in toast, f'{c0}->{c1} toast={toast!r}')
+    check('Alle ernten: genau 6 × 8 Münzen, kein Fehler-Hinweis bei Doppeltipp', c1 - c0 == 48 and 'leer' not in toast, f'{c0}->{c1} toast={toast!r}')
     # Level-Aufstieg + Reset: kein verspäteter Dialog im neuen Spiel
     pg.evaluate('''() => { const s = BW.state; s.xp = 29; s.beds[0].seed = 'tulip'; s.beds[0].plantedAt = Date.now() - 3600000; s.beds[0].dur = 45000; BW.actions.harvest(0); BW.actions.reset(); }''')
     pg.wait_for_timeout(1600)

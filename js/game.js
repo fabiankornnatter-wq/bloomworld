@@ -78,6 +78,7 @@ export function newState(now = Date.now()) {
     surprise: { day: '', n: 0 },
     trader: { day: '', orders: [], rep: 0, gift: '', offer: '' },
     basket: {}, basketShiny: {},   // Blumenkorb für den Händler
+    basketLvl: 0,                 // gekaufte Korb-Erweiterungen
     breedFails: {},      // Fehlversuche je Züchtung (machen den nächsten Versuch leichter)
     seenAnimals: [],
     tutorial: 0,
@@ -527,13 +528,21 @@ export function unlockBed(s, i) {
   return { ok: true, price: u.cost };
 }
 
+// Ausbau-Kosten wachsen mit der Zahl der Beete, die die Stufe schon haben
+const grown = (base, n) => Math.round((base * (1 + C.UPGRADE_GROWTH * n)) / 10) * 10;
+const openBeds = (s) => s.beds.filter((b) => !b.locked);
+export const sprinklerCost = (s) => grown(C.SPRINKLER.cost, openBeds(s).filter((b) => b.sprinkler).length);
+export const bedLevelCost = (s, lvl) => grown(C.BED_LEVELS[lvl - 1].cost, openBeds(s).filter((b) => (b.lvl || 1) >= lvl).length);
+export const bedSizeCost = (s, size) => grown(C.BED_SIZES[size - 1].cost, openBeds(s).filter((b) => (b.size || 1) >= size).length);
+
 export function buySprinkler(s, i, now) {
   if (isPot(i)) return err('invalid', { message: 'Töpfe im Tropenhaus lassen sich nicht ausbauen.' });
   const b = s.beds[i];
   if (!b || b.locked) return err('locked');
   if (b.sprinkler) return err('owned');
   if (s.level < C.SPRINKLER.level) return needLevel(C.SPRINKLER.level, 'Die Bewässerung');
-  if (!spend(s, C.SPRINKLER.cost)) return noCoins(s, C.SPRINKLER.cost, 'die Bewässerung');
+  const cost = sprinklerCost(s);
+  if (!spend(s, cost)) return noCoins(s, cost, 'die Bewässerung');
   if (b.seed) {
     const p = growState(b, now).p; // auch eine durstige Blume wächst ab jetzt weiter
     b.sprinkler = true;
@@ -550,7 +559,8 @@ export function upgradeBed(s, i) {
   if (b.lvl >= C.BED_LEVELS.length) return err('maxLevel');
   const next = C.BED_LEVELS[b.lvl];
   if (s.level < next.level) return needLevel(next.level, `Das ${next.name}`);
-  if (!spend(s, next.cost)) return noCoins(s, next.cost, `das ${next.name}`);
+  const cost = bedLevelCost(s, b.lvl + 1);
+  if (!spend(s, cost)) return noCoins(s, cost, `das ${next.name}`);
   b.lvl++;
   return { ok: true, name: next.name, lvl: b.lvl };
 }
@@ -567,7 +577,8 @@ export function growBed(s, i) {
   const p = s.layout.beds[i];
   const test = canPlace(s, { type: 'bed', i, size: cur + 1 }, p[0], p[1], p[2]);
   if (!test.ok) return err('noSpace', { message: 'Dafür ist rund um das Beet nicht genug Platz. Verschiebe es im Gestalten-Modus oder räume Deko weg.' });
-  if (!spend(s, next.cost)) return noCoins(s, next.cost, `die Beetgröße „${next.name}“`);
+  const cost = bedSizeCost(s, cur + 1);
+  if (!spend(s, cost)) return noCoins(s, cost, `die Beetgröße „${next.name}“`);
   b.size = cur + 1;
   return { ok: true, name: next.name, size: b.size, plants: next.plants };
 }
@@ -1142,7 +1153,18 @@ const pick = (R, list) => list[Math.floor(R() * list.length)];
 
 export const traderDay = (now) => C.TRADER_DAYS[new Date(now).getDay()];
 export const repLevel = (s) => { let l = 0; C.TRADER.rep.forEach((t, i) => { if ((s.trader?.rep || 0) >= t) l = i; }); return l; };
-export const basketCap = (s) => C.TRADER.basket[repLevel(s)];
+export const basketExtra = (s) => C.BASKET_UPGRADES.slice(0, s.basketLvl || 0).reduce((a, u) => a + u.add, 0);
+export const basketCap = (s) => C.TRADER.basket[repLevel(s)] + basketExtra(s);
+export const nextBasket = (s) => C.BASKET_UPGRADES[s.basketLvl || 0] || null;
+export function buyBasket(s) {
+  const u = nextBasket(s);
+  if (!u) return err('maxLevel', { message: 'Dein Korb ist schon so groß wie möglich.' });
+  if (s.level < C.TRADER.level) return needLevel(C.TRADER.level, 'Der Blumenkorb');
+  if (s.level < u.level) return needLevel(u.level, 'Diese Korb-Erweiterung');
+  if (!spend(s, u.cost)) return noCoins(s, u.cost, 'die Korb-Erweiterung');
+  s.basketLvl = (s.basketLvl || 0) + 1;
+  return { ok: true, add: u.add, cap: basketCap(s) };
+}
 export const basketCount = (s) => Object.values(s.basket || {}).reduce((a, b) => a + b, 0) + Object.values(s.basketShiny || {}).reduce((a, b) => a + b, 0);
 
 // Sorten, die der Spieler gerade anbauen kann
@@ -1466,6 +1488,7 @@ export function repair(s, now) {
   const tr = obj(s.trader) ? s.trader : {};
   const okOrder = (o) => obj(o) && obj(o.want) && Object.keys(o.want).every((k) => C.SEEDS[k]) && Number.isFinite(o.coins);
   s.trader = { day: typeof tr.day === 'string' ? tr.day : '', orders: Array.isArray(tr.orders) ? tr.orders.filter(okOrder).slice(0, 8).map((o) => ({ id: String(o.id), want: Object.fromEntries(Object.entries(o.want).map(([k, q]) => [k, num(Number(q), 1, 1)])), coins: num(o.coins, 0), xp: num(Number(o.xp), 0), items: obj(o.items) ? Object.fromEntries(Object.entries(o.items).filter(([k]) => C.ITEMS[k])) : null, special: o.special === 'shiny' || o.special === 'bred' ? o.special : undefined, done: !!o.done })) : [], rep: num(Number(tr.rep), 0), gift: typeof tr.gift === 'string' ? tr.gift : '', offer: typeof tr.offer === 'string' ? tr.offer : '' };
+  s.basketLvl = Math.min(C.BASKET_UPGRADES.length, num(Number(s.basketLvl), 0));
   for (const key of ['basket', 'basketShiny']) {
     const b0 = obj(s[key]) ? s[key] : {};
     s[key] = {};

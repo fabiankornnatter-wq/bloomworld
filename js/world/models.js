@@ -76,17 +76,19 @@ const BED_STYLE = [
   { lo: PAL.woodDark, hi: PAL.wood, post: PAL.woodDark, cap: PAL.woodLight },
   { lo: '#9c968d', hi: '#bdb6ab', post: '#857f77', cap: '#d9d3c9' },
   { lo: '#efe4cc', hi: '#fdf7ea', post: '#e6d7b4', cap: '#ffc93a' },
+  { lo: '#d79a12', hi: '#f2c23a', post: '#b97a08', cap: '#ffe27a' },     // Goldbeet
+  { lo: '#8fc8ee', hi: '#c6e8ff', post: '#6aa8de', cap: '#eaf7ff' },     // Kristallbeet
 ];
 export function raisedBed(locked = false, lvl = 1) {
   const g = new Geo();
   const W = 2.3, H = 0.56, th = 0.14, st = BED_STYLE[(lvl || 1) - 1];
-  const plank = (len, hgt, c) => roundedBox(len, hgt, th, lvl === 2 ? 0.06 : 0.04, c, 1);
+  const plank = (len, hgt, c) => roundedBox(len, hgt, th, lvl === 2 || lvl === 5 ? 0.06 : 0.04, c, 1);
   for (let side = 0; side < 4; side++) {
     const ry = side * P / 2;
     for (let k = 0; k < 2; k++) {
       const c = k === 0 ? st.lo : st.hi;
-      if (lvl === 2) {
-        // Steinblöcke statt durchgehender Bretter
+      if (lvl === 2 || lvl === 5) {
+        // Steinblöcke (beim Kristallbeet: Kristallblöcke) statt durchgehender Bretter
         for (let j = 0; j < 3; j++) g.add(plank((W - 0.3) / 3, 0.25, (j + k) % 2 ? st.lo : st.hi), mul(T(0, 0, 0, ry), T(-0.67 + j * 0.67 + (k ? 0.12 : 0), 0.14 + k * 0.27, (W - th) / 2)));
       } else g.add(plank(W - 0.2, 0.25, c), mul(T(0, 0, 0, ry), T(0, 0.14 + k * 0.27, (W - th) / 2)));
     }
@@ -94,9 +96,21 @@ export function raisedBed(locked = false, lvl = 1) {
   for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     g.add(roundedBox(0.22, H + 0.12, 0.22, 0.06, st.post, 1), T(sx * (W / 2 - 0.08), (H + 0.12) / 2, sz * (W / 2 - 0.08)));
     g.add(roundedBox(0.26, 0.06, 0.26, 0.03, st.cap, 1), T(sx * (W / 2 - 0.08), H + 0.13, sz * (W / 2 - 0.08)));
-    if (lvl === 3) g.add(sphere(0.09, '#ffcf3a', 8, 6), T(sx * (W / 2 - 0.08), H + 0.24, sz * (W / 2 - 0.08)));
+    const px = sx * (W / 2 - 0.08), pz = sz * (W / 2 - 0.08);
+    if (lvl === 3) g.add(sphere(0.09, '#ffcf3a', 8, 6), T(px, H + 0.24, pz));
+    if (lvl === 4) { g.add(sphere(0.1, '#ffd84a', 10, 8), T(px, H + 0.25, pz)); g.add(setEmissive(icosphere(0.07, '#ff4f8a', 0, true), 0.6), T(px, H + 0.39, pz)); }
+    if (lvl === 5) {
+      // Kristallspitzen auf den Pfosten, leuchten nachts
+      const cr = new Geo();
+      cr.add(cylinder(0, 0.09, 0.42, '#bfe8ff', 6), T(0, 0, 0));
+      cr.add(cylinder(0, 0.06, 0.26, '#e6f6ff', 6), T(0.06, 0, 0.03, 0, 0, -0.45));
+      cr.add(cylinder(0, 0.05, 0.22, '#9fd8ff', 6), T(-0.06, 0, -0.03, 0, 0, 0.45));
+      g.add(cr, T(px, H + 0.1, pz));
+    }
   }
-  if (lvl === 3) for (let side = 0; side < 4; side++) g.add(roundedBox(W - 0.3, 0.05, 0.05, 0.02, '#ffc93a', 1), mul(T(0, 0, 0, side * P / 2), T(0, H + 0.06, (W - th) / 2 + 0.07)));
+  if (lvl >= 3) for (let side = 0; side < 4; side++) g.add(roundedBox(W - 0.3, 0.05, 0.05, 0.02, lvl === 5 ? '#e6f6ff' : lvl === 4 ? '#ffe27a' : '#ffc93a', 1), mul(T(0, 0, 0, side * P / 2), T(0, H + 0.06, (W - th) / 2 + 0.07)));
+  if (lvl === 4) for (let side = 0; side < 4; side++) for (const o of [-0.55, 0, 0.55]) g.add(setEmissive(icosphere(0.045, ['#ff4f8a', '#3fa9ff', '#3fd17a'][(side + Math.round(o * 2) + 3) % 3], 0, true), 0.5), mul(T(0, 0, 0, side * P / 2), T(o, 0.42, (W - th) / 2 + 0.075)));
+  if (lvl === 5) for (let side = 0; side < 4; side++) g.add(roundedBox(W - 0.4, 0.04, 0.03, 0.015, '#e6f6ff', 1), mul(T(0, 0, 0, side * P / 2), T(0, 0.3, (W - th) / 2 + 0.075)));
   // Erde mit leichten Hügeln
   const soil = roundedBox(W - 0.3, 0.12, W - 0.3, 0.05, PAL.soil, 2).displace((p, n) => (n[1] > 0.5 ? [p[0], p[1] + Math.sin(p[0] * 7) * Math.sin(p[2] * 6) * 0.02, p[2]] : p));
   g.add(soil, T(0, H - 0.1, 0));

@@ -983,13 +983,20 @@ const actions = {
   },
 
   // ----- Blumenhändler -----
+  trBasket() {
+    const r = G.buyBasket(state);
+    if (!r.ok) return fail(r);
+    sound.play('buy'); ui.bumpCoins(); basketWarned = false;
+    ui.toast(`Dein Korb ist größer: +${r.add} Plätze, jetzt ${r.cap} Blumen.`, 'good');
+    changed();
+  },
   trDeliver(i) {
     const r = G.deliverOrder(state, i, now());
     if (!r.ok) return fail(r);
     sound.play('buy');
     ui.bumpCoins();
     ui.toast(`Geliefert! +${r.coins} Münzen, +${r.xp} EP${r.items ? ` und ${Object.entries(r.items).map(([k, n]) => `${n}× ${C.ITEMS[k].name}`).join(', ')}` : ''}.`, 'good');
-    if (r.repUp) ui.modal({ queue: true, title: 'Neue Ruf-Stufe!', html: `<img class="big" alt="" src="${icons.animal.hedgehog}"><p>${C.TRADER.name} schätzt dich sehr! Dein Korb fasst jetzt <b>${C.TRADER.basket[r.repUp]} Blumen</b> und du bekommst <b>+${Math.round(C.TRADER.repBonus[r.repUp] * 100)} %</b> auf alle Preise.</p>`, buttons: [['Danke!', 'closeModal', '']] });
+    if (r.repUp) ui.modal({ queue: true, title: 'Neue Ruf-Stufe!', html: `<img class="big" alt="" src="${icons.animal.hedgehog}"><p>${C.TRADER.name} schätzt dich sehr! Dein Korb fasst jetzt <b>${G.basketCap(state)} Blumen</b> und du bekommst <b>+${Math.round(C.TRADER.repBonus[r.repUp] * 100)} %</b> auf alle Preise.</p>`, buttons: [['Danke!', 'closeModal', '']] });
     basketWarned = false;
     changed();
     afterLevelUps(r.levelUps);

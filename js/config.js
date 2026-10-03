@@ -6,58 +6,58 @@ const S = 1000, M = 60_000, H = 3_600_000;
 // model = Grundform im 3D-Garten, look = Farben (siehe world/models.js)
 // water = wie oft die Blume beim Wachsen gegossen werden muss (Beete mit Sprinkler gießen sich selbst)
 export const SEEDS = {
-  daisy:      { name: 'Gänse­blümchen', cost: 5,   growMs: 20 * S,  reward: 12,  xp: 2,  level: 1,  model: 'daisy', water: 0 },
-  tulip:      { name: 'Tulpe',               cost: 10,  growMs: 45 * S,  reward: 25,  xp: 4,  level: 1,  model: 'tulip', water: 0 },
-  cornflower: { name: 'Korn­blume',     cost: 15,  growMs: 75 * S,  reward: 40,  xp: 6,  level: 2,  model: 'cornflower', water: 0 },
-  sunflower:  { name: 'Sonnen­blume',   cost: 20,  growMs: 2 * M,   reward: 55,  xp: 8,  level: 2,  model: 'sunflower', water: 1 },
-  lavender:   { name: 'Lavendel',            cost: 35,  growMs: 4 * M,   reward: 95,  xp: 14, level: 3,  model: 'lavender', water: 1 },
-  rose:       { name: 'Rose',                cost: 50,  growMs: 6 * M,   reward: 150, xp: 20, level: 4,  model: 'rose', rare: true, unlockCoins: 150, water: 1 },
-  poppy:      { name: 'Mohn­blume',     cost: 40,  growMs: 5 * M,   reward: 120, xp: 17, level: 5,  model: 'poppy', water: 1 },
-  orchid:     { name: 'Orchidee',            cost: 80,  growMs: 10 * M,  reward: 260, xp: 32, level: 6,  model: 'orchid', rare: true, unlockCoins: 300, water: 2 },
-  lily:       { name: 'Lilie',               cost: 65,  growMs: 8 * M,   reward: 210, xp: 26, level: 8,  model: 'lily', water: 1 },
-  hydrangea:  { name: 'Hor­tensie',     cost: 100, growMs: 14 * M,  reward: 360, xp: 40, level: 10, model: 'hydrangea', rare: true, unlockCoins: 600, water: 2 },
-  // Langzeit-Blumen: wachsen Stunden, bringen pro Stunde mehr – ideal für Arbeit, Schule, Nacht
-  dahlia:     { name: 'Dahlie',              cost: 150, growMs: 2 * H,   reward: 3200, xp: 120, level: 7,  model: 'dahlia', slow: true, water: 1 },
-  peony:      { name: 'Pfingst­rose',   cost: 260, growMs: 4 * H,   reward: 7400, xp: 240, level: 9,  model: 'peony', slow: true, water: 1 },
-  magnolia:   { name: 'Magnolie',            cost: 420, growMs: 8 * H,   reward: 17500, xp: 480, level: 11, model: 'magnolia', slow: true, water: 1 },
-  moonflower: { name: 'Mond­winde',     cost: 600, growMs: 10 * H,  reward: 26000, xp: 700, level: 14, model: 'moonflower', slow: true, water: 0, nightOnly: true },
+  daisy:      { name: 'Gänse­blümchen', cost: 5,   growMs: 20 * S,  reward: 8,  xp: 2,  level: 1,  model: 'daisy', water: 0 },
+  tulip:      { name: 'Tulpe',               cost: 10,  growMs: 45 * S,  reward: 18,  xp: 4,  level: 1,  model: 'tulip', water: 0 },
+  cornflower: { name: 'Korn­blume',     cost: 15,  growMs: 75 * S,  reward: 28,  xp: 6,  level: 2,  model: 'cornflower', water: 0 },
+  sunflower:  { name: 'Sonnen­blume',   cost: 20,  growMs: 2 * M,   reward: 42,  xp: 8,  level: 2,  model: 'sunflower', water: 1 },
+  lavender:   { name: 'Lavendel',            cost: 35,  growMs: 4 * M,   reward: 72,  xp: 14, level: 3,  model: 'lavender', water: 1 },
+  rose:       { name: 'Rose',                cost: 50,  growMs: 6 * M,   reward: 110, xp: 20, level: 4,  model: 'rose', rare: true, unlockCoins: 150, water: 1 },
+  poppy:      { name: 'Mohn­blume',     cost: 40,  growMs: 5 * M,   reward: 94, xp: 17, level: 5,  model: 'poppy', water: 1 },
+  orchid:     { name: 'Orchidee',            cost: 80,  growMs: 10 * M,  reward: 195, xp: 32, level: 6,  model: 'orchid', rare: true, unlockCoins: 300, water: 2 },
+  lily:       { name: 'Lilie',               cost: 65,  growMs: 8 * M,   reward: 170, xp: 26, level: 8,  model: 'lily', water: 1 },
+  hydrangea:  { name: 'Hor­tensie',     cost: 100, growMs: 14 * M,  reward: 310, xp: 40, level: 10, model: 'hydrangea', rare: true, unlockCoins: 600, water: 2 },
+  // Langzeit-Blumen: wachsen Stunden, ideal für Arbeit, Schule, Nacht – bringen pro Stunde etwas weniger als aktives Gärtnern
+  dahlia:     { name: 'Dahlie',              cost: 150, growMs: 2 * H,   reward: 1050, xp: 120, level: 7,  model: 'dahlia', slow: true, water: 1 },
+  peony:      { name: 'Pfingst­rose',   cost: 260, growMs: 4 * H,   reward: 2300, xp: 240, level: 9,  model: 'peony', slow: true, water: 1 },
+  magnolia:   { name: 'Magnolie',            cost: 420, growMs: 8 * H,   reward: 4980, xp: 480, level: 11, model: 'magnolia', slow: true, water: 1 },
+  moonflower: { name: 'Mond­winde',     cost: 600, growMs: 10 * H,  reward: 7200, xp: 700, level: 14, model: 'moonflower', slow: true, water: 0, nightOnly: true },
   // Züchtungen (im Gewächshaus)
-  rainbowTulip:     { name: 'Regenbogen­tulpe',     cost: 25,  growMs: 90 * S,  reward: 70,   xp: 10,  level: 3,  model: 'tulip', bred: true, tier: 'selten', water: 0 },
-  sunTulip:         { name: 'Sonnen­tulpe',         cost: 30,  growMs: 150 * S, reward: 90,   xp: 12,  level: 4,  model: 'tulip', bred: true, tier: 'selten', water: 1 },
-  skyCornflower:    { name: 'Himmels­kornblume',    cost: 30,  growMs: 150 * S, reward: 95,   xp: 14,  level: 4,  model: 'cornflower', bred: true, tier: 'selten', water: 0 },
-  goldRose:         { name: 'Goldene Rose',              cost: 70,  growMs: 8 * M,   reward: 260,  xp: 30,  level: 5,  model: 'rose', bred: true, tier: 'episch', water: 1 },
-  firePoppy:        { name: 'Feuer­mohn',           cost: 60,  growMs: 7 * M,   reward: 230,  xp: 28,  level: 6,  model: 'poppy', bred: true, tier: 'episch', water: 1 },
-  moonOrchid:       { name: 'Mond­orchidee',        cost: 100, growMs: 12 * M,  reward: 380,  xp: 40,  level: 6,  model: 'orchid', bred: true, tier: 'episch', water: 2 },
-  northRose:        { name: 'Nordlicht-Rose',            cost: 110, growMs: 12 * M,  reward: 400,  xp: 42,  level: 7,  model: 'rose', bred: true, tier: 'episch', water: 2 },
-  blackRose:        { name: 'Schwarze Rose',             cost: 120, growMs: 15 * M,  reward: 480,  xp: 50,  level: 8,  model: 'rose', bred: true, tier: 'episch', water: 2 },
-  iceLily:          { name: 'Eis­lilie',            cost: 110, growMs: 12 * M,  reward: 430,  xp: 46,  level: 10, model: 'lily', bred: true, tier: 'episch', water: 2 },
-  rainbowHydrangea: { name: 'Regenbogen­hortensie', cost: 140, growMs: 16 * M,  reward: 520,  xp: 55,  level: 11, model: 'hydrangea', bred: true, tier: 'episch', water: 2 },
-  starRose:         { name: 'Sternen­rose',         cost: 250, growMs: 25 * M,  reward: 1100, xp: 120, level: 12, model: 'rose', bred: true, tier: 'legendär', water: 2 },
-  dragonLily:       { name: 'Drachen­lilie',        cost: 160, growMs: 18 * M,  reward: 640,  xp: 70,  level: 13, model: 'lily', bred: true, tier: 'legendär', water: 2 },
-  moonRose:         { name: 'Mondschein­rose',     cost: 200, growMs: 22 * M,  reward: 900,  xp: 95,  level: 12, model: 'rose', bred: true, tier: 'legendär', water: 2 },
-  crystalRose:      { name: 'Kristall­rose',        cost: 320, growMs: 30 * M,  reward: 1500, xp: 160, level: 16, model: 'rose', bred: true, tier: 'legendär', water: 2 },
+  rainbowTulip:     { name: 'Regenbogen­tulpe',     cost: 25,  growMs: 90 * S,  reward: 45,   xp: 10,  level: 3,  model: 'tulip', bred: true, tier: 'selten', water: 0 },
+  sunTulip:         { name: 'Sonnen­tulpe',         cost: 30,  growMs: 150 * S, reward: 60,   xp: 12,  level: 4,  model: 'tulip', bred: true, tier: 'selten', water: 1 },
+  skyCornflower:    { name: 'Himmels­kornblume',    cost: 30,  growMs: 150 * S, reward: 60,   xp: 14,  level: 4,  model: 'cornflower', bred: true, tier: 'selten', water: 0 },
+  goldRose:         { name: 'Goldene Rose',              cost: 70,  growMs: 8 * M,   reward: 175,  xp: 30,  level: 5,  model: 'rose', bred: true, tier: 'episch', water: 1 },
+  firePoppy:        { name: 'Feuer­mohn',           cost: 60,  growMs: 7 * M,   reward: 160,  xp: 28,  level: 6,  model: 'poppy', bred: true, tier: 'episch', water: 1 },
+  moonOrchid:       { name: 'Mond­orchidee',        cost: 100, growMs: 12 * M,  reward: 270,  xp: 40,  level: 6,  model: 'orchid', bred: true, tier: 'episch', water: 2 },
+  northRose:        { name: 'Nordlicht-Rose',            cost: 110, growMs: 12 * M,  reward: 290,  xp: 42,  level: 7,  model: 'rose', bred: true, tier: 'episch', water: 2 },
+  blackRose:        { name: 'Schwarze Rose',             cost: 120, growMs: 15 * M,  reward: 360,  xp: 50,  level: 8,  model: 'rose', bred: true, tier: 'episch', water: 2 },
+  iceLily:          { name: 'Eis­lilie',            cost: 110, growMs: 12 * M,  reward: 325,  xp: 46,  level: 10, model: 'lily', bred: true, tier: 'episch', water: 2 },
+  rainbowHydrangea: { name: 'Regenbogen­hortensie', cost: 140, growMs: 16 * M,  reward: 445,  xp: 55,  level: 11, model: 'hydrangea', bred: true, tier: 'episch', water: 2 },
+  starRose:         { name: 'Sternen­rose',         cost: 250, growMs: 25 * M,  reward: 790, xp: 120, level: 12, model: 'rose', bred: true, tier: 'legendär', water: 2 },
+  dragonLily:       { name: 'Drachen­lilie',        cost: 160, growMs: 18 * M,  reward: 570,  xp: 70,  level: 13, model: 'lily', bred: true, tier: 'legendär', water: 2 },
+  moonRose:         { name: 'Mondschein­rose',     cost: 200, growMs: 22 * M,  reward: 675,  xp: 95,  level: 12, model: 'rose', bred: true, tier: 'legendär', water: 2 },
+  crystalRose:      { name: 'Kristall­rose',        cost: 320, growMs: 30 * M,  reward: 1100, xp: 160, level: 16, model: 'rose', bred: true, tier: 'legendär', water: 2 },
   // Event-Blumen: nur während „ihres“ Events pflanzbar, bringen doppelte Event-Währung, bleiben für immer in der Sammlung
-  heartRose:     { name: 'Herz­rose',           cost: 45,  growMs: 5 * M,   reward: 140,  xp: 18, level: 3, model: 'rose',        event: 'valentine', water: 1 },
-  daffodil:      { name: 'Oster­glocke',        cost: 20,  growMs: 2 * M,   reward: 60,   xp: 9,  level: 2, model: 'daffodil',    event: 'easter',    water: 0 },
-  lilac:         { name: 'Flieder',                 cost: 60,  growMs: 8 * M,   reward: 220,  xp: 28, level: 4, model: 'hydrangea',   event: 'mothers',   water: 1 },
-  hibiscus:      { name: 'Hibiskus',                cost: 40,  growMs: 4 * M,   reward: 110,  xp: 16, level: 3, model: 'poppy',       event: 'summer',    water: 1, dayOnly: true },
-  chrysanthemum: { name: 'Chrysan­theme',      cost: 70,  growMs: 9 * M,   reward: 250,  xp: 32, level: 5, model: 'dahlia',      event: 'autumn',    water: 1 },
-  marigold:      { name: 'Tagetes',                 cost: 35,  growMs: 3 * M,   reward: 90,   xp: 13, level: 2, model: 'dahlia',      event: 'halloween', water: 0 },
-  poinsettia:    { name: 'Weihnachts­stern',   cost: 80,  growMs: 12 * M,  reward: 320,  xp: 38, level: 5, model: 'poinsettia',  event: 'winter',    water: 1 },
-  sparkler:      { name: 'Funken­blume',        cost: 90,  growMs: 10 * M,  reward: 300,  xp: 36, level: 6, model: 'daisy',       event: 'newyear',   water: 1 },
-  candyCrocus:   { name: 'Zucker­krokus',       cost: 40,  growMs: 3 * M,   reward: 110,  xp: 15, level: 4,  model: 'tulip',      bred: true, tier: 'selten', water: 0 },
-  lavaHibiscus:  { name: 'Lava­hibiskus',      cost: 130, growMs: 14 * M,  reward: 470,  xp: 50, level: 9,  model: 'poppy',      bred: true, tier: 'episch', water: 1, dayOnly: true },
-  frostStar:     { name: 'Frost­stern',        cost: 180, growMs: 20 * M,  reward: 720,  xp: 75, level: 12, model: 'poinsettia', bred: true, tier: 'episch', water: 2 },
-  queenRose:     { name: 'Rosen­königin',      cost: 300, growMs: 30 * M,  reward: 1400, xp: 150, level: 15, model: 'rose',      bred: true, tier: 'legendär', water: 2 },
+  heartRose:     { name: 'Herz­rose',           cost: 45,  growMs: 5 * M,   reward: 95,  xp: 18, level: 3, model: 'rose',        event: 'valentine', water: 1 },
+  daffodil:      { name: 'Oster­glocke',        cost: 20,  growMs: 2 * M,   reward: 44,   xp: 9,  level: 2, model: 'daffodil',    event: 'easter',    water: 0 },
+  lilac:         { name: 'Flieder',                 cost: 60,  growMs: 8 * M,   reward: 150,  xp: 28, level: 4, model: 'hydrangea',   event: 'mothers',   water: 1 },
+  hibiscus:      { name: 'Hibiskus',                cost: 40,  growMs: 4 * M,   reward: 80,  xp: 16, level: 3, model: 'poppy',       event: 'summer',    water: 1, dayOnly: true },
+  chrysanthemum: { name: 'Chrysan­theme',      cost: 70,  growMs: 9 * M,   reward: 175,  xp: 32, level: 5, model: 'dahlia',      event: 'autumn',    water: 1 },
+  marigold:      { name: 'Tagetes',                 cost: 35,  growMs: 3 * M,   reward: 56,   xp: 13, level: 2, model: 'dahlia',      event: 'halloween', water: 0 },
+  poinsettia:    { name: 'Weihnachts­stern',   cost: 80,  growMs: 12 * M,  reward: 225,  xp: 38, level: 5, model: 'poinsettia',  event: 'winter',    water: 1 },
+  sparkler:      { name: 'Funken­blume',        cost: 90,  growMs: 10 * M,  reward: 220,  xp: 36, level: 6, model: 'daisy',       event: 'newyear',   water: 1 },
+  candyCrocus:   { name: 'Zucker­krokus',       cost: 40,  growMs: 3 * M,   reward: 80,  xp: 15, level: 4,  model: 'tulip',      bred: true, tier: 'selten', water: 0 },
+  lavaHibiscus:  { name: 'Lava­hibiskus',      cost: 130, growMs: 14 * M,  reward: 370,  xp: 50, level: 9,  model: 'poppy',      bred: true, tier: 'episch', water: 1, dayOnly: true },
+  frostStar:     { name: 'Frost­stern',        cost: 180, growMs: 20 * M,  reward: 580,  xp: 75, level: 12, model: 'poinsettia', bred: true, tier: 'episch', water: 2 },
+  queenRose:     { name: 'Rosen­königin',      cost: 300, growMs: 30 * M,  reward: 1050, xp: 150, level: 15, model: 'rose',      bred: true, tier: 'legendär', water: 2 },
   // Tropenhaus: wachsen nur drinnen (Klima: nie Durst, Tag und Nacht, 20 % schneller)
-  frangipani:    { name: 'Frangipani',              cost: 120, growMs: 25 * M,  reward: 420,  xp: 48,  level: 8,  model: 'moonflower', tropic: true, water: 0 },
-  strelitzia:    { name: 'Strelitzie',              cost: 160, growMs: 35 * M,  reward: 600,  xp: 65,  level: 9,  model: 'lily',       tropic: true, water: 0 },
-  lotus:         { name: 'Lotus',                   cost: 200, growMs: 50 * M,  reward: 900,  xp: 90,  level: 10, model: 'peony',      tropic: true, water: 0 },
-  passionflower: { name: 'Passions­blume',     cost: 240, growMs: 60 * M,  reward: 1100, xp: 110, level: 11, model: 'daisy',      tropic: true, water: 0 },
-  protea:        { name: 'Protea',                  cost: 300, growMs: 90 * M,  reward: 1700, xp: 160, level: 12, model: 'dahlia',     tropic: true, water: 0, rare: true, unlockCoins: 800 },
-  cactusFlower:  { name: 'Kaktus­blüte',       cost: 350, growMs: 2 * H,   reward: 3800, xp: 220, level: 13, model: 'cornflower', tropic: true, water: 0, slow: true },
+  frangipani:    { name: 'Frangipani',              cost: 120, growMs: 25 * M,  reward: 425,  xp: 48,  level: 8,  model: 'moonflower', tropic: true, water: 0 },
+  strelitzia:    { name: 'Strelitzie',              cost: 160, growMs: 35 * M,  reward: 615,  xp: 65,  level: 9,  model: 'lily',       tropic: true, water: 0 },
+  lotus:         { name: 'Lotus',                   cost: 200, growMs: 50 * M,  reward: 855,  xp: 90,  level: 10, model: 'peony',      tropic: true, water: 0 },
+  passionflower: { name: 'Passions­blume',     cost: 240, growMs: 60 * M,  reward: 1070, xp: 110, level: 11, model: 'daisy',      tropic: true, water: 0 },
+  protea:        { name: 'Protea',                  cost: 300, growMs: 90 * M,  reward: 1610, xp: 160, level: 12, model: 'dahlia',     tropic: true, water: 0, rare: true, unlockCoins: 800 },
+  cactusFlower:  { name: 'Kaktus­blüte',       cost: 350, growMs: 2 * H,   reward: 1510, xp: 220, level: 13, model: 'cornflower', tropic: true, water: 0, slow: true },
   opheliaBloom:  { name: 'Ophelias Mond­blüte', cost: 150, growMs: 20 * M,  reward: 800,  xp: 90, level: 1, model: 'peony',   exclusive: 'complete', water: 1, tier: 'legendär' },
-  crocus:        { name: 'Krokus',                  cost: 12,  growMs: 40 * S,  reward: 30,   xp: 5,  level: 1, model: 'tulip',       event: 'spring',    water: 0 },
+  crocus:        { name: 'Krokus',                  cost: 12,  growMs: 40 * S,  reward: 22,   xp: 5,  level: 1, model: 'tulip',       event: 'spring',    water: 0 },
 };
 export const SEED_ORDER = ['daisy', 'tulip', 'cornflower', 'sunflower', 'lavender', 'rose', 'poppy', 'orchid', 'lily', 'hydrangea', 'dahlia', 'peony', 'magnolia', 'moonflower',
   'rainbowTulip', 'sunTulip', 'skyCornflower', 'goldRose', 'firePoppy', 'moonOrchid', 'northRose', 'blackRose', 'iceLily', 'rainbowHydrangea', 'starRose', 'dragonLily', 'moonRose', 'crystalRose',
@@ -183,6 +183,15 @@ export const TRADER = {
   repBonus: [0, 0.05, 0.1, 0.15, 0.2],
   offerDiscount: 0.3,      // Tagesangebot
 };
+// Größerer Blumenkorb: mit Münzen erweiterbar (zusätzlich zum Ruf)
+export const BASKET_UPGRADES = [
+  { add: 15, cost: 800, level: 4 },
+  { add: 15, cost: 2000, level: 8 },
+  { add: 20, cost: 4500, level: 12 },
+  { add: 20, cost: 9000, level: 18 },
+  { add: 25, cost: 16000, level: 25 },
+  { add: 25, cost: 28000, level: 32 },
+];
 // Besonderheiten je Wochentag (0 = Sonntag)
 export const TRADER_DAYS = [
   { id: 'sun', name: 'Sonntagsmarkt', desc: 'Alle Verkaufspreise +25 %.', sell: 1.25 },
@@ -271,15 +280,19 @@ export const LEGACY_DECOR = [
 ];
 export const BED_LEVELS = [
   { name: 'Holzbeet', mult: 1, shiny: 0 },
-  { name: 'Steinbeet', mult: 1.5, shiny: 0, cost: 300, level: 4 },
-  { name: 'Prachtbeet', mult: 2, shiny: 0.05, cost: 900, level: 9 },
+  { name: 'Steinbeet', mult: 1.3, shiny: 0, cost: 300, level: 4 },
+  { name: 'Prachtbeet', mult: 1.6, shiny: 0.03, cost: 900, level: 9 },
+  { name: 'Goldbeet', mult: 2, shiny: 0.06, cost: 5000, level: 25 },
+  { name: 'Kristallbeet', mult: 2.5, shiny: 0.1, cost: 15000, level: 35 },
 ];
+// Ausbau-Kosten steigen mit jedem Beet, das schon diese Stufe hat (+10 % je Beet) – große Gärten kosten mehr
+export const UPGRADE_GROWTH = 0.1;
 export const SPRINKLER = { cost: 250, level: 3, speed: 0.7 };
 // Beet-Größe: mehr Pflanzen je Beet = mehr Ertrag je Ernte (Faktor), braucht mehr Platz im Garten
 export const BED_SIZES = [
   { name: 'Klein', scale: 1, plants: 5, mult: 1 },
-  { name: 'Mittel', scale: 1.25, plants: 7, mult: 1.4, cost: 450, level: 6 },
-  { name: 'Groß', scale: 1.5, plants: 9, mult: 1.8, cost: 1300, level: 12 },
+  { name: 'Mittel', scale: 1.25, plants: 7, mult: 1.3, cost: 450, level: 6 },
+  { name: 'Groß', scale: 1.5, plants: 9, mult: 1.6, cost: 1300, level: 12 },
 ];
 export const bedSize = (sz) => BED_SIZE.map((v) => v * (BED_SIZES[(sz || 1) - 1]?.scale || 1));
 

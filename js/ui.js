@@ -174,7 +174,7 @@ export class UI {
     const m = this.mode, s = this.s;
     if (!m) return;
     let icon, text;
-    if (m.kind === 'sprinkler') { icon = I.drop; text = `Tippe auf ein Beet, um die Bewässerung zu installieren (${C.SPRINKLER.cost} Münzen).`; }
+    if (m.kind === 'sprinkler') { icon = I.drop; text = `Tippe auf ein Beet, um die Bewässerung zu installieren (${num(G.sprinklerCost(this.s))} Münzen).`; }
     else if (m.kind === 'upgrade') { icon = I.upgrade; text = 'Tippe auf ein Beet, das du ausbauen möchtest.'; }
     else if (m.kind === 'grow') { icon = I.expand; text = 'Tippe auf ein Beet, das du vergrößern möchtest (braucht freien Platz rundherum).'; }
     else { icon = I.ITEM[m.id]; text = `${C.ITEMS[m.id].name}: Tippe auf ein wachsendes Beet. Du hast noch ${s.items[m.id]}.`; }
@@ -367,9 +367,9 @@ export class UI {
       if (info.hidden || !!info.inside !== inside) { /* Beet auf noch nicht gekauftem Land – oder gerade nicht in dieser Ansicht */ }
       else if (m) {
         if (!info.locked) {
-          if (m.kind === 'sprinkler' && !info.sprinkler) { key = 'MS'; cls = 'mode'; html = `<div class="b">${I.drop}${C.SPRINKLER.cost}</div>`; }
-          else if (m.kind === 'upgrade' && info.lvl < C.BED_LEVELS.length) { const nx = C.BED_LEVELS[info.lvl]; key = 'MU' + info.lvl; cls = 'mode'; html = `<div class="b">${I.upgrade}${s.level < nx.level ? `Lv ${nx.level}` : num(nx.cost)}</div>`; }
-          else if (m.kind === 'grow' && (info.size || 1) < C.BED_SIZES.length) { const nx = C.BED_SIZES[info.size || 1]; key = 'MG' + (info.size || 1); cls = 'mode'; html = `<div class="b">${I.expand}${s.level < nx.level ? `Lv ${nx.level}` : num(nx.cost)}</div>`; }
+          if (m.kind === 'sprinkler' && !info.sprinkler) { key = 'MS'; cls = 'mode'; html = `<div class="b">${I.drop}${num(G.sprinklerCost(s))}</div>`; }
+          else if (m.kind === 'upgrade' && info.lvl < C.BED_LEVELS.length) { const nx = C.BED_LEVELS[info.lvl]; key = 'MU' + info.lvl; cls = 'mode'; html = `<div class="b">${I.upgrade}${s.level < nx.level ? `Lv ${nx.level}` : num(G.bedLevelCost(s, info.lvl + 1))}</div>`; }
+          else if (m.kind === 'grow' && (info.size || 1) < C.BED_SIZES.length) { const nx = C.BED_SIZES[info.size || 1]; key = 'MG' + (info.size || 1); cls = 'mode'; html = `<div class="b">${I.expand}${s.level < nx.level ? `Lv ${nx.level}` : num(G.bedSizeCost(s, (info.size || 1) + 1))}</div>`; }
           else if (m.kind === 'item' && info.seed && (m.id === 'compost' ? !info.compost : !info.ready && !(m.id === 'lucky' && info.shinyHidden) && !(m.id === 'fert' && info.thirsty))) { key = 'MI' + m.id; cls = 'mode'; html = `<div class="b">${I.ITEM[m.id]}</div>`; }
         }
       } else if (info.locked) {
@@ -500,7 +500,7 @@ export class UI {
     let spr;
     if (b.sprinkler) spr = `<span class="tool on">${I.drop}<span><b>Bewässerung</b><small>aktiv · wächst 30 % schneller</small></span></span>`;
     else if (s.level < C.SPRINKLER.level) spr = `<span class="tool off">${I.drop}<span><b>Bewässerung</b><small>ab Level ${C.SPRINKLER.level}</small></span></span>`;
-    else spr = `<button class="tool" data-act="sprinkler" data-bed="${i}">${I.drop}<span><b>Bewässerung</b><small>30 % schneller · ${I.coin()} ${C.SPRINKLER.cost}</small></span></button>`;
+    else spr = `<button class="tool" data-act="sprinkler" data-bed="${i}">${I.drop}<span><b>Bewässerung</b><small>30 % schneller · ${I.coin()} ${num(G.sprinklerCost(s))}</small></span></button>`;
     let up;
     if (b.lvl >= C.BED_LEVELS.length) up = `<span class="tool on">${I.upgrade}<span><b>${L.name}</b><small>voll ausgebaut · ×${String(L.mult).replace('.', ',')} Münzen</small></span></span>`;
     else {
@@ -508,7 +508,7 @@ export class UI {
       const what = `×${String(nx.mult).replace('.', ',')} Münzen${nx.shiny ? ' · mehr Funkeln' : ''}`;
       up = s.level < nx.level
         ? `<span class="tool off">${I.upgrade}<span><b>${nx.name}</b><small>ab Level ${nx.level} · ${what}</small></span></span>`
-        : `<button class="tool" data-act="upgradeBed" data-bed="${i}">${I.upgrade}<span><b>Zum ${nx.name}</b><small>${what} · ${I.coin()} ${num(nx.cost)}</small></span></button>`;
+        : `<button class="tool" data-act="upgradeBed" data-bed="${i}">${I.upgrade}<span><b>Zum ${nx.name}</b><small>${what} · ${I.coin()} ${num(G.bedLevelCost(s, b.lvl + 1))}</small></span></button>`;
     }
     let gr;
     const sz = b.size || 1, SZ = C.BED_SIZES[sz - 1];
@@ -517,7 +517,7 @@ export class UI {
       const nx = C.BED_SIZES[sz];
       gr = s.level < nx.level
         ? `<span class="tool off">${I.expand}<span><b>Größe: ${nx.name}</b><small>ab Level ${nx.level} · ${nx.plants} Pflanzen</small></span></span>`
-        : `<button class="tool" data-act="growBed" data-bed="${i}">${I.expand}<span><b>Vergrößern: ${nx.name}</b><small>${nx.plants} Pflanzen · ×${String(nx.mult).replace('.', ',')} Ertrag · ${I.coin()} ${num(nx.cost)}</small></span></button>`;
+        : `<button class="tool" data-act="growBed" data-bed="${i}">${I.expand}<span><b>Vergrößern: ${nx.name}</b><small>${nx.plants} Pflanzen · ×${String(nx.mult).replace('.', ',')} Ertrag · ${I.coin()} ${num(G.bedSizeCost(s, sz + 1))}</small></span></button>`;
     }
     return `<div class="tools"><div class="tlab">${esc(L.name)} · ${SZ.name}</div>${spr}${up}${gr}</div>`;
   }
@@ -700,7 +700,7 @@ export class UI {
     if (u.kind === 'land') return I.expand;
     if (u.id === 'sprinkler') return `<img alt="" src="${ic.sprinkler}">`;
     if (u.id === 'greenhouse') return `<img alt="" src="${ic.greenhouse}">`;
-    if (u.id === 'bed2' || u.id === 'bed3') return `<img alt="" src="${ic.bedLvl[u.id === 'bed2' ? 2 : 3]}">`;
+    if (/^bed[2-5]$/.test(u.id)) return `<img alt="" src="${ic.bedLvl[+u.id.slice(3)]}">`;
     return I.sparkle;
   }
 
@@ -897,10 +897,10 @@ export class UI {
       const sprOk = s.level >= C.SPRINKLER.level;
       h += `<div class="sec">Garten-Ausbau</div>
         <div class="card itemcard"><div class="row"><img class="ic" alt="" src="${this.icons.sprinkler}"><div class="grow"><h4>Automatische Bewässerung <span class="have">${spr}/${unlocked} Beete</span></h4><p>Ein Sprinkler gießt das Beet von selbst – Blumen wachsen dort für immer 30 % schneller.</p></div></div>
-          <div class="btnrow"><button class="btn small blue" data-act="sprinklerMode" ${sprOk && spr < unlocked ? '' : 'disabled'}>${sprOk ? `Installieren · ${I.coin()} ${C.SPRINKLER.cost} pro Beet` : `ab Level ${C.SPRINKLER.level}`}</button></div></div>
-        <div class="card itemcard"><div class="row"><img class="ic" alt="" src="${this.icons.bedLvl[2]}"><div class="grow"><h4>Beete ausbauen</h4><p>${C.BED_LEVELS.slice(1).map((b) => `<b>${b.name}</b>: ×${String(b.mult).replace('.', ',')} Münzen${b.shiny ? ', mehr Funkelblüten' : ''} (ab Level ${b.level}, ${num(b.cost)} Münzen)`).join('<br>')}</p></div></div>
+          <div class="btnrow"><button class="btn small blue" data-act="sprinklerMode" ${sprOk && spr < unlocked ? '' : 'disabled'}>${sprOk ? `Installieren · ab ${I.coin()} ${num(G.sprinklerCost(s))} pro Beet` : `ab Level ${C.SPRINKLER.level}`}</button></div></div>
+        <div class="card itemcard"><div class="row"><img class="ic" alt="" src="${this.icons.bedLvl[2]}"><div class="grow"><h4>Beete ausbauen</h4><p>${C.BED_LEVELS.slice(1).map((b) => `<b>${b.name}</b>: ×${String(b.mult).replace('.', ',')} Münzen${b.shiny ? ', mehr Funkelblüten' : ''} (ab Level ${b.level}, ab ${num(b.cost)} Münzen)`).join('<br>')}<br><small>Jedes weitere Beet derselben Stufe kostet 10 % mehr.</small></p></div></div>
           <div class="btnrow"><button class="btn small blue" data-act="upgradeMode" ${s.level >= C.BED_LEVELS[1].level ? '' : 'disabled'}>${s.level >= C.BED_LEVELS[1].level ? 'Beet auswählen' : `ab Level ${C.BED_LEVELS[1].level}`}</button></div></div>
-        <div class="card itemcard"><div class="row">${svg(I.expand, 60)}<div class="grow"><h4>Beete vergrößern</h4><p>Mehr Pflanzen in einem Beet: ${C.BED_SIZES.slice(1).map((b) => `<b>${b.name}</b>: ${b.plants} Pflanzen, ×${String(b.mult).replace('.', ',')} Ertrag (ab Level ${b.level}, ${num(b.cost)} Münzen)`).join('<br>')}<br>Braucht freien Platz rund um das Beet.</p></div></div>
+        <div class="card itemcard"><div class="row">${svg(I.expand, 60)}<div class="grow"><h4>Beete vergrößern</h4><p>Mehr Pflanzen in einem Beet: ${C.BED_SIZES.slice(1).map((b) => `<b>${b.name}</b>: ${b.plants} Pflanzen, ×${String(b.mult).replace('.', ',')} Ertrag (ab Level ${b.level}, ab ${num(b.cost)} Münzen)`).join('<br>')}<br>Braucht freien Platz rund um das Beet.</p></div></div>
           <div class="btnrow"><button class="btn small blue" data-act="growMode" ${s.level >= C.BED_SIZES[1].level ? '' : 'disabled'}>${s.level >= C.BED_SIZES[1].level ? 'Beet auswählen' : `ab Level ${C.BED_SIZES[1].level}`}</button></div></div>
         <div class="card itemcard"><div class="row"><img class="ic" alt="" src="${this.icons.bed}"><div class="grow"><h4>Neue Beete <span class="have">${unlocked}/${C.BED_COUNT}</span></h4><p>Mehr Beete bedeuten mehr Blumen gleichzeitig. Neue Plätze gibt es mit steigendem Level und auf neuem Land.</p></div></div>
           <div class="btnrow"><button class="btn small blue" data-act="showNextBed" ${s.beds.some((b, i) => b.locked && G.bedVisible(s, i)) ? '' : 'disabled'}>${s.beds.some((b, i) => b.locked && G.bedVisible(s, i)) ? 'Nächstes Beet zeigen' : unlocked < C.BED_COUNT ? 'Erst Garten vergrößern' : 'Alle Beete frei'}</button></div></div>
@@ -965,7 +965,7 @@ export class UI {
       <div class="card set"><div class="lab">Spielstand</div><p>Wird automatisch gespeichert${acc.user ? ' – in deinem Konto und auf diesem Gerät' : ' – auf diesem Gerät'}.</p><button class="btn red small" style="align-self:flex-start;margin-top:6px" data-act="reset">Garten neu beginnen</button></div>
       <div class="card set"><div class="lab">Als App auf dem Handy</div><p>${standalone ? 'BloomWorld läuft als App. 🌸' : 'Mit eigenem Symbol auf dem Startbildschirm, ohne Browserleiste.'}</p>${standalone ? '' : '<button class="btn small" style="align-self:flex-start;margin-top:6px" data-act="install">Zum Startbildschirm hinzufügen</button>'}</div>
       <div class="btnrow center"><button class="btn small ghost" data-act="legal" data-id="impressum">Impressum</button><button class="btn small ghost" data-act="legal" data-id="datenschutz">Datenschutz</button><button class="btn small ghost" data-act="legal" data-id="agb">AGB</button></div>
-      <p class="note">BloomWorld · Version 3.11<br>Schrift: Poppins (SIL Open Font License)</p>`;
+      <p class="note">BloomWorld · Version 3.12<br>Schrift: Poppins (SIL Open Font License)</p>`;
   }
 
   // ---------- Klicks in Panels, Leisten, Dialogen ----------

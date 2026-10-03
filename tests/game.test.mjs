@@ -50,7 +50,7 @@ test('ernten nach Wachstumszeit: Münzen, EP, Sammlung', () => {
   assert.equal(G.harvest(s, 1, T0 + 1000).code, 'notReady');
   const r = G.harvest(s, 1, T0 + C.SEEDS.tulip.growMs);
   assert.ok(r.ok);
-  assert.equal(r.reward, 25);
+  assert.equal(r.reward, C.SEEDS.tulip.reward);
   assert.equal(s.collection.tulip.count, 1);
 });
 
@@ -59,7 +59,7 @@ test('Funkelblüte bringt dreifache Belohnung', () => {
   G.plant(s, 0, 'daisy', T0, always);
   const r = G.harvest(s, 0, T0 + C.SEEDS.daisy.growMs);
   assert.equal(r.shiny, true);
-  assert.equal(r.reward, 36);
+  assert.equal(r.reward, C.SEEDS.daisy.reward * C.SHINY_MULTIPLIER);
   assert.equal(s.collection.daisy.shiny, 1);
 });
 
@@ -90,9 +90,13 @@ test('Beete: Level-Grenze, Ausbau (mehr Münzen), Bewässerung (schneller)', () 
   assert.equal(s.beds[0].dur, Math.round(C.SEEDS.tulip.growMs * 0.7));
   assert.ok(G.upgradeBed(s, 0).ok);
   assert.ok(G.upgradeBed(s, 0).ok);
+  assert.equal(G.upgradeBed(s, 0).code, 'level', 'Goldbeet erst ab Level 25');
+  s.level = 40; s.coins += 100000;
+  assert.ok(G.upgradeBed(s, 0).ok);
+  assert.ok(G.upgradeBed(s, 0).ok);
   assert.equal(G.upgradeBed(s, 0).code, 'maxLevel');
   const r = G.harvest(s, 0, T0 + grow(s, 0, T0));
-  assert.equal(r.reward, 50); // Prachtbeet ×2
+  assert.equal(r.reward, Math.round(C.SEEDS.tulip.reward * 2.5)); // Kristallbeet ×2,5
 });
 
 test('Dünger, Turbo-Dünger, Glücksdünger', () => {
@@ -616,10 +620,10 @@ test('Beete vergrößern: Platzprüfung, mehr Ertrag, Speichern', () => {
   assert.equal(G.growBed(s, 1).code, 'noSpace', 'zwei große Beete nebeneinander passen nicht');
   assert.equal(G.growBed(s, 0).code, 'maxLevel');
   assert.deepEqual(G.footprint(s, { type: 'bed', i: 0 }, 0), [2.4 * 1.5, 2.4 * 1.5]);
-  // Ertrag ×1,8
+  // Ertrag ×1,6
   assert.ok(G.plant(s, 0, 'daisy', T0, never).ok);
   const r = G.harvest(s, 0, T0 + 60000);
-  assert.equal(r.reward, Math.round(12 * 1.8));
+  assert.equal(r.reward, Math.round(C.SEEDS.daisy.reward * 1.6));
   const back = G.migrate(JSON.parse(JSON.stringify(s)), T0).state;
   assert.equal(back.beds[0].size, 3);
   assert.equal(back.beds[1].size, 1);
@@ -731,4 +735,32 @@ test('Tropenhaus: bauen, Töpfe freischalten, tropische Blumen nur drinnen, kein
   assert.equal(G.allBedInfos(s, T0).length, C.BED_COUNT + C.TROPIC.pots);
   const rep = G.repair(JSON.parse(JSON.stringify(s)), T0);
   assert.equal(rep.tropic.open, 5); assert.equal(rep.tropic.pots[0].seed, 'frangipani');
+});
+
+test('Ausbau-Kosten steigen je Beet, Korb lässt sich mit Münzen erweitern', () => {
+  const s = G.newState(T0);
+  s.level = 30; s.coins = 1e6;
+  const c1 = G.bedLevelCost(s, 2);
+  assert.equal(c1, C.BED_LEVELS[1].cost);
+  assert.ok(G.upgradeBed(s, 0).ok);
+  assert.equal(G.bedLevelCost(s, 2), Math.round(C.BED_LEVELS[1].cost * (1 + C.UPGRADE_GROWTH) / 10) * 10);
+  const before = s.coins; assert.ok(G.upgradeBed(s, 1).ok); assert.equal(before - s.coins, Math.round(C.BED_LEVELS[1].cost * 1.1 / 10) * 10);
+  assert.equal(G.sprinklerCost(s), C.SPRINKLER.cost);
+  // Korb
+  const cap0 = G.basketCap(s);
+  assert.equal(G.nextBasket(s).add, C.BASKET_UPGRADES[0].add);
+  assert.ok(G.buyBasket(s).ok);
+  assert.equal(G.basketCap(s), cap0 + C.BASKET_UPGRADES[0].add);
+  s.level = 5; assert.equal(G.buyBasket(s).code, 'level'); s.level = 60;
+  while (G.nextBasket(s)) assert.ok(G.buyBasket(s).ok);
+  assert.equal(G.buyBasket(s).code, 'maxLevel');
+  assert.equal(G.basketCap(s), cap0 + C.BASKET_UPGRADES.reduce((a, u) => a + u.add, 0));
+  const back = G.migrate(JSON.parse(JSON.stringify(s)), T0).state;
+  assert.equal(back.basketLvl, C.BASKET_UPGRADES.length);
+});
+
+test('Wirtschaft: Langzeit-Blumen bringen pro Stunde nicht mehr als aktive Blumen gleichen Levels', () => {
+  const perH = (k) => { const d = C.SEEDS[k]; return (d.reward - d.cost) / (d.growMs / 3600000); };
+  for (const k of ['dahlia', 'peony', 'magnolia', 'moonflower']) assert.ok(perH(k) < perH('hydrangea'), k);
+  assert.ok(perH('daisy') < perH('hydrangea'), 'Gänseblümchen-Dauerklicken lohnt sich später nicht');
 });

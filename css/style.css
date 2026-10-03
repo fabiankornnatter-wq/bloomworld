@@ -688,7 +688,7 @@ body.visiting #side, body.visiting #quest, body.visiting #nav, body.visiting #ha
 .adminform h4 { display: flex; align-items: center; gap: 8px; }
 .adminform textarea { width: 100%; padding: 10px 14px; border-radius: 14px; border: 2px solid #dccbf3; background: #fff; font: inherit; font-size: 15px; color: var(--ink); resize: vertical; outline: none; user-select: text; -webkit-user-select: text; }
 .adminform textarea:focus { border-color: var(--pink); }
-.adminform .small, .card .small { font-size: 12px; color: var(--muted); }
+.adminform .small:not(.btn), .card .small:not(.btn) { font-size: 12px; color: var(--muted); }
 .seg.kinds label { flex: 1; position: relative; }
 .seg.kinds input { position: absolute; opacity: 0; pointer-events: none; }
 .seg.kinds span { display: grid; place-items: center; min-height: 34px; border-radius: 12px; font-size: 12.5px; color: #6d4fa8; cursor: pointer; }
@@ -860,3 +860,7 @@ body.visiting #maint { display: none; }
 
 #tropicBar { position: absolute; z-index: 18; left: calc(10px + var(--safe-l)); right: calc(10px + var(--safe-r)); bottom: calc(var(--nav-h) + 18px + var(--safe-b)); max-width: 520px; margin: 0 auto; background: rgba(47, 143, 74, 0.92); color: #fff; border-radius: 18px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
 #tropicBar .btn { background: #fff; color: #2f8f4a; }
+.card.basket .bup { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px; border-radius: 12px; background: #faf6ff; }
+.card.basket .bup b { display: block; font-size: 14px; }
+.card.basket .bup small { color: var(--muted); font-size: 12px; }
+.card.basket .bup .btn { flex: none; }
