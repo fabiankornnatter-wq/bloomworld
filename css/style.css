@@ -864,3 +864,12 @@ body.visiting #maint { display: none; }
 .card.basket .bup b { display: block; font-size: 14px; }
 .card.basket .bup small { color: var(--muted); font-size: 12px; }
 .card.basket .bup .btn { flex: none; }
+/* 3.13: Deko-Kategorien und Hausfarben */
+.seg.deco-cats { flex-wrap: wrap; margin-top: 10px; }
+.seg.deco-cats button { flex: 1 1 30%; font-size: 12.5px; min-height: 36px; }
+.paintdlg .prow { margin: 10px 0; }
+.paintdlg .prow b { display: block; font-size: 15px; margin-bottom: 6px; }
+.paintdlg .prow small { color: var(--muted); font-size: 12px; }
+.paintdlg .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.paintdlg .sw { width: 36px; height: 36px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px #d8c9ee, 0 2px 4px rgba(0, 0, 0, 0.15); }
+.paintdlg .sw.on { box-shadow: 0 0 0 3px var(--pink), 0 2px 6px rgba(0, 0, 0, 0.2); transform: scale(1.08); }

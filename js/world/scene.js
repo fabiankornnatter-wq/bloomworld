@@ -56,11 +56,13 @@ export class World {
     const gr = M.ground();
     this.ground = gr;
     this.add(gr.geo, null, { shadow: false });
-    this.add(M.plaza(BED_SPACING * 5 + 1.2, BED_SPACING * 3 + 1.2), T(OX, 0.0, OZ), { shadow: false });
+    // Kiesplatz und Trittsteine sind seit 3.13 Deko (C.LEGACY_GROUND)
 
     // Haus, Teich (fest)
-    this.housePos = [-6.0, -6.6];
-    this.add(M.house(), T(this.housePos[0], 0, this.housePos[1]));
+    // Haus: verschiebbar und in eigenen Farben (siehe placeHouse / setHouseColors)
+    this.houseMeshes = {};
+    this.houseObj = this.r.addObject(this.houseMesh({}), m4.identity());
+    this.placeHouse(C.DEFAULT_HOUSE);
     // Teich, Bäume, Zierbeete und Gießkanne sind seit 3.11 normale Deko (frei verschiebbar), siehe C.LEGACY_DECOR
     this.pondWater = this.mesh('pondWater', () => diskGeo(2.4, 1.65));
 
@@ -139,8 +141,9 @@ export class World {
     const sh = (v) => (Math.abs(v) >= 9 ? v + Math.sign(v) * (G - 10.2) : v); // am Rand bleiben
     const gr = this.ground, R = rng(42 + Math.round(G));
     add(M.lawn(G * 2), T(0, 0.005, 0), { shadow: false });
+    // Trittsteine nur noch draußen vor dem Tor (im Garten sind sie Deko)
     const stones = [];
-    for (let z = 6.9; z < G + 0.2; z += 0.9) stones.push([OX + (Math.round(z) % 2 ? 0.12 : -0.12), z]);
+    for (let z = G + 0.5; z < G + 3.5; z += 0.9) stones.push([OX + (Math.round(z) % 2 ? 0.12 : -0.12), z]);
     add(M.steppingStones(stones), null, { shadow: false });
     // Zaun & Hecke
     add(M.picketFence(G * 2, 0), T(G, 0, 0, PI / 2));
@@ -201,7 +204,25 @@ export class World {
     if (G !== this.G) this.buildLand(G);
     s.layout.beds.forEach((p, i) => { this.beds[i].shown = bedVisible(s, i); this.placeBed(i, p); });
     this.placeGreenhouse(s.layout.gh);
+    this.setHouseColors(s.house);
+    this.placeHouse(s.layout.house || C.DEFAULT_HOUSE);
     this.syncDecor(s.decor);
+  }
+
+  houseMesh(idx) {
+    const key = Object.keys(C.HOUSE_COLORS).map((k) => idx?.[k] || 0).join('|');
+    if (!this.houseMeshes[key]) {
+      const cols = Object.fromEntries(Object.keys(C.HOUSE_COLORS).map((k) => [k, (C.HOUSE_COLORS[k][idx?.[k] || 0] || C.HOUSE_COLORS[k][0])[1]]));
+      this.houseMeshes[key] = this.r.mesh(centered(M.house(key === '0|0|0' ? {} : cols)).geo);
+    }
+    return this.houseMeshes[key];
+  }
+  setHouseColors(idx) { const m = this.houseMesh(idx); if (this.houseObj.mesh !== m) this.houseObj.mesh = m; }
+  placeHouse([x, z, r], lift = 0) {
+    const moved = !this.housePos || this.housePos[0] !== x || this.housePos[1] !== z || (this.housePos[2] || 0) !== (r || 0);
+    this.housePos = [x, z, r || 0];
+    this.houseObj.model = T(x, lift, z, (r || 0) * PI / 2);
+    if (moved && !lift && this.lightList) this.syncLights();
   }
 
   placeBed(i, [x, z, r], lift = 0) {
@@ -235,7 +256,8 @@ export class World {
 
   // Lichtquellen sammeln: Deko-Lichter, Haustür, Händler-Karren
   syncLights() {
-    const L = [[this.housePos[0] + 0.7, 2.0, this.housePos[1] + 2.0, 4.5]];
+    const door = m4.point(T(this.housePos[0], 0, this.housePos[1], (this.housePos[2] || 0) * PI / 2), [0.7, 2.0, 2.0]);
+    const L = [[door[0], 2.0, door[2], 4.5]];
     if (this.cartOn && this.cartPos) L.push([this.cartPos[0] + 0.9, 1.8, this.cartPos[1] + 0.5, 4]);
     (this.decorList || []).forEach((d) => {
       const l = C.LIGHTS[d.id];
@@ -271,6 +293,7 @@ export class World {
   preview(ref, x, z, r, lift = 0) {
     if (ref.type === 'bed') this.placeBed(ref.i, [x, z, r], lift);
     else if (ref.type === 'gh') this.placeGreenhouse([x, z, r], lift);
+    else if (ref.type === 'house') this.placeHouse([x, z, r], lift);
     else { const o = this.decoObjs[ref.k]; if (o) { o.obj.model = T(x, lift, z, r * PI / 2); if (o.water) o.water.model = T(x, lift + 0.07, z, r * PI / 2); } }
   }
 
@@ -751,7 +774,7 @@ export class World {
   // Blase über der vorderen linken Ecke des Gewächshauses (weg von den Knöpfen am rechten Rand)
   greenhouseScreen() { return this.r.project(m4.point(T(this.ghPos[0], 0, this.ghPos[1], (this.ghPos[2] || 0) * PI / 2), [-1.1, 3.1, 0.9])); }
   objectScreen(ref, y = 1.2) {
-    const p = ref.type === 'bed' ? this.beds[ref.i].pos : ref.type === 'gh' ? this.ghPos : this.decoObjs[ref.k] ? [this.decoObjs[ref.k].obj.model[12], this.decoObjs[ref.k].obj.model[14]] : null;
+    const p = ref.type === 'bed' ? this.beds[ref.i].pos : ref.type === 'gh' ? this.ghPos : ref.type === 'house' ? this.housePos : this.decoObjs[ref.k] ? [this.decoObjs[ref.k].obj.model[12], this.decoObjs[ref.k].obj.model[14]] : null;
     return p ? this.r.project([p[0], y, p[1]]) : null;
   }
 
@@ -771,12 +794,18 @@ export class World {
     const boxAt = (x, z, w, dd, h) => rayBox(o, d, [x - w / 2, 0, z - dd / 2], [x + w / 2, h, z + dd / 2]);
     this.beds.forEach((b, i) => { if (b.shown) consider(boxAt(b.pos[0], b.pos[1], 2.4 * (b.scale || 1), 2.4 * (b.scale || 1), BED_TOP + Math.max(0.3, b.h || 0)), { type: 'bed', i }); });
     { const [gx, gz, gr] = this.ghPos, [w, dd] = gr % 2 ? [C.GH_SIZE[1], C.GH_SIZE[0]] : C.GH_SIZE; consider(boxAt(gx, gz, w, dd, 3.2), { type: 'gh' }); }
+    { const [hx, hz, hr] = this.housePos, [w, dd] = hr % 2 ? [C.HOUSE_SIZE[1], C.HOUSE_SIZE[0]] : C.HOUSE_SIZE; consider(boxAt(hx, hz, w, dd, 4.2), { type: 'house' }); }
+    // Flache Bodenteile nur, wenn sonst nichts getroffen wurde (Beete und Deko stehen oft darauf)
+    let flat = null;
     s.decor.forEach((dc, k) => {
       if (dc.stored) return;
-      const [w, dd] = dc.r % 2 ? [C.DECO[dc.id].size[1], C.DECO[dc.id].size[0]] : C.DECO[dc.id].size;
+      const D = C.DECO[dc.id];
+      const [w, dd] = dc.r % 2 ? [D.size[1], D.size[0]] : D.size;
+      if (D.flat) { const t = boxAt(dc.x, dc.z, w, dd, 0.08); if (t !== null && t > 0 && (!flat || t < flat.t)) flat = { t, ref: { type: 'deco', k } }; return; }
       // kleine Deko etwas großzügiger treffen
       consider(boxAt(dc.x, dc.z, Math.max(w, 0.9), Math.max(dd, 0.9), Math.max(0.6, this.decoMesh(dc.id).h)), { type: 'deco', k });
     });
+    if (!best && flat) best = flat;
     return best ? best.ref : null;
   }
 

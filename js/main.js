@@ -1218,6 +1218,15 @@ const actions = {
     changed();
   },
 
+  paintHouse(colors) {
+    const r = G.paintHouse(state, colors);
+    if (!r.ok) return fail(r);
+    ui.paintDone();
+    world.setHouseColors(state.house);
+    sound.play('buy'); ui.bumpCoins(); world.burstAt(state.layout.house[0], state.layout.house[1]);
+    ui.toast('Frisch gestrichen! Dein Haus sieht toll aus.', 'good');
+    changed();
+  },
   buyDeco(id) {
     const r = G.buyDeco(state, id, null);
     if (!r.ok) return fail(r);

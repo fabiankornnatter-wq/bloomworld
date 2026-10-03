@@ -534,11 +534,13 @@ function dirMat(p) {
 }
 
 // ---------------- Haus ----------------
-export function house() {
+export function house(colors = {}) {
   const g = new Geo();
   const W = 4.4, D = 3.4, H = 2.5;
+  const wall = colors.wall || PAL.wall, roof = colors.roof || PAL.roof, accent = colors.accent || PAL.door;
+  const roofDark = v3.scale(col(roof), 0.8), shutter = colors.accent ? accent : '#5fae96';
   g.add(roundedBox(W + 0.25, 0.32, D + 0.25, 0.08, '#b3aaa0', 2), T(0, 0.16, 0));
-  g.add(roundedBox(W, H, D, 0.1, PAL.wall, 2).shadeByHeight(0.3, H, 0.86, 1.03), T(0, 0.3 + H / 2, 0));
+  g.add(roundedBox(W, H, D, 0.1, wall, 2).shadeByHeight(0.3, H, 0.86, 1.03), T(0, 0.3 + H / 2, 0));
   // Fachwerk-Balken
   const beam = (w, h, d, x, y, z) => g.add(roundedBox(w, h, d, 0.03, PAL.beam, 1), T(x, y, z));
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) beam(0.2, H + 0.05, 0.2, sx * (W / 2 - 0.05), 0.3 + H / 2, sz * (D / 2 - 0.05));
@@ -546,21 +548,21 @@ export function house() {
   beam(0.16, 0.16, D + 0.05, W / 2 + 0.02, 0.36 + H, 0);
   // Giebel (Dreieck) vorne/hinten auf der Breitseite X
   const roofH = 1.55;
-  for (const sx of [-1, 1]) g.add(extrude([[-D / 2, 0], [D / 2, 0], [0, roofH]], 0.2, PAL.wall), mul(T(sx * (W / 2 - 0.1), 0.3 + H, 0, P / 2), T(0, 0, 0)));
+  for (const sx of [-1, 1]) g.add(extrude([[-D / 2, 0], [D / 2, 0], [0, roofH]], 0.2, wall), mul(T(sx * (W / 2 - 0.1), 0.3 + H, 0, P / 2), T(0, 0, 0)));
   // Dach: zwei Schrägen
   const slope = Math.hypot(D / 2 + 0.4, roofH + 0.25), ang = Math.atan2(roofH + 0.25, D / 2 + 0.4);
   for (const sz of [-1, 1]) {
     const m = T(0, 0.3 + H + roofH / 2 + 0.08, sz * (D / 4 + 0.2), 0, sz * ang);
-    g.add(roundedBox(W + 0.7, 0.2, slope + 0.1, 0.08, PAL.roof, 2), m);
-    for (let r = 1; r < 6; r++) g.add(roundedBox(W + 0.72, 0.06, 0.08, 0.03, PAL.roofDark, 1), mul(m, T(0, 0.1, -slope / 2 + (r * slope) / 6)));
+    g.add(roundedBox(W + 0.7, 0.2, slope + 0.1, 0.08, roof, 2), m);
+    for (let r = 1; r < 6; r++) g.add(roundedBox(W + 0.72, 0.06, 0.08, 0.03, roofDark, 1), mul(m, T(0, 0.1, -slope / 2 + (r * slope) / 6)));
   }
-  g.add(roundedBox(W + 0.8, 0.22, 0.26, 0.1, PAL.roofDark, 2), T(0, 0.3 + H + roofH + 0.18, 0));
+  g.add(roundedBox(W + 0.8, 0.22, 0.26, 0.1, roofDark, 2), T(0, 0.3 + H + roofH + 0.18, 0));
   // Schornstein
   g.add(roundedBox(0.55, 1.3, 0.55, 0.06, '#c4664e', 2), T(-1.2, 0.3 + H + roofH - 0.1, -0.6));
   g.add(roundedBox(0.68, 0.14, 0.68, 0.05, '#8e4a3a', 2), T(-1.2, 0.3 + H + roofH + 0.58, -0.6));
   // Tür (+Z-Seite)
   const dz = D / 2 + 0.03;
-  g.add(roundedBox(0.95, 1.75, 0.1, 0.05, PAL.door, 2), T(-0.6, 0.3 + 0.88, dz));
+  g.add(roundedBox(0.95, 1.75, 0.1, 0.05, accent, 2), T(-0.6, 0.3 + 0.88, dz));
   g.add(roundedBox(1.15, 0.12, 0.16, 0.04, PAL.white, 1), T(-0.6, 0.3 + 1.82, dz));
   for (const sx of [-1, 1]) g.add(roundedBox(0.1, 1.85, 0.14, 0.04, PAL.white, 1), T(-0.6 + sx * 0.53, 0.3 + 0.92, dz));
   g.add(sphere(0.055, '#ffd75e', 8, 6), T(-0.27, 0.3 + 0.9, dz + 0.08));
@@ -578,7 +580,7 @@ export function house() {
     g.add(roundedBox(0.06, 0.9, 0.08, 0.02, PAL.white, 1), mul(m, T(0, 0, 0.03)));
     g.add(roundedBox(0.9, 0.06, 0.08, 0.02, PAL.white, 1), mul(m, T(0, 0, 0.03)));
     // Fensterläden
-    for (const s of [-1, 1]) g.add(roundedBox(0.3, 1.0, 0.06, 0.04, '#5fae96', 2), mul(m, T(s * 0.72, 0, 0.0)));
+    for (const s of [-1, 1]) g.add(roundedBox(0.3, 1.0, 0.06, 0.04, shutter, 2), mul(m, T(s * 0.72, 0, 0.0)));
     // Blumenkasten
     g.add(roundedBox(1.0, 0.2, 0.26, 0.05, PAL.woodDark, 2), mul(m, T(0, -0.66, 0.16)));
     const R = rng(Math.round(x * 10 + z));
@@ -1090,6 +1092,204 @@ DECO_MODELS.hedgeBlock = () => {
   }
   return g.windByHeight(0.6, 1.2, 0.08);
 };
+// ---------------- 3.13: Boden, Zäune, Mauern, Pflanzen ----------------
+// Bodenteile sind flach (Oberkante ≤ 0,07 m) und haben gerade Kanten, damit sie nahtlos aneinanderpassen
+DECO_MODELS.plaza = () => plaza(16.6, 10.5);
+DECO_MODELS.gravelPatch = () => {
+  const g = new Geo(), R = rng(61);
+  g.add(box(2.0, 0.09, 2.0, PAL.gravel), T(0, 0.0, 0));
+  for (let i = 0; i < 26; i++) g.add(icosphere(0.04 + R() * 0.05, R() > 0.5 ? PAL.gravelDark : PAL.stone, 0, true), T((R() - 0.5) * 1.8, 0.045, (R() - 0.5) * 1.8, R() * 6, 0, 0, 1, 0.45, 1));
+  return g;
+};
+DECO_MODELS.pavingTiles = () => {
+  const g = new Geo();
+  g.add(box(2.0, 0.07, 2.0, '#9d988f'), T(0, 0, 0));
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) g.add(roundedBox(0.46, 0.05, 0.46, 0.04, (i + j) % 2 ? '#cfcac1' : '#c2bdb3', 1), T(-0.75 + i * 0.5, 0.04, -0.75 + j * 0.5));
+  return g;
+};
+DECO_MODELS.brickPath = () => {
+  const g = new Geo(), cs = ['#c4553f', '#b34a37', '#d0634b', '#bf5a42'];
+  g.add(box(2.0, 0.07, 1.0, '#d9cbb8'), T(0, 0, 0));
+  let n = 0;
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
+    const off = r % 2 ? 0.2 : 0, x = -0.8 + c * 0.4 + off;
+    if (x > 0.81) continue;
+    g.add(roundedBox(0.37, 0.05, 0.17, 0.02, cs[n++ % cs.length], 1), T(x, 0.04, -0.4 + r * 0.2));
+  }
+  return g;
+};
+DECO_MODELS.woodDeck = () => {
+  const g = new Geo(), cs = ['#c99560', '#b98552', '#d6a46c', '#c08a52'];
+  g.add(box(2.0, 0.06, 2.0, '#6e4527'), T(0, 0, 0));
+  for (let i = 0; i < 8; i++) g.add(roundedBox(2.0, 0.05, 0.23, 0.02, cs[i % cs.length], 1), T(0, 0.045, -0.875 + i * 0.25));
+  for (const z of [-0.9, 0.9]) for (const x of [-0.9, 0, 0.9]) g.add(sphere(0.02, '#6b6b70', 5, 4), T(x, 0.075, z));
+  return g;
+};
+DECO_MODELS.flowerMeadow = () => {
+  const g = new Geo(), R = rng(73);
+  g.add(box(2.0, 0.05, 2.0, '#5fae3c'), T(0, 0, 0));
+  const tuft = grassTuft(R, 0.28, ['#7cc94a', '#6bbd3d', '#94d65e']);
+  for (let i = 0; i < 14; i++) g.add(tuft, T((R() - 0.5) * 1.8, 0.03, (R() - 0.5) * 1.8, R() * 6));
+  g.add(wildflowers(R, 34, 1.8, () => false), T(0, 0.03, 0));
+  return g;
+};
+
+// Zäune: 2 m, Pfosten an beiden Enden, damit Reihen nahtlos wirken
+const fenceRow = (g, post, rails, slatFn) => {
+  for (const x of [-0.93, 0.93]) post(g, x);
+  rails(g);
+  if (slatFn) slatFn(g);
+  return g;
+};
+DECO_MODELS.woodFence = () => fenceRow(new Geo(),
+  (g, x) => { g.add(roundedBox(0.15, 0.95, 0.15, 0.03, PAL.woodDark, 1), T(x, 0.475, 0)); g.add(roundedBox(0.19, 0.06, 0.19, 0.02, PAL.wood, 1), T(x, 0.98, 0)); },
+  (g) => { for (const y of [0.35, 0.72]) g.add(roundedBox(2.0, 0.11, 0.07, 0.03, PAL.wood, 1), T(0, y, 0.05)); g.add(roundedBox(0.11, 0.85, 0.06, 0.03, PAL.woodLight, 1), T(0, 0.48, 0.05, 0, 0, 0.5)); });
+DECO_MODELS.woodPost = () => new Geo().add(roundedBox(0.2, 1.0, 0.2, 0.04, PAL.woodDark, 1), T(0, 0.5, 0)).add(roundedBox(0.25, 0.07, 0.25, 0.03, PAL.wood, 1), T(0, 1.03, 0));
+DECO_MODELS.whiteFence = () => fenceRow(new Geo(),
+  (g, x) => { g.add(roundedBox(0.15, 0.95, 0.15, 0.04, PAL.white, 1), T(x, 0.475, 0)); g.add(sphere(0.09, PAL.white, 8, 6), T(x, 1.0, 0)); },
+  (g) => { for (const y of [0.22, 0.55]) g.add(box(2.0, 0.07, 0.05, '#ece6da'), T(0, y, -0.04)); },
+  (g) => { for (let x = -0.75; x <= 0.76; x += 0.25) { g.add(box(0.12, 0.72, 0.05, PAL.white), T(x, 0.36, 0.01)); g.add(extrude([[-0.06, 0], [0.06, 0], [0, 0.1]], 0.05, PAL.white), T(x, 0.72, 0.01)); } });
+DECO_MODELS.whitePost = () => new Geo().add(roundedBox(0.18, 1.0, 0.18, 0.05, PAL.white, 1), T(0, 0.5, 0)).add(sphere(0.11, PAL.white, 8, 6), T(0, 1.06, 0));
+DECO_MODELS.stoneWall = () => {
+  const g = new Geo(), R = rng(81);
+  g.add(roundedBox(2.0, 0.62, 0.42, 0.06, '#a39b8f', 2).shadeByHeight(0, 0.62, 0.8, 1.05), T(0, 0.31, 0));
+  for (let row = 0; row < 3; row++) for (let x = -0.85 + (row % 2) * 0.2; x <= 0.86; x += 0.38) for (const sz of [-1, 1]) {
+    g.add(icosphere(0.15 + R() * 0.04, R() > 0.5 ? PAL.stone : '#b5aea4', 1, true, 0.12, row * 20 + Math.round(x * 10)), T(x, 0.12 + row * 0.2, sz * 0.15, 0, 0, 0, 1.15, 0.65, 0.45));
+  }
+  g.add(roundedBox(2.0, 0.08, 0.48, 0.03, '#c8c1b5', 1), T(0, 0.66, 0));
+  return g;
+};
+DECO_MODELS.stonePillar = () => new Geo().add(roundedBox(0.46, 0.8, 0.46, 0.06, '#a39b8f', 2).shadeByHeight(0, 0.8, 0.8, 1.05), T(0, 0.4, 0)).add(roundedBox(0.5, 0.1, 0.5, 0.03, '#c8c1b5', 1), T(0, 0.84, 0));
+const brickFace = (g, w, h, d, y0) => {
+  const cs = ['#b8503c', '#a84634', '#c55b44', '#b04b37'];
+  g.add(box(w, h, d, '#d8cfc2'), T(0, y0 + h / 2, 0));
+  let n = 0;
+  for (let r = 0; r < Math.round(h / 0.17); r++) for (let x = -w / 2 + 0.17 + (r % 2) * 0.17; x < w / 2 - 0.05; x += 0.34) {
+    const bw = Math.min(0.31, (w / 2 - x) * 2 - 0.02);
+    if (bw < 0.12) continue;
+    for (const sz of [-1, 1]) g.add(box(bw, 0.14, 0.03, cs[n++ % cs.length]), T(x, y0 + 0.085 + r * 0.17, sz * (d / 2 + 0.005)));
+  }
+};
+DECO_MODELS.brickWall = () => {
+  const g = new Geo();
+  brickFace(g, 2.0, 0.85, 0.38, 0);
+  g.add(roundedBox(2.0, 0.08, 0.46, 0.03, '#d9d2c5', 1), T(0, 0.89, 0));
+  return g;
+};
+DECO_MODELS.brickPillar = () => {
+  const g = new Geo();
+  g.add(roundedBox(0.44, 1.0, 0.44, 0.03, '#b8503c', 2).shadeByHeight(0, 1.0, 0.85, 1.05), T(0, 0.5, 0));
+  g.add(roundedBox(0.5, 0.08, 0.5, 0.03, '#d9d2c5', 1), T(0, 1.04, 0));
+  g.add(sphere(0.14, '#d9d2c5', 10, 8), T(0, 1.2, 0));
+  return g;
+};
+DECO_MODELS.ironFence = () => fenceRow(new Geo(),
+  (g, x) => { g.add(roundedBox(0.12, 1.2, 0.12, 0.03, '#2d2f36', 1), T(x, 0.6, 0)); g.add(sphere(0.08, '#e8b93a', 8, 6), T(x, 1.25, 0)); },
+  (g) => { g.add(roundedBox(2.0, 0.12, 0.3, 0.03, '#9d968b', 1), T(0, 0.06, 0)); for (const y of [0.3, 0.95]) g.add(box(2.0, 0.05, 0.04, '#2d2f36'), T(0, y, 0)); },
+  (g) => { for (let x = -0.78; x <= 0.79; x += 0.13) { g.add(box(0.03, 0.95, 0.03, '#2d2f36'), T(x, 0.58, 0)); g.add(cylinder(0, 0.035, 0.1, '#e8b93a', 5), T(x, 1.05, 0)); } });
+DECO_MODELS.ironPost = () => new Geo().add(roundedBox(0.16, 1.3, 0.16, 0.03, '#2d2f36', 1), T(0, 0.65, 0)).add(sphere(0.1, '#e8b93a', 8, 6), T(0, 1.36, 0)).add(roundedBox(0.3, 0.12, 0.3, 0.03, '#9d968b', 1), T(0, 0.06, 0));
+DECO_MODELS.gardenGate = () => {
+  const g = new Geo(), R = rng(91);
+  for (const x of [-0.93, 0.93]) { g.add(roundedBox(0.16, 1.7, 0.16, 0.03, PAL.woodDark, 1), T(x, 0.85, 0)); }
+  // Bogen
+  const N = 9;
+  for (let i = 0; i < N; i++) {
+    const a = (i + 0.5) / N * P, x = -Math.cos(a) * 0.93, y = 1.7 + Math.sin(a) * 0.45;
+    g.add(roundedBox(0.34, 0.1, 0.14, 0.03, PAL.wood, 1), T(x, y, 0, 0, 0, Math.atan2(Math.sin(a) * 0.45, Math.cos(a) * 0.93) - P / 2 + (a > P / 2 ? P : 0)));
+    g.add(icosphere(0.1, i % 2 ? PAL.leaf1 : PAL.leaf2, 1), T(x, y + 0.05, 0.05));
+    if (i % 2 === 0) g.add(sphere(0.06, '#e83a5a', 6, 5), T(x + 0.05, y + 0.1, 0.1));
+  }
+  // zwei Torflügel aus Latten
+  for (const sd of [-1, 1]) {
+    for (let k = 0; k < 4; k++) g.add(box(0.15, 0.85, 0.05, PAL.woodLight), T(sd * (0.18 + k * 0.2), 0.52, 0));
+    for (const y of [0.3, 0.75]) g.add(box(0.82, 0.08, 0.05, PAL.wood), T(sd * 0.48, y, -0.04));
+  }
+  g.add(sphere(0.04, '#3a3a40', 6, 4), T(0.08, 0.55, 0.05));
+  void R;
+  return g;
+};
+
+// Pflanzen
+const potted = (g) => g.add(lathe([[0.22, 0], [0.3, 0.32], [0.33, 0.36], [0, 0.36]], '#d9774a', 14));
+DECO_MODELS.bushGreen = () => new Geo().add(bush(41), T(0, 0, 0, 0, 0, 0, 1.15));
+DECO_MODELS.bushPink = () => { const g = new Geo().add(bush(42, '#ff8fc0'), T(0, 0, 0, 0, 0, 0, 1.15)); const R = rng(4); for (let i = 0; i < 12; i++) { const a = R() * P * 2; g.add(icosphere(0.08, i % 3 ? '#ff8fc0' : '#ffc2dc', 0), T(Math.cos(a) * 0.45, 0.45 + R() * 0.5, Math.sin(a) * 0.45)); } return g; };
+DECO_MODELS.bushWhite = () => { const g = new Geo().add(bush(43, '#ffffff'), T(0, 0, 0, 0, 0, 0, 1.15)); const R = rng(5); for (let i = 0; i < 12; i++) { const a = R() * P * 2; g.add(icosphere(0.08, i % 3 ? '#ffffff' : '#fff1b8', 0), T(Math.cos(a) * 0.45, 0.45 + R() * 0.5, Math.sin(a) * 0.45)); } return g; };
+DECO_MODELS.boxwoodBall = () => { const g = new Geo(); potted(g); const b = icosphere(0.36, '#3f8f3a', 2, false, 0.06, 7); b.paint((p, n, c) => v3.scale(c, 0.8 + 0.3 * (n[1] * 0.5 + 0.5))); g.add(b, T(0, 0.68, 0)); return g; };
+DECO_MODELS.boxwoodCone = () => { const g = new Geo(); potted(g); g.add(cylinder(0.02, 0.32, 1.0, '#3f8f3a', 12).shadeByHeight(0, 1.0, 0.75, 1.1), T(0, 0.34, 0)); return g; };
+DECO_MODELS.tallGrass = () => {
+  const g = new Geo(), R = rng(17);
+  const t = grassTuft(R, 0.9, ['#9ccf5a', '#b8d96e', '#7fbf48']);
+  for (let i = 0; i < 6; i++) g.add(t, T((R() - 0.5) * 0.4, 0, (R() - 0.5) * 0.4, R() * 6));
+  for (let i = 0; i < 7; i++) { const a = R() * P * 2, r = R() * 0.25; g.add(cylinder(0.035, 0.05, 0.22, '#f3e3b5', 5), T(Math.cos(a) * r, 0.85 + R() * 0.2, Math.sin(a) * r)); }
+  return g.windByHeight(0.1, 1.2, 0.6);
+};
+DECO_MODELS.lavenderRow = () => {
+  const g = new Geo(), R = rng(23);
+  g.add(roundedBox(2.0, 0.08, 0.6, 0.03, PAL.soil, 1), T(0, 0.04, 0));
+  for (let k = 0; k < 5; k++) {
+    const cx = -0.8 + k * 0.4;
+    g.add(icosphere(0.2, '#7fa66a', 1, false, 0.1, k), T(cx, 0.18, 0, 0, 0, 0, 1, 0.7, 1));
+    for (let i = 0; i < 9; i++) { const a = R() * P * 2, r = R() * 0.14, h = 0.45 + R() * 0.15; g.add(cylinder(0.008, 0.012, h, '#6f9a58', 4), T(cx + Math.cos(a) * r, 0.15, Math.sin(a) * r)); g.add(cylinder(0.02, 0.035, 0.16, R() > 0.4 ? '#8b6fd6' : '#a68ae6', 5), T(cx + Math.cos(a) * r, 0.15 + h - 0.06, Math.sin(a) * r)); }
+  }
+  return g.windByHeight(0.2, 0.8, 0.5);
+};
+DECO_MODELS.roseBush = () => {
+  const g = new Geo().add(bush(44), T(0, 0, 0, 0, 0, 0, 0.95)), R = rng(29);
+  for (let i = 0; i < 10; i++) { const a = R() * P * 2, y = 0.35 + R() * 0.5, r = 0.36 + R() * 0.1; g.add(icosphere(0.09, '#d81e3c', 1, false, 0.1, i), T(Math.cos(a) * r, y, Math.sin(a) * r)); g.add(sphere(0.045, '#a5112b', 6, 5), T(Math.cos(a) * (r + 0.06), y + 0.03, Math.sin(a) * (r + 0.06))); }
+  return g;
+};
+DECO_MODELS.hydrangeaBush = () => {
+  const g = new Geo().add(bush(45), T(0, 0, 0, 0, 0, 0, 1.25)), R = rng(31);
+  for (let i = 0; i < 8; i++) { const a = i / 8 * P * 2 + R() * 0.3, r = 0.45, y = 0.5 + R() * 0.45; g.add(icosphere(0.2, i % 2 ? '#8fb3ff' : '#ffa8d6', 1, false, 0.18, i), T(Math.cos(a) * r, y, Math.sin(a) * r)); }
+  return g;
+};
+DECO_MODELS.rockGroup = () => {
+  const g = new Geo();
+  for (const [x, z, sc, sd] of [[-0.35, 0.1, 0.42, 5], [0.35, -0.15, 0.32, 8], [0.2, 0.35, 0.22, 11]]) {
+    g.add(rock(sd, sc), T(x, sc * 0.3, z, sd));
+    g.add(icosphere(sc * 0.55, '#6fae4a', 1, false, 0.2, sd), T(x - sc * 0.2, sc * 0.75, z + sc * 0.1, 0, 0, 0, 1, 0.35, 1));
+  }
+  return g;
+};
+DECO_MODELS.fir = () => new Geo().add(tree(7, 'pine'), T(0, 0, 0, 0, 0, 0, 0.9));
+DECO_MODELS.birch = () => {
+  const g = new Geo(), R = rng(37), h = 2.3;
+  g.add(cylinder(0.11, 0.17, h, '#f2efe8', 8));
+  for (let i = 0; i < 9; i++) g.add(box(0.14, 0.03, 0.02, '#2f2f33'), T(0, 0.3 + R() * (h - 0.4), 0, R() * 6, 0, 0, 1.5));
+  const greens = ['#9fd85a', '#86c94a', '#b4e06e'];
+  for (const [x, y, z, r] of [[0, h + 0.4, 0, 0.75], [0.45, h + 0.1, 0.15, 0.55], [-0.4, h + 0.15, -0.2, 0.55], [0.05, h + 0.95, 0, 0.5], [-0.1, h - 0.15, 0.45, 0.45]]) {
+    const b = icosphere(r, greens[Math.floor(R() * 3)], 1, false, 0.15, Math.round(x * 10 + y));
+    b.paint((p, n, c) => v3.scale(c, 0.82 + 0.28 * (n[1] * 0.5 + 0.5)));
+    g.add(b, T(x, y, z));
+  }
+  return g.windByHeight(h, h + 1.5, 0.35);
+};
+DECO_MODELS.cherryTree = () => {
+  const g = new Geo(), R = rng(47), h = 1.7;
+  g.add(cylinder(0.16, 0.26, h, '#6e4632', 8));
+  g.add(cylinder(0.06, 0.1, 0.9, '#6e4632', 6), T(0, h * 0.55, 0, 1.2, 0, 0.9));
+  const pinks = ['#ffc0d9', '#ffaecf', '#ffd6e6', '#ff9fc6'];
+  for (const [x, y, z, r] of [[0, h + 0.75, 0, 1.15], [0.8, h + 0.35, 0.2, 0.8], [-0.7, h + 0.4, -0.25, 0.85], [0.1, h + 0.25, -0.75, 0.75], [-0.2, h + 0.35, 0.75, 0.75], [0.15, h + 1.35, 0.1, 0.7]]) {
+    const b = icosphere(r * (0.9 + R() * 0.2), pinks[Math.floor(R() * 4)], 2, false, 0.14, Math.round(x * 10 + z * 3));
+    b.paint((p, n, c) => v3.scale(c, 0.86 + 0.22 * (n[1] * 0.5 + 0.5)));
+    g.add(b, T(x, y, z));
+  }
+  for (let i = 0; i < 10; i++) g.add(disk(0.06, '#ffc0d9', 6), T((R() - 0.5) * 2.2, 0.02, (R() - 0.5) * 2.2));
+  return g.windByHeight(h, h + 2.2, 0.3);
+};
+DECO_MODELS.willow = () => {
+  const g = new Geo(), R = rng(53), h = 2.0;
+  g.add(cylinder(0.2, 0.32, h, '#7a5a3c', 8));
+  const dome = icosphere(1.15, '#7fbf55', 2, false, 0.1, 3);
+  dome.paint((p, n, c) => v3.scale(c, 0.8 + 0.3 * (n[1] * 0.5 + 0.5)));
+  g.add(dome, T(0, h + 0.55, 0, 0, 0, 0, 1, 0.7, 1));
+  for (let i = 0; i < 34; i++) {
+    const a = i / 34 * P * 2 + R() * 0.15, r = 0.95 + R() * 0.2, len = 1.2 + R() * 0.7;
+    g.add(roundedBox(0.09, len, 0.04, 0.02, R() > 0.5 ? '#8fcf5f' : '#76b84c', 1), T(Math.cos(a) * r, h + 0.6 - len / 2, Math.sin(a) * r, -a));
+  }
+  return g.windByHeight(h - 0.5, h + 1.4, 0.45);
+};
+
 DECO_MODELS.tableSet = () => {
   const g = new Geo();
   g.add(cylinder(0.45, 0.45, 0.05, '#fbfbf7', 20), T(0, 0.72, 0));

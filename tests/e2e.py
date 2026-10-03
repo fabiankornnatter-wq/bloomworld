@@ -241,6 +241,7 @@ with sync_playwright() as p:
     click('#editBar [data-act=editDeselect]', 300)
     n0 = ev('BW.state.decor.length')
     click('#editBar [data-act=editShop]', 600)
+    click('#panel [data-act=decoCat][data-id=misc]', 600)
     click('#panel [data-act=buyDeco][data-id=bench]', 600)
     click('#panel [data-act=buyDeco][data-id=bench]', 600)
     check('Deko mehrfach gekauft', ev('BW.state.decor.length') == n0 + 2 and ev("BW.state.decor.filter(d => d.id === 'bench' && !d.stored).length") >= 2)

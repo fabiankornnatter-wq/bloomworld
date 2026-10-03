@@ -59,11 +59,12 @@ export function newState(now = Date.now()) {
     bred: [],
     selectedSeed: 'daisy',
     collection: {},
-    deco: C.LEGACY_DECOR.map((d) => d.id), // Deko-Arten, die man besitzt (Sammlung)
-    decor: C.LEGACY_DECOR.map((d) => ({ ...d, stored: false })), // aufgestellte bzw. eingelagerte Deko-Teile: { id, x, z, r, stored }
-    legacyDecor: 1,
+    deco: [...new Set([...C.LEGACY_DECOR, ...C.LEGACY_GROUND].map((d) => d.id))], // Deko-Arten, die man besitzt (Sammlung)
+    decor: [...C.LEGACY_GROUND, ...C.LEGACY_DECOR].map((d) => ({ ...d, stored: false })), // aufgestellte bzw. eingelagerte Deko-Teile: { id, x, z, r, stored }
+    legacyDecor: 2,
+    house: { wall: 0, roof: 0, accent: 0 }, // Hausfarben (Index in C.HOUSE_COLORS)
     land: 0,             // Gartenerweiterung 0–3
-    layout: { beds: C.DEFAULT_BEDS.map((p) => [...p]), gh: [...C.DEFAULT_GH] },
+    layout: { beds: C.DEFAULT_BEDS.map((p) => [...p]), gh: [...C.DEFAULT_GH], house: [...C.DEFAULT_HOUSE] },
     skins: [],
     activeSkin: { fox: 'default', hedgehog: 'default' },
     items: Object.fromEntries(C.ITEM_ORDER.map((k) => [k, 0])),
@@ -748,12 +749,13 @@ function track(s, type, id, amount = 1) {
   s.story.count += amount;
 }
 
+const STARTER_DECO = new Set([...C.LEGACY_DECOR, ...C.LEGACY_GROUND].map((d) => d.id));
 function questProgress(s, goal) {
   switch (goal.type) {
     case 'plant': case 'harvest': case 'useItem': case 'shiny': case 'earn': case 'water': return [Math.min(goal.n, s.story.count), goal.n];
     case 'level': return [Math.min(goal.n, s.level), goal.n];
     case 'beds': return [Math.min(goal.n, s.beds.filter((b) => !b.locked).length), goal.n];
-    case 'deco': return [Math.min(goal.n, s.deco.length), goal.n];
+    case 'deco': return [Math.min(goal.n, s.deco.filter((k) => !STARTER_DECO.has(k)).length), goal.n];
     case 'move': return [Math.min(goal.n, s.story.count), goal.n];
     case 'greenhouse': return [s.greenhouse.unlocked ? 1 : 0, 1];
     case 'breed': return [s.bred.includes(goal.seed) ? 1 : 0, 1];
@@ -817,6 +819,17 @@ export function buyDeco(s, id, near) {
   return { ok: true, k, stored: s.decor[k].stored };
 }
 
+// Haus streichen: Farben aus C.HOUSE_COLORS
+export function paintHouse(s, colors) {
+  const next = { ...s.house };
+  for (const k of Object.keys(C.HOUSE_COLORS)) if (colors && Number.isInteger(colors[k]) && colors[k] >= 0 && colors[k] < C.HOUSE_COLORS[k].length) next[k] = colors[k];
+  if (Object.keys(next).every((k) => next[k] === s.house[k])) return err('invalid', { message: 'Das Haus hat schon diese Farben.' });
+  if (!spend(s, C.HOUSE_PAINT)) return noCoins(s, C.HOUSE_PAINT, 'das Streichen');
+  s.house = next;
+  track(s, 'paint');
+  return { ok: true };
+}
+
 // ---------- Garten gestalten ----------
 export const landHalf = (s) => C.LAND[s.land].half;
 // Bereich, in dem Dinge stehen dürfen (Rand für Zaun, Hecke und Blumenrabatte)
@@ -827,23 +840,30 @@ const EPS = 1e-6;
 const hits = (a, b) => a[0] < b[2] - EPS && b[0] < a[2] - EPS && a[1] < b[3] - EPS && b[1] < a[3] - EPS;
 
 export function footprint(s, ref, r) {
-  const [w, d] = ref.type === 'bed' ? C.bedSize(ref.size || s.beds[ref.i]?.size || 1) : ref.type === 'gh' ? C.GH_SIZE : C.DECO[ref.id ?? s.decor[ref.k]?.id]?.size || [1, 1];
+  const [w, d] = ref.type === 'bed' ? C.bedSize(ref.size || s.beds[ref.i]?.size || 1) : ref.type === 'gh' ? C.GH_SIZE : ref.type === 'house' ? C.HOUSE_SIZE : C.DECO[ref.id ?? s.decor[ref.k]?.id]?.size || [1, 1];
   return r % 2 ? [d, w] : [w, d];
 }
 export function objectPos(s, ref) {
   if (ref.type === 'bed') return s.layout.beds[ref.i];
   if (ref.type === 'gh') return s.layout.gh;
+  if (ref.type === 'house') return s.layout.house;
   const d = s.decor[ref.k];
   return d ? [d.x, d.z, d.r] : null;
 }
-const same = (a, b) => a && b && a.type === b.type && (a.type === 'gh' || (a.type === 'bed' ? a.i === b.i : a.k === b.k));
+const same = (a, b) => a && b && a.type === b.type && (a.type === 'gh' || a.type === 'house' || (a.type === 'bed' ? a.i === b.i : a.k === b.k));
+// Flache Deko (Boden, Wege) liegt auf einer eigenen Ebene: sie stößt nur an andere flache Teile
+export const isFlat = (s, ref) => ref?.type === 'deco' && !!C.DECO[ref.id ?? s.decor[ref.k]?.id]?.flat;
 
 // Alle belegten Flächen (außer dem Objekt „skip“)
 export function occupied(s, skip) {
-  const out = C.OBSTACLES.map((r) => ({ r, what: 'fixed' }));
-  s.layout.beds.forEach((p, i) => { if (bedVisible(s, i) && !same(skip, { type: 'bed', i })) out.push({ r: RECT(p[0], p[1], footprint(s, { type: 'bed', i }, p[2])), what: 'bed' }); });
-  if (!same(skip, { type: 'gh' })) { const g = s.layout.gh; out.push({ r: RECT(g[0], g[1], footprint(s, { type: 'gh' }, g[2])), what: 'gh' }); }
-  s.decor.forEach((d, k) => { if (!d.stored && !same(skip, { type: 'deco', k })) out.push({ r: RECT(d.x, d.z, footprint(s, { type: 'deco', id: d.id }, d.r)), what: 'deco' }); });
+  const flat = isFlat(s, skip);
+  const out = flat ? [] : C.OBSTACLES.map((r) => ({ r, what: 'fixed' }));
+  if (!flat) {
+    s.layout.beds.forEach((p, i) => { if (bedVisible(s, i) && !same(skip, { type: 'bed', i })) out.push({ r: RECT(p[0], p[1], footprint(s, { type: 'bed', i }, p[2])), what: 'bed' }); });
+    if (!same(skip, { type: 'gh' })) { const g = s.layout.gh; out.push({ r: RECT(g[0], g[1], footprint(s, { type: 'gh' }, g[2])), what: 'gh' }); }
+    if (!same(skip, { type: 'house' })) { const h = s.layout.house; out.push({ r: RECT(h[0], h[1], footprint(s, { type: 'house' }, h[2])), what: 'house' }); }
+  }
+  s.decor.forEach((d, k) => { if (!d.stored && !same(skip, { type: 'deco', k }) && !!C.DECO[d.id]?.flat === flat) out.push({ r: RECT(d.x, d.z, footprint(s, { type: 'deco', id: d.id }, d.r)), what: 'deco' }); });
   return out;
 }
 
@@ -865,6 +885,7 @@ export function moveObject(s, ref, x, z, r = 0) {
   const moved = old[0] !== x || old[1] !== z || old[2] !== r;
   if (ref.type === 'deco') Object.assign(s.decor[ref.k], { x, z, r });
   else if (ref.type === 'gh') s.layout.gh = [x, z, r];
+  else if (ref.type === 'house') s.layout.house = [x, z, r];
   else s.layout.beds[ref.i] = [x, z, r];
   if (moved) track(s, 'move');
   return { ok: true, moved };
@@ -1447,7 +1468,9 @@ export function repair(s, now) {
   s.land = Math.min(C.LAND.length - 1, num(s.land, 0));
   const lay = obj(s.layout) ? s.layout : {};
   const pos = (p, d) => (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]) ? [p[0], p[1], [0, 1, 2, 3].includes(p[2]) ? p[2] : 0] : [...d]);
-  s.layout = { beds: C.DEFAULT_BEDS.map((d, i) => pos(Array.isArray(lay.beds) ? lay.beds[i] : null, d)), gh: pos(lay.gh, C.DEFAULT_GH) };
+  s.layout = { beds: C.DEFAULT_BEDS.map((d, i) => pos(Array.isArray(lay.beds) ? lay.beds[i] : null, d)), gh: pos(lay.gh, C.DEFAULT_GH), house: pos(lay.house, C.DEFAULT_HOUSE) };
+  const hc = obj(s.house) ? s.house : {};
+  s.house = Object.fromEntries(Object.keys(C.HOUSE_COLORS).map((k) => [k, Math.min(C.HOUSE_COLORS[k].length - 1, num(Number(hc[k]), 0))]));
   if (!Array.isArray(s.decor)) {
     // Übernahme: jede Deko-Art an ihre bisherigen Plätze
     s.decor = [];
@@ -1459,6 +1482,11 @@ export function repair(s, now) {
     // Teich, Bäume, Zierbeete und Gießkanne waren bis 3.10 fest – jetzt frei verschiebbare Deko
     for (const d of C.LEGACY_DECOR) if (!s.decor.some((x) => x.id === d.id && Math.abs(x.x - d.x) < 0.01 && Math.abs(x.z - d.z) < 0.01)) s.decor.push({ ...d, stored: false });
     s.legacyDecor = 1;
+  }
+  if (s.legacyDecor < 2) {
+    // 3.13: Kiesplatz und Trittsteine waren fest – jetzt flache Deko (Boden)
+    for (const d of C.LEGACY_GROUND) s.decor.unshift({ ...d, stored: false });
+    s.legacyDecor = 2;
   }
   for (const d of s.decor) if (!s.deco.includes(d.id)) s.deco.push(d.id);
   s.skins = [...new Set(s.skins.filter((k) => C.SKINS[k]))];

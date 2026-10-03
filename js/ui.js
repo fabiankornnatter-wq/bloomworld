@@ -212,12 +212,12 @@ export class UI {
     const stored = s.decor.filter((d) => d.stored).length;
     let html;
     if (!e.sel) {
-      html = `<div class="eb-msg">${svg(I.hand, 30)}<span>Tippe ein Beet, das Gewächshaus oder eine Deko an und <b>ziehe</b> es an einen neuen Platz.</span></div>
+      html = `<div class="eb-msg">${svg(I.hand, 30)}<span>Tippe ein Beet, das Haus, das Gewächshaus oder eine Deko an und <b>ziehe</b> es an einen neuen Platz.</span></div>
         <div class="eb-btns"><button class="ebtn" data-act="editStore">${I.crate}<span>Lager${stored ? ` (${stored})` : ''}</span></button><button class="ebtn" data-act="editShop">${I.NAV.shop}<span>Deko kaufen</span></button><button class="ebtn" data-act="editLand">${I.expand}<span>Vergrößern</span></button><button class="btn small pink" data-act="editDone">Fertig</button></div>`;
     } else {
       const name = this.objName(e.sel);
       html = `<div class="eb-msg">${svg(e.valid ? I.hand : I.lock, 30)}<span><b>${esc(name)}</b><br>${e.valid ? 'Ziehen zum Verschieben' : 'Hier ist kein Platz'}</span></div>
-        <div class="eb-btns"><button class="ebtn" data-act="editRotate">${I.rotate}<span>Drehen</span></button>${e.sel.type === 'deco' ? `<button class="ebtn" data-act="editStoreSel">${I.crate}<span>Einlagern</span></button>` : ''}<button class="ebtn" data-act="editDeselect">✓<span>Ablegen</span></button><button class="btn small pink" data-act="editDone">Fertig</button></div>`;
+        <div class="eb-btns"><button class="ebtn" data-act="editRotate">${I.rotate}<span>Drehen</span></button>${e.sel.type === 'deco' ? `<button class="ebtn" data-act="editStoreSel">${I.crate}<span>Einlagern</span></button>` : ''}${e.sel.type === 'house' ? `<button class="ebtn" data-act="editPaint">${I.brush}<span>Farben</span></button>` : ''}<button class="ebtn" data-act="editDeselect">✓<span>Ablegen</span></button><button class="btn small pink" data-act="editDone">Fertig</button></div>`;
     }
     if (bar.dataset.h !== html) { bar.innerHTML = html; bar.dataset.h = html; }
     bar.hidden = false;
@@ -226,6 +226,7 @@ export class UI {
   objName(ref) {
     const s = this.s;
     if (ref.type === 'gh') return 'Gewächshaus';
+    if (ref.type === 'house') return 'Dein Haus';
     if (ref.type === 'bed') { const b = s.beds[ref.i]; return b.locked ? 'Verwildertes Beet' : `${C.BED_LEVELS[b.lvl - 1].name}${b.seed ? ' · ' + plain(C.SEEDS[b.seed].name) : ''}`; }
     return C.DECO[s.decor[ref.k]?.id]?.name || 'Deko';
   }
@@ -917,7 +918,11 @@ export class UI {
       }).join('') + `<div class="sec">Züchtungen</div><div class="card row">${svg(I.greenhouse, 56)}<div class="grow"><h4>${s.bred.length} von ${C.BRED_SEEDS.length} gezüchtet</h4><p>Regenbogentulpe, Goldene Rose, Nordlicht-Rose, Schwarze Rose, Sternenrose und mehr gibt es nicht zu kaufen – du züchtest sie selbst im Gewächshaus.</p></div><button class="btn small blue" data-act="openBreed">Öffnen</button></div>`;
     } else if (cur === 'deco') {
       h += `<div class="card row">${svg(I.brush, 48)}<div class="grow"><h4>Gestalte deinen Garten</h4><p>Deko kannst du mehrfach kaufen und im Gestalten-Modus frei verschieben, drehen und einlagern.</p></div><button class="btn small blue" data-act="editStart">Gestalten</button></div>`;
-      h += `<div class="grid2">` + C.DECO_ORDER.map((k) => {
+      const dc = C.DECO_CATS.find((c) => c.id === this.decoCat) || C.DECO_CATS[0];
+      h += `<div class="seg deco-cats">${C.DECO_CATS.map((c) => `<button class="${c === dc ? 'on' : ''}" data-act="decoCat" data-id="${c.id}">${esc(c.name)}</button>`).join('')}</div>`;
+      if (dc.id === 'ground') h += `<p class="note" style="margin:8px 4px 0">Bodenteile liegen flach: Beete, Zäune und Deko dürfen darauf stehen.</p>`;
+      if (dc.id === 'fence') h += `<p class="note" style="margin:8px 4px 0">Alle Stücke sind 2 m lang und passen nahtlos aneinander. Für Ecken gibt es passende Pfosten.</p>`;
+      h += `<div class="grid2">` + dc.items.map((k) => {
         const d = C.DECO[k], n = s.decor.filter((x) => x.id === k).length, lvOk = s.level >= (d.level || 1);
         return `<div class="tile">${n ? `<span class="owned">${n}×</span>` : ''}<img class="tapimg" alt="${esc(d.name)} ansehen" src="${this.icons.deco[k]}" data-act="detail" data-kind="deco" data-id="${k}"><b>${esc(d.name)}${d.seasonal ? ' 🍂' : ''}</b><small>${esc(d.desc)}</small>${C.BREED_HELPERS[k] ? `<small class="perk">+${Math.round(C.BREED_HELPERS[k] * 100)} % Zuchterfolg</small>` : ''}${lvOk ? `<button class="btn small" data-act="buyDeco" data-id="${k}">${I.coin()} ${d.price}</button>` : `<button class="btn small" disabled>${I.lock.replace('class="lock"', 'style="width:16px;height:16px"')} Level ${d.level}</button>`}</div>`;
       }).join('') + `</div><p class="note">Neue Deko wird automatisch auf einen freien Platz gestellt. Exklusive Deko gibt es bei Events.</p>`;
@@ -965,7 +970,7 @@ export class UI {
       <div class="card set"><div class="lab">Spielstand</div><p>Wird automatisch gespeichert${acc.user ? ' – in deinem Konto und auf diesem Gerät' : ' – auf diesem Gerät'}.</p><button class="btn red small" style="align-self:flex-start;margin-top:6px" data-act="reset">Garten neu beginnen</button></div>
       <div class="card set"><div class="lab">Als App auf dem Handy</div><p>${standalone ? 'BloomWorld läuft als App. 🌸' : 'Mit eigenem Symbol auf dem Startbildschirm, ohne Browserleiste.'}</p>${standalone ? '' : '<button class="btn small" style="align-self:flex-start;margin-top:6px" data-act="install">Zum Startbildschirm hinzufügen</button>'}</div>
       <div class="btnrow center"><button class="btn small ghost" data-act="legal" data-id="impressum">Impressum</button><button class="btn small ghost" data-act="legal" data-id="datenschutz">Datenschutz</button><button class="btn small ghost" data-act="legal" data-id="agb">AGB</button></div>
-      <p class="note">BloomWorld · Version 3.12<br>Schrift: Poppins (SIL Open Font License)</p>`;
+      <p class="note">BloomWorld · Version 3.13<br>Schrift: Poppins (SIL Open Font License)</p>`;
   }
 
   // ---------- Klicks in Panels, Leisten, Dialogen ----------
@@ -1037,6 +1042,10 @@ export class UI {
       case 'video': A.video(); break;
       case 'unlockRare': A.unlockRare(id); break;
       case 'buyDeco': A.buyDeco(id); break;
+      case 'decoCat': this.api.sound.play('tap'); this.decoCat = id; this.renderPanel(); break;
+      case 'editPaint': this.paintDialog(); break;
+      case 'paintPick': this.paintPick(el.dataset.key, +id); break;
+      case 'paintHouse': A.paintHouse(this._paint); break;
       case 'buySkin': A.buySkin(id); break;
       case 'equip': A.equip(el.dataset.animal, id); if (this.modalOpen && this.detail.kind === 'animal') this.detail.open('animal', id); break;
       case 'claim': A.claim(id); break;
@@ -1102,6 +1111,26 @@ export class UI {
   confirm({ title, text, ok = 'OK', okClass = '', onOk }) {
     this.modal({ title, html: `<p>${esc(text)}</p>`, buttons: [['Abbrechen', 'closeModal', 'ghost'], [ok, 'modalOk', okClass]], onOk });
   }
+
+  // Haus streichen: Farben wählen (Vorschau sofort im Garten), dann bezahlen
+  paintDialog() {
+    this._paint = { ...this.s.house };
+    const orig = { ...this.s.house };
+    this.modal({ title: 'Haus streichen', cls: 'paintdlg', html: this.paintHtml(), buttons: [['Abbrechen', 'closeModal', 'ghost'], [`Streichen · ${I.coin()} ${C.HOUSE_PAINT}`, 'paintHouse', '']],
+      onClose: () => { if (!this._painted) this.api.world.setHouseColors(orig); this._painted = false; } });
+  }
+  paintHtml() {
+    const P = this._paint, L = { wall: 'Wände', roof: 'Dach', accent: 'Tür & Läden' };
+    return Object.entries(C.HOUSE_COLORS).map(([k, list]) => `<div class="prow"><b>${L[k]}</b><div class="swatches">${list.map(([n, c], i) => `<button class="sw ${P[k] === i ? 'on' : ''}" style="background:${c}" title="${esc(n)}" aria-label="${esc(n)}" data-act="paintPick" data-key="${k}" data-id="${i}"></button>`).join('')}</div><small>${esc(list[P[k]][0])}</small></div>`).join('') + '<p class="small center">Die Vorschau siehst du direkt im Garten.</p>';
+  }
+  paintPick(key, i) {
+    if (!this._paint || !C.HOUSE_COLORS[key]?.[i]) return;
+    this._paint[key] = i;
+    this.api.world.setHouseColors(this._paint);
+    const box = $('modal').querySelector('.dlg'); const b = box?.querySelector('.btns');
+    if (box) { box.querySelectorAll('.prow').forEach((el) => el.remove()); box.querySelector('p.small.center')?.remove(); b.insertAdjacentHTML('beforebegin', this.paintHtml()); }
+  }
+  paintDone() { this._painted = true; this.closeModal(); }
 
   deleteAccountDialog() {
     this.modal({ title: 'Konto löschen', html: `<p>Dein Konto, dein Spielername und dein gesamter Spielstand werden <b>endgültig</b> gelöscht. Bitte gib zur Bestätigung dein Passwort ein.</p>

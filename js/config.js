@@ -269,14 +269,25 @@ export const DEFAULT_BEDS = [
   [-5.8, 15.3], [-2.7, 15.3], [3.5, 15.3],
 ].map(([x, z]) => [Math.round(x * 100) / 100, Math.round(z * 100) / 100, 0]);
 export const DEFAULT_GH = [0, -7.35, 0];
-// Feste Hindernisse (Haus, Teich, Bäume, Zierbeete): [x0, z0, x1, z1]
-export const OBSTACLES = [
-  [-8.6, -8.8, -3.4, -4.3],   // Haus
-];
+// Das Haus: frei verschiebbar (seit 3.13) und mit eigenen Farben
+export const HOUSE_SIZE = [5.2, 4.5];
+export const DEFAULT_HOUSE = [-6.0, -6.55, 0];
+export const HOUSE_PAINT = 300; // Münzen fürs Streichen
+export const HOUSE_COLORS = {
+  wall: [['Creme', '#fff3df'], ['Rosa', '#ffd9e6'], ['Mint', '#d4f2e0'], ['Himmelblau', '#d6e8ff'], ['Zitrone', '#fff1a8'], ['Lavendel', '#e5dbff'], ['Pfirsich', '#ffd9bf'], ['Weiß', '#fbfaf5']],
+  roof: [['Ziegelrot', '#e2654a'], ['Blau', '#4d7fd6'], ['Grün', '#4fa86a'], ['Lila', '#9a6ad6'], ['Anthrazit', '#5b5f6e'], ['Rosa', '#e86fa0'], ['Orange', '#ec8a35'], ['Türkis', '#2fb3b0']],
+  accent: [['Salbei', '#4aa58f'], ['Rot', '#d9434b'], ['Gelb', '#f2b62e'], ['Blau', '#3b78d8'], ['Rosa', '#ef6fa5'], ['Weiß', '#f4f1ea'], ['Lila', '#8a5cd1'], ['Braun', '#8b5a35']],
+};
+// Feste Hindernisse: [x0, z0, x1, z1] (seit 3.13 keine mehr – auch das Haus ist verschiebbar)
+export const OBSTACLES = [];
 // Gartenstücke, die früher fest waren: werden einmalig als Deko in den Spielstand übernommen (frei verschiebbar, einlagerbar)
 export const LEGACY_DECOR = [
   { id: 'pond', x: 6.0, z: -7.3, r: 0 }, { id: 'appleTree', x: -7.9, z: 7.6, r: 0 }, { id: 'roundTree', x: -8.6, z: 3.8, r: 0 },
   { id: 'roundBedPink', x: -3.0, z: 7.2, r: 0 }, { id: 'roundBedViolet', x: 7.0, z: 7.4, r: 0 }, { id: 'wateringcan', x: -6.0, z: 7.3, r: 0 },
+];
+// Seit 3.13 ebenfalls Deko: der Kiesplatz unter den Beeten und die Trittsteine vom Tor
+export const LEGACY_GROUND = [
+  { id: 'plaza', x: 0.4, z: 1.0, r: 0 }, { id: 'pathStone', x: 0.5, z: 7.5, r: 1 },
 ];
 export const BED_LEVELS = [
   { name: 'Holzbeet', mult: 1, shiny: 0 },
@@ -412,7 +423,7 @@ export const SURPRISES = [
 // Kosmetische Dekoration – frei im Garten aufstellbar, mehrfach kaufbar. Kein Spielvorteil.
 // size = Grundfläche [Breite, Tiefe] für die Platzprüfung
 export const DECO = {
-  pathStone:   { name: 'Trittsteine',   price: 15,  level: 1, size: [1.5, 1.1], desc: 'Zwei flache Steine für eigene Wege.' },
+  pathStone:   { name: 'Trittsteine',   price: 15,  level: 1, size: [1.5, 1.1], desc: 'Zwei flache Steine für eigene Wege.', flat: true },
   hedgeBlock:  { name: 'Heckenstück',   price: 40,  level: 1, size: [2.0, 0.8], desc: 'Grüne Hecke, 2 m lang – Stücke lassen sich nahtlos aneinanderreihen.' },
   flowerpots:  { name: 'Blumentöpfe',   price: 60,  level: 1, size: [1.2, 1.2], desc: 'Drei bunte Töpfe.' },
   lantern:     { name: 'Gartenlaterne', price: 80,  level: 1, size: [0.5, 0.5], desc: 'Leuchtet nachts warm am Weg.' },
@@ -448,6 +459,40 @@ export const DECO = {
   fireworks:   { name: 'Raketenkiste', size: [1.0, 0.8], desc: 'Funkelnde Raketen – exklusiv von den Silvesterfunken.', event: 'newyear' },
   snowman:     { name: 'Schneemann', size: [0.9, 0.9], desc: 'Mit Möhre und Schal – exklusiv vom Wintermarkt.', event: 'winter' },
   xmasTree:    { name: 'Tannenbaum', size: [1.3, 1.3], desc: 'Geschmückt mit Lichtern und Kugeln – exklusiv vom Wintermarkt.', event: 'winter' },
+  // ----- 3.13: Boden & Wege (flach – Beete und Deko dürfen darauf stehen) -----
+  plaza:       { name: 'Großer Kiesplatz', price: 400, level: 1, size: [16.6, 10.5], desc: 'Die große Kiesfläche unter den Beeten – frei verschiebbar.', flat: true },
+  gravelPatch: { name: 'Kiesfläche',    price: 30,  level: 1, size: [2.0, 2.0], desc: 'Heller Kies, 2 × 2 m – Stück für Stück zu Wegen und Plätzen legen.', flat: true },
+  pavingTiles: { name: 'Pflastersteine', price: 50, level: 2, size: [2.0, 2.0], desc: 'Graues Pflaster, 2 × 2 m, passt nahtlos aneinander.', flat: true },
+  brickPath:   { name: 'Klinkerweg',    price: 40,  level: 3, size: [2.0, 1.0], desc: 'Roter Klinker im Fischgrät-Muster, 2 × 1 m.', flat: true },
+  woodDeck:    { name: 'Holzdeck',      price: 80,  level: 4, size: [2.0, 2.0], desc: 'Warme Holzdielen für Sitzecken, 2 × 2 m.', flat: true },
+  flowerMeadow: { name: 'Blumenwiese',  price: 60,  level: 2, size: [2.0, 2.0], desc: 'Ein Stück wilde Wiese mit bunten Blüten.', flat: true },
+  // ----- Zäune & Mauern: 2 m lang, gerade Enden; Pfosten für Ecken -----
+  woodFence:   { name: 'Holzzaun',      price: 35,  level: 1, size: [2.0, 0.5], desc: 'Rustikaler Zaun, 2 m – Stücke passen nahtlos aneinander.' },
+  woodPost:    { name: 'Holzpfosten',   price: 10,  level: 1, size: [0.5, 0.5], desc: 'Eckpfosten für den Holzzaun.' },
+  whiteFence:  { name: 'Lattenzaun',    price: 45,  level: 2, size: [2.0, 0.5], desc: 'Weißer Lattenzaun, 2 m.' },
+  whitePost:   { name: 'Lattenpfosten', price: 12,  level: 2, size: [0.5, 0.5], desc: 'Eckpfosten für den Lattenzaun.' },
+  stoneWall:   { name: 'Steinmauer',    price: 70,  level: 5, size: [2.0, 0.5], desc: 'Niedrige Natursteinmauer, 2 m.' },
+  stonePillar: { name: 'Mauerpfeiler',  price: 25,  level: 5, size: [0.5, 0.5], desc: 'Pfeiler für Ecken der Steinmauer.' },
+  brickWall:   { name: 'Ziegelmauer',   price: 90,  level: 8, size: [2.0, 0.5], desc: 'Rote Ziegelmauer mit Abdeckung, 2 m.' },
+  brickPillar: { name: 'Ziegelpfeiler', price: 30,  level: 8, size: [0.5, 0.5], desc: 'Pfeiler mit Kugel für Ecken der Ziegelmauer.' },
+  ironFence:   { name: 'Schmiedezaun',  price: 140, level: 12, size: [2.0, 0.5], desc: 'Schwarzer Eisenzaun mit goldenen Spitzen, 2 m.' },
+  ironPost:    { name: 'Schmiedepfosten', price: 40, level: 12, size: [0.5, 0.5], desc: 'Eckpfosten für den Schmiedezaun.' },
+  gardenGate:  { name: 'Gartentor',     price: 120, level: 3, size: [2.0, 0.5], desc: 'Hölzernes Tor mit Rosenbogen – passt zu jedem Zaun.' },
+  // ----- Pflanzen -----
+  bushGreen:   { name: 'Busch',         price: 40,  level: 1, size: [1.2, 1.2], desc: 'Runder grüner Busch.' },
+  bushPink:    { name: 'Blütenbusch rosa', price: 70, level: 2, size: [1.2, 1.2], desc: 'Busch voller rosa Blüten.' },
+  bushWhite:   { name: 'Blütenbusch weiß', price: 70, level: 3, size: [1.2, 1.2], desc: 'Busch mit weißen Blüten.' },
+  boxwoodBall: { name: 'Buchskugel',    price: 60,  level: 2, size: [0.9, 0.9], desc: 'Rund geschnittener Buchs im Topf.' },
+  boxwoodCone: { name: 'Buchskegel',    price: 80,  level: 4, size: [0.8, 0.8], desc: 'Kegelförmiger Buchs im Topf.' },
+  tallGrass:   { name: 'Ziergras',      price: 35,  level: 1, size: [0.9, 0.9], desc: 'Hohes Gras, das im Wind wiegt.' },
+  lavenderRow: { name: 'Lavendelreihe', price: 90,  level: 3, size: [2.0, 0.7], desc: 'Duftende Lavendelbüsche in einer Reihe, 2 m.' },
+  roseBush:    { name: 'Rosenstrauch',  price: 110, level: 5, size: [1.0, 1.0], desc: 'Kräftiger Strauch mit roten Rosen.' },
+  hydrangeaBush: { name: 'Hortensienbusch', price: 120, level: 6, size: [1.4, 1.4], desc: 'Große blaue und rosa Blütenbälle.' },
+  rockGroup:   { name: 'Felsgruppe',    price: 50,  level: 1, size: [1.6, 1.3], desc: 'Drei moosige Steine.' },
+  fir:         { name: 'Tanne',         price: 280, level: 4, size: [1.6, 1.6], desc: 'Immergrüne Tanne.' },
+  birch:       { name: 'Birke',         price: 320, level: 5, size: [1.4, 1.4], desc: 'Weißer Stamm, helles Laub.' },
+  cherryTree:  { name: 'Kirschbaum',    price: 450, level: 6, size: [2.0, 2.0], desc: 'Blüht das ganze Jahr in Zartrosa.' },
+  willow:      { name: 'Trauerweide',   price: 600, level: 10, size: [2.4, 2.4], desc: 'Lange, hängende Zweige – perfekt am Teich.' },
   pond:        { name: 'Teich',         price: 900, level: 3, size: [5.0, 3.5], desc: 'Stiller Gartenteich mit Steinrand und Schilf.' },
   appleTree:   { name: 'Apfelbaum',     price: 350, level: 2, size: [1.8, 1.8], desc: 'Spendet Schatten und trägt rote Äpfel.' },
   roundTree:   { name: 'Kugelbaum',     price: 300, level: 2, size: [1.6, 1.6], desc: 'Rund geschnittener Laubbaum.' },
@@ -458,9 +503,17 @@ export const DECO = {
   goldenBench: { name: 'Goldene Gartenbank', size: [1.9, 0.8], desc: 'Vergoldete Bank mit Blumenranken – nur für Jahresgärtner.', event: 'album' },
   flowerPress: { name: 'Blumenpresse', size: [0.8, 0.6], desc: 'Alte Holzpresse mit getrockneten Blüten – für Sammler aller Gartenblumen.', event: 'album' },
 };
-export const DECO_ORDER = ['pathStone', 'groundLights', 'pinwheel', 'hedgeBlock', 'flowerpots', 'hoseReel', 'lantern', 'torch', 'lampPost', 'planter', 'rainBarrel', 'compostBin', 'birdhouse', 'bench', 'insectHotel', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'stringLights', 'tableSet', 'arch', 'fountain', 'wateringcan', 'roundBedPink', 'roundBedViolet', 'appleTree', 'roundTree', 'pond'];
+// Shop-Kategorien
+export const DECO_CATS = [
+  { id: 'ground', name: 'Boden & Wege', items: ['pathStone', 'gravelPatch', 'pavingTiles', 'brickPath', 'woodDeck', 'flowerMeadow', 'plaza'] },
+  { id: 'fence', name: 'Zäune & Mauern', items: ['hedgeBlock', 'woodFence', 'woodPost', 'whiteFence', 'whitePost', 'gardenGate', 'stoneWall', 'stonePillar', 'brickWall', 'brickPillar', 'ironFence', 'ironPost'] },
+  { id: 'plants', name: 'Pflanzen', items: ['tallGrass', 'bushGreen', 'rockGroup', 'bushPink', 'boxwoodBall', 'bushWhite', 'lavenderRow', 'boxwoodCone', 'roseBush', 'hydrangeaBush', 'planter', 'flowerpots', 'roundBedPink', 'roundBedViolet', 'roundTree', 'appleTree', 'fir', 'birch', 'cherryTree', 'willow', 'pond'] },
+  { id: 'light', name: 'Licht', items: ['groundLights', 'lantern', 'torch', 'lampPost', 'stringLights'] },
+  { id: 'misc', name: 'Möbel & mehr', items: ['pinwheel', 'wateringcan', 'hoseReel', 'rainBarrel', 'compostBin', 'birdhouse', 'bench', 'insectHotel', 'birdbath', 'beehive', 'pumpkins', 'wheelbarrow', 'tableSet', 'arch', 'fountain'] },
+];
+export const DECO_ORDER = DECO_CATS.flatMap((c) => c.items);
 export const ALL_DECO = [...DECO_ORDER, 'pumpkinLantern', 'leafPile', 'heartBalloons', 'loveSeat', 'eggBasket', 'eggTree', 'bouquetVase', 'parasol', 'ghostLantern', 'cauldron', 'fireworks', 'snowman', 'xmasTree', 'flowerPress', 'trophy', 'goldenBench'];
-export const MAX_DECO = 80; // Deko-Teile insgesamt (Leistung auf dem Handy)
+export const MAX_DECO = 160; // Deko-Teile insgesamt (Leistung auf dem Handy)
 // Bevorzugte Plätze (Übernahme alter Spielstände, erste Käufe)
 export const DECO_PLACE = {
   lantern: [[1.9, 8.2, 0], [-2.9, -4.6, 0]],

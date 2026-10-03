@@ -322,7 +322,7 @@ test('Mehr-Tab-Schutz: älterer Tab überschreibt keinen neueren Stand', () => {
 
 // ---------- Garten gestalten ----------
 const allValid = (s) => {
-  const refs = [{ type: 'gh' }, ...s.layout.beds.map((_, i) => ({ type: 'bed', i })).filter((r) => G.bedVisible(s, r.i)), ...s.decor.map((d, k) => ({ type: 'deco', k })).filter((r) => !s.decor[r.k].stored)];
+  const refs = [{ type: 'gh' }, { type: 'house' }, ...s.layout.beds.map((_, i) => ({ type: 'bed', i })).filter((r) => G.bedVisible(s, r.i)), ...s.decor.map((d, k) => ({ type: 'deco', k })).filter((r) => !s.decor[r.k].stored)];
   return refs.filter((r) => { const p = G.objectPos(s, r); return !G.canPlace(s, r, p[0], p[1], p[2]).ok; });
 };
 
@@ -353,7 +353,7 @@ test('Deko mehrfach kaufen, einlagern, aufstellen, verkaufen', () => {
   s.coins = 5000; s.level = 10;
   const a = G.buyDeco(s, 'lantern'), b = G.buyDeco(s, 'lantern'), c = G.buyDeco(s, 'fountain');
   assert.ok(a.ok && b.ok && c.ok);
-  const n0 = C.LEGACY_DECOR.length;
+  const n0 = C.LEGACY_DECOR.length + C.LEGACY_GROUND.length;
   assert.equal(s.decor.length, n0 + 3);
   assert.ok(s.deco.includes('fountain') && s.deco.includes('lantern'));
   assert.deepEqual(allValid(s), []);
@@ -763,4 +763,41 @@ test('Wirtschaft: Langzeit-Blumen bringen pro Stunde nicht mehr als aktive Blume
   const perH = (k) => { const d = C.SEEDS[k]; return (d.reward - d.cost) / (d.growMs / 3600000); };
   for (const k of ['dahlia', 'peony', 'magnolia', 'moonflower']) assert.ok(perH(k) < perH('hydrangea'), k);
   assert.ok(perH('daisy') < perH('hydrangea'), 'Gänseblümchen-Dauerklicken lohnt sich später nicht');
+});
+
+test('3.13: Haus verschiebbar und streichbar, flache Bodenteile unter Beeten und Deko', () => {
+  const s = G.newState(T0);
+  s.coins = 5000; s.level = 10;
+  // Startgarten: Kiesplatz liegt unter den Beeten und ist trotzdem gültig
+  assert.ok(s.decor.some((d) => d.id === 'plaza'));
+  assert.deepEqual(allValid(s), []);
+  // Haus verschieben: nicht auf ein Beet, aber auf freie Fläche
+  const b0 = s.layout.beds[0];
+  assert.equal(G.canPlace(s, { type: 'house' }, b0[0], b0[1], 0).code, 'noSpace');
+  const spot = G.findSpot(s, { type: 'house' }, [-5, 5], 0);
+  assert.ok(spot);
+  assert.ok(G.moveObject(s, { type: 'house' }, spot[0], spot[1], 1).ok);
+  assert.deepEqual(s.layout.house, [spot[0], spot[1], 1]);
+  // Bodenteil darf auf dem Kiesplatz? Nein – flache Teile stoßen aneinander; neben Beeten aber ja
+  const k = G.buyDeco(s, 'pavingTiles').k;
+  assert.ok(k !== undefined && !s.decor[k].stored);
+  assert.equal(G.canPlace(s, { type: 'deco', k }, 0.4, 1.0, 0).code, 'noSpace', 'nicht auf den Kiesplatz');
+  // Ein Zaunstück darf auf dem Pflaster stehen
+  const z = G.buyDeco(s, 'woodFence').k;
+  s.decor.forEach((d, i) => { if (i !== z && !C.DECO[d.id].flat) d.stored = true; });
+  const t = s.decor[k];
+  assert.ok(G.moveObject(s, { type: 'deco', k: z }, t.x, t.z, 0).ok, 'Zaun auf das Pflaster stellen');
+  assert.deepEqual(allValid(s), []);
+  // Streichen
+  assert.equal(G.paintHouse(s, { wall: 0, roof: 0, accent: 0 }).code, 'invalid');
+  const c = s.coins;
+  assert.ok(G.paintHouse(s, { wall: 2, roof: 3, accent: 1 }).ok);
+  assert.equal(c - s.coins, C.HOUSE_PAINT);
+  assert.deepEqual(s.house, { wall: 2, roof: 3, accent: 1 });
+  // Migration alter Spielstände: Kiesplatz wird Deko, Haus bekommt Standard
+  const old = JSON.parse(JSON.stringify(s)); delete old.house; delete old.layout.house; old.legacyDecor = 1; old.decor = old.decor.filter((d) => d.id !== 'plaza');
+  const back = G.migrate(old, T0).state;
+  assert.deepEqual(back.layout.house, C.DEFAULT_HOUSE);
+  assert.ok(back.decor.some((d) => d.id === 'plaza'));
+  assert.deepEqual(back.house, { wall: 0, roof: 0, accent: 0 });
 });
