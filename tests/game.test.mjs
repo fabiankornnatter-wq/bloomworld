@@ -197,7 +197,7 @@ test('Story: Aufgaben zählen, Abholen, nächstes Kapitel', () => {
   assert.equal(s.items.fert, 1);
   assert.equal(G.storyStatus(s).quest.goal.type, 'useItem');
   // Kapitel überspringen bis zum Ende
-  s.story.ch = C.STORY.length - 1; s.story.q = C.STORY.at(-1).quests.length - 1; s.level = 25;
+  s.story.ch = C.STORY.length - 1; s.story.q = C.STORY.at(-1).quests.length - 1; s.level = 25; s.story.count = 1000; s.florist.built = true;
   assert.ok(G.claimQuest(s).chapterDone);
   assert.equal(G.storyStatus(s).finished, true);
 });
@@ -824,4 +824,82 @@ test('Gartenpläne: alle Stile auf allen Gartengrößen gültig, nichts geht ver
   // zu wenig Münzen für den Kauf
   const s2 = G.newState(T0); s2.level = 20; s2.coins = 10;
   assert.equal(G.applyPlan(s2, 'romantic', true).code, 'noCoins');
+});
+
+test('Blumenbinderei: bauen, binden, abholen, verkaufen', () => {
+  const s = G.newState(T0);
+  s.coins = 600;
+  assert.equal(G.buildFlorist(s, T0).code, 'level');
+  s.level = C.FLORIST.level;
+  assert.ok(G.buildFlorist(s, T0).ok);
+  assert.equal(s.coins, 600 - C.FLORIST.cost);
+  assert.equal(s.florist.slots, 1);
+  assert.ok(s.florist.wishes.length >= 1);
+  // fehlende Blumen
+  assert.ok(!G.bindBouquet(s, 'meadow', T0).ok);
+  s.basket = { daisy: 4, cornflower: 2 };
+  s.basketShiny = { daisy: 2 };
+  assert.ok(G.bindBouquet(s, 'meadow', T0).ok);
+  assert.deepEqual(s.basket, {});
+  assert.deepEqual(s.basketShiny, { daisy: 2 }, 'Funkelblüten bleiben im Korb');
+  s.basket = { daisy: 4, cornflower: 2 };
+  assert.equal(G.bindBouquet(s, 'meadow', T0).code, 'busy');
+  assert.equal(G.collectBouquets(s, T0 + 1000).code, 'notReady');
+  const xp0 = s.xp;
+  const r = G.collectBouquets(s, T0 + C.BOUQUETS.meadow.ms);
+  assert.deepEqual(r.got, ['meadow']);
+  assert.equal(s.xp, xp0 + G.bouquetXp('meadow'));
+  assert.equal(s.florist.stock.meadow, 1);
+  assert.equal(s.stats.bouquets, 1);
+  // Strauß ist mehr wert als die Blumen einzeln beim Händler
+  const single = Object.entries(C.BOUQUETS.meadow.need).reduce((a, [k, q]) => a + G.sellPrice(s, k, false, T0) * q, 0);
+  assert.ok(G.bouquetPrice(s, 'meadow') > single);
+  const c0 = s.coins;
+  assert.ok(G.sellBouquet(s, 'meadow').ok);
+  assert.equal(s.coins, c0 + G.bouquetPrice(s, 'meadow'));
+  assert.equal(s.florist.stock.meadow, undefined);
+});
+
+test('Blumenbinderei: Strauß-Wünsche, Bindeplätze, Speichern', () => {
+  const s = G.newState(T0);
+  s.level = 12; s.coins = 10_000;
+  G.buildFlorist(s, T0);
+  const w = s.florist.wishes[0];
+  assert.ok(C.BOUQUETS[w.b].level <= s.level);
+  assert.equal(G.deliverWish(s, 0, T0).ok, false);
+  s.florist.stock[w.b] = 1;
+  const rep0 = s.trader.rep, c0 = s.coins;
+  const r = G.deliverWish(s, 0, T0);
+  assert.ok(r.ok);
+  assert.equal(s.coins, c0 + w.coins);
+  assert.equal(s.trader.rep, rep0 + 1);
+  assert.equal(G.deliverWish(s, 0, T0).code, 'claimed');
+  // zweiter Bindeplatz
+  assert.ok(G.buyFloristSlot(s).ok);
+  assert.equal(s.florist.slots, 2);
+  assert.equal(G.buyFloristSlot(s).code, 'level');
+  // neuer Tag, neue Wünsche
+  const day2 = T0 + 24 * 3600_000;
+  G.ensureFlorist(s, day2);
+  assert.ok(s.florist.wishes.every((x) => !x.done));
+  // Reparatur: kaputte Werte werden bereinigt
+  const bad = JSON.parse(JSON.stringify(s));
+  bad.florist.slots = 99; bad.florist.stock = { meadow: 3, nope: 2, spring: -1 }; bad.florist.jobs = [{ b: 'nope' }, { b: 'meadow', start: T0, dur: 1e12 }];
+  const fixed = G.repair(bad, T0);
+  assert.equal(fixed.florist.slots, C.FLORIST.slots.length);
+  assert.deepEqual(fixed.florist.stock, { meadow: 3 });
+  assert.equal(fixed.florist.jobs.length, 1);
+  assert.equal(fixed.florist.jobs[0].dur, C.BOUQUETS.meadow.ms);
+  // alter Spielstand ohne Binderei
+  const old = G.migrate({ v: 5, coins: 99 }, T0).state;
+  assert.equal(old.florist.built, false);
+});
+
+test('Straußbuch: alle Blumen existieren, Werte sind sinnvoll', () => {
+  for (const id of C.BOUQUET_ORDER) {
+    const d = C.BOUQUETS[id];
+    for (const k of Object.keys(d.need)) assert.ok(C.SEEDS[k] && !C.SEEDS[k].event, `${id}: ${k}`);
+    assert.ok(d.level >= C.FLORIST.level && d.ms > 0);
+    assert.ok(G.bouquetBase(id) > 0);
+  }
 });

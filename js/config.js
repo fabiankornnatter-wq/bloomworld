@@ -204,6 +204,40 @@ export const TRADER_DAYS = [
 ];
 export const TRADER_ITEMS = ['fert', 'turbo', 'rain', 'compost', 'pollen'];
 
+// ---------- Blumenbinderei: Sträuße aus Blumen im Korb binden ----------
+// Ein Strauß ist mehr wert als seine einzelnen Blumen beim Händler – dafür braucht das Binden Zeit und einen freien Bindeplatz.
+// Funkelblüten werden nie verbunden (die bleiben für Sonderwünsche im Korb).
+export const FLORIST = {
+  name: 'Blumenbinderei', level: 5, cost: 500,
+  slots: [{ cost: 0, level: 5 }, { cost: 2500, level: 10 }, { cost: 8000, level: 18 }], // Bindeplätze (der erste kommt mit dem Bau)
+  sellRate: 0.7,    // Verkauf an den Händler: Anteil der Ernte-Belohnungen aller Blumen im Strauß
+  wishRate: 1.0,    // Strauß-Wünsche der Kundschaft (plus EP, Ruf und manchmal ein Gegenstand)
+  xpRate: 0.35,     // EP beim Abholen: Anteil der Ernte-EP aller Blumen
+  wishes: 2,        // Wünsche pro Tag (ab Level 15 einer mehr)
+  wishMoreAt: 15,
+  stockMax: 30,     // fertige Sträuße im Regal
+};
+// need = Blumen aus dem Korb, ms = Bindezeit
+export const BOUQUETS = {
+  meadow:   { name: 'Wiesenstrauß',         need: { daisy: 4, cornflower: 2 },               ms: 2 * M,  level: 5,  desc: 'Bunt und fröhlich wie eine Sommerwiese.' },
+  spring:   { name: 'Frühlingsgruß',        need: { tulip: 4, daisy: 3 },                    ms: 2 * M,  level: 5,  desc: 'Tulpen und Gänseblümchen – ein Gruß an den Frühling.' },
+  sunny:    { name: 'Sonnenschein',         need: { sunflower: 3, cornflower: 2 },           ms: 4 * M,  level: 5,  desc: 'Gelb und blau, so leuchtend wie ein Sommertag.' },
+  provence: { name: 'Provence-Strauß',      need: { lavender: 3, poppy: 2 },                 ms: 6 * M,  level: 6,  desc: 'Duftender Lavendel mit roten Mohn-Tupfern.' },
+  romance:  { name: 'Rosenromantik',        need: { rose: 5 },                               ms: 8 * M,  level: 7,  desc: 'Fünf rote Rosen – der Klassiker für Verliebte.' },
+  farm:     { name: 'Bauerngarten',         need: { dahlia: 1, sunflower: 2, cornflower: 3 }, ms: 10 * M, level: 8,  desc: 'Üppig und ländlich mit einer großen Dahlie in der Mitte.' },
+  orchid:   { name: 'Orchideentraum',       need: { orchid: 2, lily: 2, lavender: 2 },       ms: 14 * M, level: 9,  desc: 'Exotisch und elegant – für ganz besondere Anlässe.' },
+  wedding:  { name: 'Brautstrauß',          need: { lily: 3, rose: 2, hydrangea: 1 },        ms: 18 * M, level: 10, desc: 'Weiß, rosa und zart – Hochzeitspaare reißen sich darum.' },
+  rainbow:  { name: 'Regenbogenstrauß',     need: { rainbowTulip: 3, skyCornflower: 2, sunTulip: 2 }, ms: 12 * M, level: 11, desc: 'Aus drei Züchtungen gebunden – jede Blüte in einer anderen Farbe.' },
+  peony:    { name: 'Pfingstrosen-Pracht',  need: { peony: 2, hydrangea: 2 },                ms: 24 * M, level: 12, desc: 'Seidige Pfingstrosen auf einem Bett aus Hortensien.' },
+  royal:    { name: 'Königsstrauß',         need: { goldRose: 2, northRose: 2, magnolia: 1 }, ms: 35 * M, level: 14, desc: 'Gold, Polarlicht und Magnolie – eines Königshauses würdig.' },
+  tropic:   { name: 'Tropenzauber',         need: { frangipani: 2, strelitzia: 1, lotus: 1 }, ms: 30 * M, level: 15, desc: 'Die Farben der Südsee aus dem Tropenhaus.' },
+  night:    { name: 'Mitternachtsstrauß',   need: { blackRose: 2, moonOrchid: 2, moonflower: 1 }, ms: 40 * M, level: 16, desc: 'Dunkel und geheimnisvoll – nur für Nachtschwärmer.' },
+};
+export const BOUQUET_ORDER = Object.keys(BOUQUETS);
+// Kundschaft für Strauß-Wünsche
+export const CUSTOMERS = ['Frau Amsel', 'Opa Knut', 'Lena vom Bäcker', 'Familie Dachs', 'Herr Specht', 'Frau Wiesel', 'Pfarrer Holm', 'Die kleine Mia', 'Frau Doktor Fink', 'Bürgermeister Bär'];
+export const OCCASIONS = ['zum Geburtstag', 'für die Hochzeit', 'zum Jubiläum', 'als Dankeschön', 'für den Esstisch', 'zum Muttertag', 'für das Gemeindefest', 'zur Einweihung', 'als Entschuldigung', 'für die Oma'];
+
 // Schwierigkeitsgrad der Züchtungen: Grund-Erfolgschance und wie oft jede Eltern-Blume
 // schon geerntet sein muss. Misslingt eine Kreuzung, gibt es einen Teil der Kosten zurück
 // und der nächste Versuch wird leichter (Erfahrung).
@@ -646,6 +680,12 @@ export const STORY = [
     { text: 'Liefere 25 Bestellungen beim Händler.', goal: { type: 'orders', n: 25 }, reward: { coins: 2500, xp: 400, items: { compost: 5 } } },
     { text: 'Erreiche Level 25.', goal: { type: 'level', n: 25 }, reward: { coins: 5000, xp: 0, items: { lucky: 5, turbo: 5, pollen: 5 } }, say: 'Danke, dass du geblieben bist. Dieser Garten – und ich – gehören jetzt zu dir. Für immer.' },
   ] },
+  { title: 'Die Blumenbinderei', intro: 'Im Dorf spricht sich herum, wie schön deine Blumen sind. Alle wollen Sträuße! Im alten Schuppen beim Händler könntest du eine Blumenbinderei einrichten.', quests: [
+    { text: 'Richte die Blumenbinderei ein (beim Händler).', goal: { type: 'florist' }, reward: { coins: 400, xp: 100, items: { fert: 3 } }, say: 'Wie das duftet! Lege Blumen aus deinem Korb zusammen – ein Strauß ist viel mehr wert als einzelne Blüten.' },
+    { text: 'Binde 5 Sträuße.', goal: { type: 'bouquets', n: 5 }, reward: { coins: 600, xp: 150 } },
+    { text: 'Erfülle 3 Strauß-Wünsche der Kundschaft.', goal: { type: 'wishes', n: 3 }, reward: { coins: 900, xp: 200, items: { compost: 3 } }, say: 'Frau Amsel hat vor Freude geweint. Du machst das Dorf ein bisschen glücklicher.' },
+    { text: 'Binde 25 Sträuße.', goal: { type: 'bouquets', n: 25 }, reward: { coins: 3000, xp: 500, items: { turbo: 3, lucky: 2 } }, say: 'Deine Sträuße stehen jetzt in jedem Fenster des Dorfes. Ich bin sehr stolz auf dich.' },
+  ] },
 ];
 
 // ---------- Events (jährlich, Datum MM-TT, lokale Zeit) ----------
@@ -714,7 +754,7 @@ export const GROWTH_STAGE_AT = [0, 0.25, 0.6, 1.0]; // Fortschritt -> Stufe 0..3
 export const TITLES = {
   sammler: 'Sammler', gartenfreund: 'Gartenfreund', meisterzuechter: 'Meisterzüchter', jahresgaertner: 'Jahresgärtner', funkelfinder: 'Funkelfinder',
   glitzerkoenig: 'Glitzerkönig', gestalter: 'Gestalter', tierfreund: 'Tierfreund', erntekoenig: 'Erntekönig', nachbar: 'Guter Nachbar', haendler: 'Tauschprofi',
-  vollmond: 'Mondgärtner', ophelia: 'Ophelias Freund', tropen: 'Tropengärtner', legende: 'Gartenlegende',
+  vollmond: 'Mondgärtner', ophelia: 'Ophelias Freund', tropen: 'Tropengärtner', legende: 'Gartenlegende', florist: 'Blumenbinder',
 };
 // progress(s) liefert [erreicht, Ziel]; reward wie überall (+ title, seeds, unlock)
 const nDisc = (s, list) => list.filter((k) => (s.collection[k]?.count || 0) > 0).length;
@@ -732,6 +772,7 @@ export const ACHIEVEMENTS = [
   { id: 'animals', name: 'Tierfreund', desc: 'Alle Tiere im Garten gesehen und beide Skins', icon: 'animal:fox', progress: (s) => [Object.keys(ANIMALS).filter((k) => s.seenAnimals.includes(k)).length + s.skins.length, Object.keys(ANIMALS).length + Object.keys(SKINS).length], reward: { coins: 800, items: { rain: 3 }, title: 'tierfreund' } },
   { id: 'harvest1000', name: 'Erntekönig', desc: '1.000 Blumen geerntet', icon: 'basket', progress: (s) => [s.stats.harvested, 1000], reward: { coins: 1000, items: { compost: 3 }, title: 'erntekoenig' } },
   { id: 'friends5', name: 'Guter Nachbar', desc: '5 Freunde und 25× geholfen', icon: 'heart', progress: (s) => [Math.min(s.stats.friends, 5) + Math.min(s.stats.helped, 25), 30], reward: { coins: 500, items: { rain: 3 }, title: 'nachbar' } },
+  { id: 'bouquets50', name: 'Meisterfloristik', desc: '50 Sträuße in der Blumenbinderei gebunden', icon: 'bouquet', progress: (s) => [s.stats.bouquets || 0, 50], reward: { coins: 1200, items: { compost: 3, turbo: 1 }, title: 'florist' } },
   { id: 'trades10', name: 'Tauschprofi', desc: '10 Tauschgeschäfte in der Tauschbörse', icon: 'cart', progress: (s) => [s.stats.trades || 0, 10], reward: { coins: 800, items: { pollen: 2 }, title: 'haendler' } },
   { id: 'moon', name: 'Mondgärtner', desc: 'Mondscheinrose, Mondorchidee und Mondwinde geerntet', icon: 'flower:moonRose', progress: (s) => [nDisc(s, ['moonRose', 'moonOrchid', 'moonflower']), 3], reward: { coins: 1200, items: { pollen: 3 }, title: 'vollmond' } },
   { id: 'tropics', name: 'Tropengärtner', desc: 'Alle Tropenhaus-Blumen geerntet', icon: 'flower:lotus', progress: (s) => [nDisc(s, TROPIC_SEEDS), TROPIC_SEEDS.length], reward: { coins: 1500, items: { turbo: 3, lucky: 2 }, title: 'tropen' } },

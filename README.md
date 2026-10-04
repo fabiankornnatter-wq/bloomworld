@@ -18,6 +18,7 @@ Mobiles 3D-Garten- und Sammel-Browsergame. Pflanze Blumen, züchte neue Sorten, 
 - **Blumen:** 6 Gartenblumen + 7 Züchtungen (Regenbogentulpe, Sonnentulpe, Goldene Rose, Mondorchidee, Nordlicht-Rose, Schwarze Rose – nur nachts –, legendäre Sternenrose). Funkelblüten (×3).
 - **Gewächshaus:** restaurieren und Blumen kreuzen (Zuchtbuch mit Rezepten).
 - **Gartenbedarf:** Dünger, Turbo-Dünger, Glücksdünger, Zuchtbeschleuniger (einzeln oder im Paket).
+- **Blumenbinderei** (ab Level 5, beim Händler): 13 Sträuße aus Blumen im Korb binden (bis zu 3 Bindeplätze), täglich Strauß-Wünsche aus dem Dorf mit Ruf beim Händler, Regal mit Verkauf; eigenes Story-Kapitel und Erfolg „Meisterfloristik“.
 - **Level 1–30** mit Belohnungen und Freischaltungen (Levelweg), **Story** in 7 Kapiteln mit Eule Ophelia, Tagesaufgaben, tägliches Geschenk.
 - **Events:** Herbstfest (Oktober) mit Herbstblättern, Meilensteinen und Event-Shop; Wintermarkt, Frühlingsblüte, Sommerfest; jedes Wochenende Funkel-Wochenende.
 - Tag-Nacht-Zyklus (Morgen mit Tau, Tag, Abend, Nacht mit beleuchteten Fenstern und Glühwürmchen), Tiere (Fuchs, Igel, Eule, Schmetterlinge), Sammlung, Shop, Einstellungen.
@@ -71,5 +72,6 @@ Ohne verbundene Datenbank startet das Spiel trotzdem und bietet „Offline spiel
 
 - Passwort-Zurücksetzen per E-Mail (z. B. über einen E-Mail-Dienst; Schlüssel nur als Vercel-Umgebungsvariable)
 - Freunde: Gärten besuchen, Geschenke, gemeinsame Events
+- Sträuße als Geschenk an Freunde, Vasen mit eigenen Sträußen als Deko
 - Echte Zahlungen (Stripe oder Google Play Billing) und Belohnungsvideos – nur Deko/Komfort
 - Spielstand-Prüfung auf dem Server (Schutz vor Manipulation), sobald es Ranglisten oder Handel gibt

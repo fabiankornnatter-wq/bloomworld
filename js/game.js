@@ -45,6 +45,8 @@ export const bedOf = (s, i) => (i >= C.BED_COUNT ? s.tropic?.pots[i - C.BED_COUN
 export const isPot = (i) => i >= C.BED_COUNT;
 const newBed = (i) => ({ locked: i >= C.STARTING_BEDS, seed: null, plantedAt: 0, dur: 0, shiny: false, var: 0, lvl: 1, size: 1, sprinkler: false, drinks: 0, compost: false });
 
+const newFlorist = () => ({ built: false, slots: 0, jobs: [], stock: {}, day: '', wishes: [] });
+
 export function newState(now = Date.now()) {
   return {
     v: SAVE_VERSION,
@@ -73,13 +75,14 @@ export function newState(now = Date.now()) {
     event: { id: null, year: 0, tokens: 0, total: 0, claimed: [] },
     tasks: { date: dayKey(now), progress: { plant: 0, harvest: 0, earn: 0, water: 0 }, claimed: [] },
     dailyGift: null,
-    stats: { planted: 0, harvested: 0, earned: 0, shiny: 0, bred: 0, itemsUsed: 0, watered: 0, breedFailed: 0, orders: 0, sold: 0, special: 0, helped: 0, gifted: 0, liked: 0, friends: 0, petDays: 0 },
+    stats: { planted: 0, harvested: 0, earned: 0, shiny: 0, bred: 0, itemsUsed: 0, watered: 0, breedFailed: 0, orders: 0, sold: 0, special: 0, helped: 0, gifted: 0, liked: 0, friends: 0, petDays: 0, bouquets: 0 },
     weekly: { week: '', progress: {}, claimed: [], days: [], bonus: false },
     pets: { day: '', done: [], butterfly: '' },   // Tiere gestreichelt (je Tag), Schmetterling-Bonus-Tag
     surprise: { day: '', n: 0 },
     trader: { day: '', orders: [], rep: 0, gift: '', offer: '' },
     basket: {}, basketShiny: {},   // Blumenkorb für den Händler
     basketLvl: 0,                 // gekaufte Korb-Erweiterungen
+    florist: newFlorist(),        // Blumenbinderei: Bindeplätze, laufende Sträuße, Regal, Strauß-Wünsche
     breedFails: {},      // Fehlversuche je Züchtung (machen den nächsten Versuch leichter)
     seenAnimals: [],
     tutorial: 0,
@@ -763,7 +766,8 @@ function questProgress(s, goal) {
     case 'sprinkler': return [Math.min(goal.n, s.beds.filter((b) => b.sprinkler).length), goal.n];
     case 'bedLevel': return [Math.min(goal.n, s.beds.filter((b) => b.lvl >= goal.lvl).length), goal.n];
     case 'animal': return [s.seenAnimals.includes(goal.id) ? 1 : 0, 1];
-    case 'sold': case 'orders': case 'special': case 'helped': case 'gifted': case 'liked': return [Math.min(goal.n, s.story.count), goal.n];
+    case 'florist': return [s.florist?.built ? 1 : 0, 1];
+    case 'sold': case 'orders': case 'special': case 'helped': case 'gifted': case 'liked': case 'bouquets': case 'wishes': return [Math.min(goal.n, s.story.count), goal.n];
     case 'rep': return [Math.min(goal.n, repLevel(s)), goal.n];
     case 'friends': return [Math.min(goal.n, s.stats.friends || 0), goal.n];
     case 'petted': return [s.pets?.ever?.includes(goal.id) ? 1 : 0, 1];
@@ -1520,6 +1524,133 @@ export function claimTraderGift(s, now) {
   return { ok: true, items };
 }
 
+// ---------- Blumenbinderei ----------
+// Wert eines Straußes = Summe der Ernte-Belohnungen seiner Blumen
+export const bouquetBase = (id) => Object.entries(C.BOUQUETS[id]?.need || {}).reduce((a, [k, q]) => a + C.SEEDS[k].reward * q, 0);
+export const bouquetXp = (id) => Math.round(Object.entries(C.BOUQUETS[id]?.need || {}).reduce((a, [k, q]) => a + C.SEEDS[k].xp * q, 0) * C.FLORIST.xpRate);
+export const bouquetPrice = (s, id) => Math.round(bouquetBase(id) * C.FLORIST.sellRate * (1 + C.TRADER.repBonus[repLevel(s)]) * boost('traderSale'));
+export const nextFloristSlot = (s) => (s.florist?.built ? C.FLORIST.slots[s.florist.slots] || null : null);
+const stockCount = (s) => Object.values(s.florist.stock).reduce((a, b) => a + b, 0);
+const missingFor = (s, id) => Object.entries(C.BOUQUETS[id].need).map(([k, q]) => [k, Math.max(0, q - (s.basket[k] || 0))]).filter(([, n]) => n > 0);
+
+function makeWishes(s, now) {
+  const day = dayKey(now), R = seeded('wishes' + day + Math.floor(s.level / 3));
+  // nur Sträuße, deren Blumen der Spieler auch anbauen kann
+  const grow = new Set(growable(s));
+  const byLevel = C.BOUQUET_ORDER.filter((k) => C.BOUQUETS[k].level <= s.level);
+  const ok = byLevel.filter((k) => Object.keys(C.BOUQUETS[k].need).every((sd) => grow.has(sd) && (!C.SEEDS[sd].tropic || s.tropic?.built)));
+  const pool = ok.length ? ok : byLevel;
+  const n = Math.min(byLevel.length, C.FLORIST.wishes + (s.level >= C.FLORIST.wishMoreAt ? 1 : 0));
+  const out = [], who = [...C.CUSTOMERS];
+  for (let i = 0; i < n; i++) {
+    // neuere (höhere) Sträuße etwas öfter; möglichst kein Strauß doppelt
+    const left = pool.filter((k) => !out.some((w) => w.b === k));
+    const from = left.length ? left : pool;
+    const id = R() < 0.5 ? from[from.length - 1 - Math.floor(R() * Math.min(3, from.length))] : pick(R, from);
+    const items = R() < 0.5 ? { [pick(R, ['fert', 'compost', 'rain', 'turbo', 'lucky'])]: 1 } : null;
+    out.push({ id: `${day}-${i}`, b: id, who: who.splice(Math.floor(R() * who.length), 1)[0], why: pick(R, C.OCCASIONS), coins: Math.round(bouquetBase(id) * C.FLORIST.wishRate), xp: bouquetXp(id) + 10, items, done: false });
+  }
+  return out;
+}
+
+export function ensureFlorist(s, now) {
+  const f = s.florist;
+  if (f.built && f.day !== dayKey(now)) Object.assign(f, { day: dayKey(now), wishes: makeWishes(s, now) });
+  return f;
+}
+
+export function floristInfo(s, now) {
+  const f = ensureFlorist(s, now);
+  const jobs = f.jobs.map((j, i) => { const left = Math.max(0, j.start + j.dur - now); return { ...j, i, ready: left <= 0, remaining: left, progress: Math.min(1, (now - j.start) / j.dur) }; });
+  const recipes = C.BOUQUET_ORDER.map((id) => {
+    const d = C.BOUQUETS[id], missing = missingFor(s, id);
+    return { id, ...d, base: bouquetBase(id), price: bouquetPrice(s, id), xp: bouquetXp(id), locked: s.level < d.level, missing, can: f.built && s.level >= d.level && !missing.length && jobs.length < f.slots };
+  });
+  return {
+    open: s.level >= C.FLORIST.level, built: f.built, slots: f.slots, jobs, free: f.slots - jobs.length, ready: jobs.filter((j) => j.ready).length,
+    next: nextFloristSlot(s), stock: f.stock, stockN: stockCount(s), recipes,
+    wishes: f.wishes.map((w, i) => ({ ...w, i, can: !w.done && (f.stock[w.b] || 0) > 0 })),
+  };
+}
+
+export function buildFlorist(s, now) {
+  if (s.florist.built) return err('owned', { message: 'Die Blumenbinderei steht schon.' });
+  if (s.level < C.FLORIST.level) return needLevel(C.FLORIST.level, 'Die Blumenbinderei');
+  if (!spend(s, C.FLORIST.cost)) return noCoins(s, C.FLORIST.cost, 'die Blumenbinderei');
+  Object.assign(s.florist, { built: true, slots: 1 });
+  ensureFlorist(s, now);
+  return { ok: true };
+}
+
+export function buyFloristSlot(s) {
+  const u = nextFloristSlot(s);
+  if (!s.florist.built) return err('invalid', { message: 'Baue zuerst die Blumenbinderei.' });
+  if (!u) return err('maxLevel', { message: 'Alle Bindeplätze sind schon aufgebaut.' });
+  if (s.level < u.level) return needLevel(u.level, 'Dieser Bindeplatz');
+  if (!spend(s, u.cost)) return noCoins(s, u.cost, 'den Bindeplatz');
+  s.florist.slots++;
+  return { ok: true, slots: s.florist.slots };
+}
+
+export function bindBouquet(s, id, now) {
+  const d = C.BOUQUETS[id], f = s.florist;
+  if (!d) return err('invalid');
+  if (!f.built) return err('invalid', { message: 'Baue zuerst die Blumenbinderei.' });
+  if (s.level < d.level) return needLevel(d.level, d.name);
+  if (f.jobs.length >= f.slots) return err('busy', { message: 'Alle Bindeplätze sind belegt. Hol fertige Sträuße ab oder warte kurz.' });
+  if (stockCount(s) + f.jobs.length >= C.FLORIST.stockMax) return err('invalid', { message: `Dein Regal ist voll (${C.FLORIST.stockMax} Sträuße). Verkaufe oder liefere zuerst welche.` });
+  const missing = missingFor(s, id);
+  if (missing.length) return err('invalid', { message: `Dafür fehlen noch Blumen im Korb: ${missing.map(([k, n]) => `${n}× ${C.SEEDS[k].name.replace(/­/g, '')}`).join(', ')}.`, missing });
+  for (const [k, q] of Object.entries(d.need)) { s.basket[k] -= q; if (!s.basket[k]) delete s.basket[k]; }
+  f.jobs.push({ b: id, start: now, dur: d.ms });
+  return { ok: true, dur: d.ms };
+}
+
+// Alle fertigen Sträuße ins Regal
+export function collectBouquets(s, now) {
+  const f = s.florist, got = [];
+  f.jobs = f.jobs.filter((j) => { if (j.start + j.dur > now) return true; got.push(j.b); return false; });
+  if (!got.length) return err('notReady', { message: 'Noch ist kein Strauß fertig gebunden.' });
+  let xp = 0;
+  for (const b of got) { f.stock[b] = (f.stock[b] || 0) + 1; xp += bouquetXp(b); }
+  s.stats.bouquets = (s.stats.bouquets || 0) + got.length;
+  track(s, 'bouquets', null, got.length);
+  return { ok: true, got, xp, levelUps: addXp(s, xp) };
+}
+
+export function sellBouquet(s, id, n = 1) {
+  const have = s.florist.stock[id] || 0;
+  if (!have) return err('invalid', { message: 'Diesen Strauß hast du nicht im Regal.' });
+  n = Math.min(have, Math.max(1, Math.floor(n) || 1));
+  const coins = bouquetPrice(s, id) * n;
+  s.florist.stock[id] = have - n; if (!s.florist.stock[id]) delete s.florist.stock[id];
+  addCoins(s, coins);
+  return { ok: true, coins, n };
+}
+
+export function deliverWish(s, i, now) {
+  const f = ensureFlorist(s, now), w = f.wishes[i];
+  if (!w) return err('invalid');
+  if (w.done) return err('claimed', { message: 'Diesen Wunsch hast du schon erfüllt.' });
+  if (!f.stock[w.b]) return err('invalid', { message: `Dafür brauchst du einen fertigen ${C.BOUQUETS[w.b].name}.` });
+  f.stock[w.b]--; if (!f.stock[w.b]) delete f.stock[w.b];
+  w.done = true;
+  const lvl0 = repLevel(s);
+  ensureTrader(s, now).rep += 1;
+  addCoins(s, w.coins);
+  if (w.items) addItems(s, w.items);
+  weekly(s, now, 'orders');
+  track(s, 'wishes');
+  return { ok: true, coins: w.coins, xp: w.xp, items: w.items, repUp: repLevel(s) > lvl0 ? repLevel(s) : 0, levelUps: addXp(s, w.xp) };
+}
+
+// Abzeichen: fertige Sträuße + erfüllbare Wünsche
+export function floristBadge(s, now) {
+  if (!s.florist?.built) return 0;
+  const f = floristInfo(s, now);
+  return f.ready + f.wishes.filter((w) => w.can).length;
+}
+
 // ---------- Laden, Prüfen, Übernehmen ----------
 export function migrate(raw, now = Date.now()) {
   const base = newState(now);
@@ -1653,6 +1784,13 @@ export function repair(s, now) {
   const okOrder = (o) => obj(o) && obj(o.want) && Object.keys(o.want).every((k) => C.SEEDS[k]) && Number.isFinite(o.coins);
   s.trader = { day: typeof tr.day === 'string' ? tr.day : '', orders: Array.isArray(tr.orders) ? tr.orders.filter(okOrder).slice(0, 8).map((o) => ({ id: String(o.id), want: Object.fromEntries(Object.entries(o.want).map(([k, q]) => [k, num(Number(q), 1, 1)])), coins: num(o.coins, 0), xp: num(Number(o.xp), 0), items: obj(o.items) ? Object.fromEntries(Object.entries(o.items).filter(([k]) => C.ITEMS[k])) : null, special: o.special === 'shiny' || o.special === 'bred' ? o.special : undefined, done: !!o.done })) : [], rep: num(Number(tr.rep), 0), gift: typeof tr.gift === 'string' ? tr.gift : '', offer: typeof tr.offer === 'string' ? tr.offer : '' };
   s.basketLvl = Math.min(C.BASKET_UPGRADES.length, num(Number(s.basketLvl), 0));
+  { const f = obj(s.florist) ? s.florist : {}; const built = !!f.built;
+    const slots = built ? Math.min(C.FLORIST.slots.length, Math.max(1, num(Number(f.slots), 1))) : 0;
+    const okW = (w) => obj(w) && C.BOUQUETS[w.b] && Number.isFinite(w.coins);
+    s.florist = { built, slots, day: typeof f.day === 'string' ? f.day : '',
+      jobs: built && Array.isArray(f.jobs) ? f.jobs.filter((j) => obj(j) && C.BOUQUETS[j.b]).slice(0, slots).map((j) => ({ b: j.b, start: num(j.start, now), dur: Math.min(C.BOUQUETS[j.b].ms, num(j.dur, C.BOUQUETS[j.b].ms, 1)) })) : [],
+      stock: Object.fromEntries(Object.entries(obj(f.stock) ? f.stock : {}).filter(([k, n]) => C.BOUQUETS[k] && Number.isFinite(n) && n >= 1).map(([k, n]) => [k, Math.min(C.FLORIST.stockMax, Math.floor(n))])),
+      wishes: built && Array.isArray(f.wishes) ? f.wishes.filter(okW).slice(0, 4).map((w) => ({ id: String(w.id), b: w.b, who: String(w.who || '').slice(0, 40), why: String(w.why || '').slice(0, 40), coins: num(w.coins, 0), xp: num(Number(w.xp), 0), items: obj(w.items) ? Object.fromEntries(Object.entries(w.items).filter(([k]) => C.ITEMS[k])) : null, done: !!w.done })) : [] }; }
   for (const key of ['basket', 'basketShiny']) {
     const b0 = obj(s[key]) ? s[key] : {};
     s[key] = {};

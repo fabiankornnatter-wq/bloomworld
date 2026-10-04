@@ -50,6 +50,11 @@ export class Notifier {
       if (can && can !== this._can) this.add('order', can === 1 ? 'Eine Bestellung kann geliefert werden.' : `${can} Bestellungen können geliefert werden.`, { icon: 'cart', key: 'order' + t.day.id + can, act: 'trader' });
       this._can = can;
     }
+    if (s.florist?.built) {
+      const fr = s.florist.jobs.filter((j) => j.start + j.dur <= now).length;
+      if (fr && fr !== this._fl) this.add('bouquet', fr === 1 ? 'Ein Strauß ist fertig gebunden.' : `${fr} Sträuße sind fertig gebunden.`, { icon: 'bouquet', key: 'bouquet' + fr + s.florist.jobs.map((j) => j.start).join(), act: 'florist' });
+      this._fl = fr;
+    }
   }
 
   // „Während du weg warst“: Vergleich des gespeicherten Standes mit jetzt
@@ -64,6 +69,8 @@ export class Notifier {
     if (thirsty) lines.push({ icon: 'drop', text: thirsty === 1 ? 'Eine Blume hat Durst' : `${thirsty} Blumen haben Durst` });
     if (job?.ready) lines.push({ icon: 'greenhouse', text: `Züchtung fertig: ${plain(C.SEEDS[job.result].name)}` });
     if (t && t.orders.filter((o) => !o.done).length) lines.push({ icon: 'cart', text: `${t.orders.filter((o) => !o.done).length} Bestellungen beim Händler` });
+    const fr = s.florist?.built ? s.florist.jobs.filter((j) => j.start + j.dur <= now).length : 0;
+    if (fr) lines.push({ icon: 'bouquet', text: fr === 1 ? 'Ein Strauß ist fertig gebunden' : `${fr} Sträuße sind fertig gebunden` });
     const away = now - savedAt, h = Math.floor(away / 3600000), m = Math.floor((away % 3600000) / 60000);
     return { away: h ? `${h} Std ${m} Min` : `${m} Min`, lines };
   }

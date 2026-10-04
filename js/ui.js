@@ -299,7 +299,7 @@ export class UI {
   pNotify() {
     const n = this.api.notify?.(), acc = this.api.account();
     if (!n) return '<div class="card center"><p>Keine Benachrichtigungen.</p></div>';
-    const ICONS = { bell: I.bell, flower: this.icons.flower.daisy, drop: I.drop, greenhouse: I.greenhouse, cart: I.cart, gift: I.gift, chat: I.chat, friend: I.NAV.friends, news: I.megaphone, star: I.sparkle };
+    const ICONS = { bell: I.bell, flower: this.icons.flower.daisy, drop: I.drop, greenhouse: I.greenhouse, cart: I.cart, bouquet: I.bouquet, gift: I.gift, chat: I.chat, friend: I.NAV.friends, news: I.megaphone, star: I.sparkle };
     const ic = (k) => (ICONS[k] || I.bell).startsWith('data:') ? `<img alt="" src="${ICONS[k]}">` : svg(ICONS[k] || I.bell, 30);
     const fmt = (ts) => { const d = this.api.now() - ts; return d < 60_000 ? 'gerade eben' : d < 3600_000 ? `vor ${Math.floor(d / 60_000)} Min` : d < 86400_000 ? `vor ${Math.floor(d / 3600_000)} Std` : new Date(ts).toLocaleDateString('de-DE'); };
     const p = n.push;
@@ -1079,7 +1079,7 @@ export class UI {
       case 'pushOn': A.pushOn(); break;
       case 'pushOff': A.pushOff(); break;
       case 'pushTest': A.pushTest(); break;
-      case 'noteGo': if (id === 'garden') this.nav('garden'); else if (id === 'album') this.nav('collection', 'album'); else if (id) this.nav(id); break;
+      case 'noteGo': if (id === 'garden') this.nav('garden'); else if (id === 'album') this.nav('collection', 'album'); else if (id === 'florist') this.nav('trader', 'florist'); else if (id) this.nav(id); break;
       case 'setTitle': A.setTitle(id); break;
       case 'openFeedback': this.closeModal(); this.nav('settings'); setTimeout(() => { const t = document.querySelector('#panel form[data-form=feedback] textarea, #panel form[data-form=feedback] input[name=text]'); t?.scrollIntoView({ block: 'center' }); t?.focus(); }, 350); break;
       case 'noteClear': this.api.notify?.().clear(); this.renderPanel(true); break;

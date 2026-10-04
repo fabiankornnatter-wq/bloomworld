@@ -11,6 +11,7 @@ import { Tutorial } from './tutorial.js';
 import { showAuth } from './authui.js';
 import { Sound } from './audio.js';
 import { UI, fmtTime, bedIdxOfBubble } from './ui.js';
+import { tickFlorist } from './traderui.js';
 import * as Pay from './payments.js';
 import * as I from './icons.js';
 
@@ -30,6 +31,7 @@ const guestStore = new LocalStore();
 let store = null, state, world, ui, saver, cloud = null, user = null, icons;
 let hub = null;    // Freunde & Chat (nur mit Konto)
 let basketWarned = false;
+let floristReady = -1;
 let notifier = null, savedAtBefore = 0, surpriseTick = 0, tutorial = null;
 
 function surprise(sp) {
@@ -238,7 +240,7 @@ function start() {
   notifier?.init(!!user && !!hub);
   // Während du weg warst
   const away = notifier?.awaySummary(state, savedAtBefore, now());
-  if (away && away.lines.length) setTimeout(() => ui.modal({ queue: true, title: 'Während du weg warst', cls: 'awaydlg', html: `<p class="small">Du warst ${away.away} nicht im Garten.</p><div class="awaylist">${away.lines.map((l) => `<div>${l.icon === 'flower' ? `<img alt="" src="${icons.flower.daisy}">` : I[l.icon === 'drop' ? 'drop' : l.icon === 'cart' ? 'cart' : 'greenhouse'].replace('<svg', '<svg style="width:30px;height:30px;flex:none"')}<b>${escapeHtml(l.text)}</b></div>`).join('')}</div>`, buttons: [['Los geht’s', 'closeModal', '']] }), 900);
+  if (away && away.lines.length) setTimeout(() => ui.modal({ queue: true, title: 'Während du weg warst', cls: 'awaydlg', html: `<p class="small">Du warst ${away.away} nicht im Garten.</p><div class="awaylist">${away.lines.map((l) => `<div>${l.icon === 'flower' ? `<img alt="" src="${icons.flower.daisy}">` : I[['drop', 'cart', 'bouquet'].includes(l.icon) ? l.icon : 'greenhouse'].replace('<svg', '<svg style="width:30px;height:30px;flex:none"')}<b>${escapeHtml(l.text)}</b></div>`).join('')}</div>`, buttons: [['Los geht’s', 'closeModal', '']] }), 900);
 }
 
 // Ankündigungen, Event-Schalter und Wartungshinweise vom BloomWorld-Team (alle 5 Minuten neu)
@@ -375,6 +377,12 @@ function loop(t) {
     ui.setTime(env);
     sound.night = env.name === 'night';
     if (state.trader?.day !== G.dayKey(n)) { G.ensureTrader(state, n); persist(false); ui.refresh(); }
+    // Blumenbinderei: Restzeit im offenen Reiter, Abzeichen sobald ein Strauß fertig ist
+    if (!visit && state.florist?.built) {
+      const fr = state.florist.jobs.filter((j) => j.start + j.dur <= n).length;
+      if (fr !== floristReady || state.florist.day !== G.dayKey(n)) { floristReady = fr; if (state.florist.day !== G.dayKey(n)) { G.ensureFlorist(state, n); persist(false); } ui.refresh(); }
+      else if (state.florist.jobs.length) tickFlorist(ui);
+    }
     // Überraschungen: etwa einmal je Minute würfeln, wenn nichts offen ist
     if (!visit && !ui.anyOpen && (surpriseTick += 0.5) >= 60) { surpriseTick = 0; const sp = G.rollSurprise(state, n, env.name); if (sp) surprise(sp); }
     if (state.settings.cycle !== 'real' && !G.previewLeft(state, n)) { state.settings.cycle = 'real'; persist(false); ui.toast('Vorschau beendet – Tag und Nacht laufen wieder nach der echten Zeit.'); ui.refresh(); }
@@ -1037,6 +1045,55 @@ const actions = {
     sound.play('buy');
     ui.toast(`${C.ITEMS[id].name} gekauft.`, 'good');
     changed();
+  },
+
+  // ----- Blumenbinderei -----
+  flBuild() {
+    const r = G.buildFlorist(state, now());
+    if (!r.ok) return fail(r);
+    sound.play('unlock');
+    ui.toast(`Die ${C.FLORIST.name} ist eingerichtet! Binde Sträuße aus den Blumen in deinem Korb.`, 'good');
+    changed();
+  },
+  flSlot() {
+    const r = G.buyFloristSlot(state);
+    if (!r.ok) return fail(r);
+    sound.play('unlock');
+    ui.toast(`Neuer Bindeplatz – jetzt kannst du ${r.slots} Sträuße gleichzeitig binden.`, 'good');
+    changed();
+  },
+  flBind(id) {
+    const r = G.bindBouquet(state, id, now());
+    if (!r.ok) return fail(r);
+    sound.play('plant');
+    ui.toast(`${C.BOUQUETS[id].name} wird gebunden …`, 'good');
+    basketWarned = false;
+    changed();
+  },
+  flCollect() {
+    const r = G.collectBouquets(state, now());
+    if (!r.ok) return fail(r);
+    sound.play('harvest');
+    ui.toast(`${r.got.length === 1 ? `${C.BOUQUETS[r.got[0]].name} ist fertig und steht` : `${r.got.length} Sträuße sind fertig und stehen`} im Regal. +${r.xp} EP`, 'good');
+    changed();
+    afterLevelUps(r.levelUps);
+  },
+  flSell(id, n) {
+    const r = G.sellBouquet(state, id, n);
+    if (!r.ok) return fail(r);
+    sound.play('buy'); ui.bumpCoins();
+    ui.toast(`${r.n}× ${C.BOUQUETS[id].name} verkauft: +${r.coins.toLocaleString('de-DE')} Münzen`, 'good');
+    changed();
+  },
+  flWish(i) {
+    const w = state.florist.wishes[i];
+    const r = G.deliverWish(state, i, now());
+    if (!r.ok) return fail(r);
+    sound.play('buy'); ui.bumpCoins();
+    ui.toast(`${w.who} freut sich riesig! +${r.coins.toLocaleString('de-DE')} Münzen, +${r.xp} EP${r.items ? ` und ${Object.entries(r.items).map(([k, n]) => `${n}× ${C.ITEMS[k].name}`).join(', ')}` : ''}.`, 'good');
+    if (r.repUp) ui.modal({ queue: true, title: 'Neue Ruf-Stufe!', html: `<img class="big" alt="" src="${icons.animal.hedgehog}"><p>Das ganze Dorf spricht von deinen Sträußen! Dein Korb fasst jetzt <b>${G.basketCap(state)} Blumen</b> und du bekommst <b>+${Math.round(C.TRADER.repBonus[r.repUp] * 100)} %</b> auf alle Preise.</p>`, buttons: [['Danke!', 'closeModal', '']] });
+    changed();
+    afterLevelUps(r.levelUps);
   },
 
   // ----- Freunde -----
