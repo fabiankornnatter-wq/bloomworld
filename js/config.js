@@ -204,6 +204,19 @@ export const TRADER_DAYS = [
 ];
 export const TRADER_ITEMS = ['fert', 'turbo', 'rain', 'compost', 'pollen'];
 
+// ---------- Gartenhelfer: zeitlich begrenzte Hilfe mit Abklingzeit ----------
+// Freispielen mit Level + Münzen. Jeder Einsatz bringt dem Helfer Erfahrung: höhere Stufe = länger aktiv, kürzere Pause.
+export const HELPERS = {
+  bee:   { name: 'Hummel Summsi',      role: 'Gießhilfe',        level: 4,  cost: 300,  ms: 15 * M, cd: 2 * H, desc: 'Gießt jede durstige Blume sofort – auch die, die erst während des Einsatzes Durst bekommen.' },
+  gnome: { name: 'Gartenzwerg Gustav', role: 'Erntehilfe',       level: 8,  cost: 1500, ms: 10 * M, cd: 4 * H, desc: 'Erntet jede reife Blume und sät dieselbe Sorte gleich wieder aus (wenn deine Münzen reichen).' },
+  fairy: { name: 'Blütenfee Flora',    role: 'Wachstumszauber',  level: 13, cost: 4000, ms: 10 * M, cd: 6 * H, desc: 'Alle Blumen im Garten und im Tropenhaus wachsen doppelt so schnell.' },
+};
+export const HELPER_ORDER = Object.keys(HELPERS);
+export const HELPER_LEVELS = [0, 3, 8, 15, 25];   // Einsätze für Helfer-Stufe 1–5
+export const HELPER_LVL_DUR = 0.2;                // +20 % Wirkdauer je Stufe
+export const HELPER_LVL_CD = 0.1;                 // −10 % Abklingzeit je Stufe
+export const FAIRY_SPEED = 2;                     // Wachstum ×2 während die Fee hilft
+
 // ---------- Blumenbinderei: Sträuße aus Blumen im Korb binden ----------
 // Ein Strauß ist mehr wert als seine einzelnen Blumen beim Händler – dafür braucht das Binden Zeit und einen freien Bindeplatz.
 // Funkelblüten werden nie verbunden (die bleiben für Sonderwünsche im Korb).
@@ -754,7 +767,7 @@ export const GROWTH_STAGE_AT = [0, 0.25, 0.6, 1.0]; // Fortschritt -> Stufe 0..3
 export const TITLES = {
   sammler: 'Sammler', gartenfreund: 'Gartenfreund', meisterzuechter: 'Meisterzüchter', jahresgaertner: 'Jahresgärtner', funkelfinder: 'Funkelfinder',
   glitzerkoenig: 'Glitzerkönig', gestalter: 'Gestalter', tierfreund: 'Tierfreund', erntekoenig: 'Erntekönig', nachbar: 'Guter Nachbar', haendler: 'Tauschprofi',
-  vollmond: 'Mondgärtner', ophelia: 'Ophelias Freund', tropen: 'Tropengärtner', legende: 'Gartenlegende', florist: 'Blumenbinder',
+  vollmond: 'Mondgärtner', ophelia: 'Ophelias Freund', tropen: 'Tropengärtner', legende: 'Gartenlegende', florist: 'Blumenbinder', helfer: 'Helferfreund',
 };
 // progress(s) liefert [erreicht, Ziel]; reward wie überall (+ title, seeds, unlock)
 const nDisc = (s, list) => list.filter((k) => (s.collection[k]?.count || 0) > 0).length;
@@ -773,6 +786,7 @@ export const ACHIEVEMENTS = [
   { id: 'harvest1000', name: 'Erntekönig', desc: '1.000 Blumen geerntet', icon: 'basket', progress: (s) => [s.stats.harvested, 1000], reward: { coins: 1000, items: { compost: 3 }, title: 'erntekoenig' } },
   { id: 'friends5', name: 'Guter Nachbar', desc: '5 Freunde und 25× geholfen', icon: 'heart', progress: (s) => [Math.min(s.stats.friends, 5) + Math.min(s.stats.helped, 25), 30], reward: { coins: 500, items: { rain: 3 }, title: 'nachbar' } },
   { id: 'bouquets50', name: 'Meisterfloristik', desc: '50 Sträuße in der Blumenbinderei gebunden', icon: 'bouquet', progress: (s) => [s.stats.bouquets || 0, 50], reward: { coins: 1200, items: { compost: 3, turbo: 1 }, title: 'florist' } },
+  { id: 'helpers', name: 'Helfende Hände', desc: 'Alle drei Gartenhelfer auf Stufe 3 gebracht', icon: 'gnome', progress: (s) => [HELPER_ORDER.filter((k) => (s.helpers?.[k]?.uses || 0) >= HELPER_LEVELS[2]).length, HELPER_ORDER.length], reward: { coins: 1500, items: { turbo: 2, rain: 2 }, title: 'helfer' } },
   { id: 'trades10', name: 'Tauschprofi', desc: '10 Tauschgeschäfte in der Tauschbörse', icon: 'cart', progress: (s) => [s.stats.trades || 0, 10], reward: { coins: 800, items: { pollen: 2 }, title: 'haendler' } },
   { id: 'moon', name: 'Mondgärtner', desc: 'Mondscheinrose, Mondorchidee und Mondwinde geerntet', icon: 'flower:moonRose', progress: (s) => [nDisc(s, ['moonRose', 'moonOrchid', 'moonflower']), 3], reward: { coins: 1200, items: { pollen: 3 }, title: 'vollmond' } },
   { id: 'tropics', name: 'Tropengärtner', desc: 'Alle Tropenhaus-Blumen geerntet', icon: 'flower:lotus', progress: (s) => [nDisc(s, TROPIC_SEEDS), TROPIC_SEEDS.length], reward: { coins: 1500, items: { turbo: 3, lucky: 2 }, title: 'tropen' } },

@@ -50,6 +50,10 @@ export class Notifier {
       if (can && can !== this._can) this.add('order', can === 1 ? 'Eine Bestellung kann geliefert werden.' : `${can} Bestellungen können geliefert werden.`, { icon: 'cart', key: 'order' + t.day.id + can, act: 'trader' });
       this._can = can;
     }
+    for (const h of G.helperInfo(s, now)) {
+      if (h.owned && h.uses && h.usable && h.ready && this._help?.[h.id] === false) this.add('helper', `${h.name} ist wieder bereit.`, { icon: 'gnome', key: 'helper' + h.id + h.ready, act: 'helpers' });
+      (this._help ||= {})[h.id] = h.usable;
+    }
     if (s.florist?.built) {
       const fr = s.florist.jobs.filter((j) => j.start + j.dur <= now).length;
       if (fr && fr !== this._fl) this.add('bouquet', fr === 1 ? 'Ein Strauß ist fertig gebunden.' : `${fr} Sträuße sind fertig gebunden.`, { icon: 'bouquet', key: 'bouquet' + fr + s.florist.jobs.map((j) => j.start).join(), act: 'florist' });

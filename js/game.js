@@ -45,6 +45,8 @@ export const bedOf = (s, i) => (i >= C.BED_COUNT ? s.tropic?.pots[i - C.BED_COUN
 export const isPot = (i) => i >= C.BED_COUNT;
 const newBed = (i) => ({ locked: i >= C.STARTING_BEDS, seed: null, plantedAt: 0, dur: 0, shiny: false, var: 0, lvl: 1, size: 1, sprinkler: false, drinks: 0, compost: false });
 
+const newHelper = () => ({ owned: false, uses: 0, until: 0, ready: 0, last: 0 });
+const newHelpers = () => Object.fromEntries(C.HELPER_ORDER.map((k) => [k, newHelper()]));
 const newFlorist = () => ({ built: false, slots: 0, jobs: [], stock: {}, day: '', wishes: [] });
 
 export function newState(now = Date.now()) {
@@ -82,6 +84,7 @@ export function newState(now = Date.now()) {
     trader: { day: '', orders: [], rep: 0, gift: '', offer: '' },
     basket: {}, basketShiny: {},   // Blumenkorb für den Händler
     basketLvl: 0,                 // gekaufte Korb-Erweiterungen
+    helpers: newHelpers(),        // Gartenhelfer: freigespielt, Einsätze, aktiv bis, Abklingzeit bis
     florist: newFlorist(),        // Blumenbinderei: Bindeplätze, laufende Sträuße, Regal, Strauß-Wünsche
     breedFails: {},      // Fehlversuche je Züchtung (machen den nächsten Versuch leichter)
     seenAnimals: [],
@@ -1524,6 +1527,80 @@ export function claimTraderGift(s, now) {
   return { ok: true, items };
 }
 
+// ---------- Gartenhelfer ----------
+export const helperLevel = (uses) => { let l = 1; C.HELPER_LEVELS.forEach((n, i) => { if (uses >= n) l = i + 1; }); return l; };
+export function helperStats(id, uses = 0) {
+  const d = C.HELPERS[id], lvl = helperLevel(uses);
+  return { lvl, maxLvl: C.HELPER_LEVELS.length, dur: Math.round(d.ms * (1 + C.HELPER_LVL_DUR * (lvl - 1))), cd: Math.round(d.cd * (1 - C.HELPER_LVL_CD * (lvl - 1))), nextAt: C.HELPER_LEVELS[lvl] ?? null };
+}
+export function helperInfo(s, now) {
+  return C.HELPER_ORDER.map((id) => {
+    const h = s.helpers[id], st = helperStats(id, h.uses);
+    const active = h.until > now, cooling = !active && h.ready > now;
+    return { id, ...C.HELPERS[id], ...h, ...st, active, cooling, left: active ? h.until - now : 0, cdLeft: cooling ? h.ready - now : 0, canUnlock: !h.owned && s.level >= C.HELPERS[id].level, usable: h.owned && !active && !cooling };
+  });
+}
+export const helpersReady = (s, now) => helperInfo(s, now).filter((h) => h.usable).length;
+export const activeHelpers = (s, now) => helperInfo(s, now).filter((h) => h.active);
+
+export function unlockHelper(s, id) {
+  const d = C.HELPERS[id], h = s.helpers[id];
+  if (!d) return err('invalid');
+  if (h.owned) return err('owned', { message: `${d.name} hilft dir schon.` });
+  if (s.level < d.level) return needLevel(d.level, d.name);
+  if (!spend(s, d.cost)) return noCoins(s, d.cost, d.name);
+  h.owned = true;
+  return { ok: true };
+}
+
+export function callHelper(s, id, now) {
+  const d = C.HELPERS[id], h = s.helpers[id];
+  if (!d) return err('invalid');
+  if (!h.owned) return err('invalid', { message: `${d.name} musst du zuerst freispielen.` });
+  if (h.until > now) return err('busy', { message: `${d.name} ist gerade schon im Einsatz.` });
+  if (h.ready > now) return err('busy', { message: `${d.name} ruht sich noch aus.`, left: h.ready - now });
+  const lvl0 = helperLevel(h.uses), st = helperStats(id, h.uses);
+  h.until = now + st.dur; h.ready = h.until + st.cd; h.last = now; h.uses++;
+  const out = { ok: true, dur: st.dur, lvlUp: helperLevel(h.uses) > lvl0 ? helperLevel(h.uses) : 0 };
+  out.work = helperTick(s, now);
+  return out;
+}
+
+// Arbeit der Helfer (wird regelmäßig aufgerufen, auch nach einer Pause – dann zählt die Zeit im Einsatzfenster)
+export function helperTick(s, now) {
+  const H = s.helpers, out = { watered: [], harvested: [], planted: [], grown: 0 };
+  // Fee: Wachstum beschleunigen für die Zeit, die seit dem letzten Aufruf im Einsatzfenster lag
+  const f = H.fairy;
+  if (f.owned && f.until > f.last && now > f.last) {
+    const from = f.last, to = Math.min(now, f.until), extra = Math.max(0, to - from) * (C.FAIRY_SPEED - 1);
+    f.last = to;
+    if (extra > 0) for (const b of [...s.beds, ...(s.tropic?.built ? s.tropic.pots : [])]) {
+      if (b.locked || !b.seed) continue;
+      const g = growState(b, now);
+      if (g.thirsty || g.p >= 1) continue;
+      const stop = thirstPoints(b)[b.drinks || 0] ?? 1;
+      const p = Math.min(stop, g.p + extra / g.dur);
+      if (p > g.p) { b.plantedAt = now - p * g.dur; out.grown++; }
+    }
+  }
+  if (H.bee.owned && H.bee.until > now) s.beds.forEach((b, i) => { if (!b.locked && b.seed && waterBed(s, b, now)) out.watered.push(i); });
+  if (H.gnome.owned && H.gnome.until > now) {
+    const n = C.BED_COUNT + (s.tropic?.built ? s.tropic.open : 0);
+    for (let i = 0; i < n; i++) {
+      const b = bedOf(s, i);
+      if (!b || b.locked || !b.seed) continue;
+      const g = growState(b, now);
+      if (g.thirsty || g.p < 1) continue;
+      const seed = b.seed, r = harvest(s, i, now);
+      if (!r.ok) continue;
+      out.harvested.push({ i, ...r });
+      // gespeicherte Event-Samen werden nicht verbraucht
+      if (!seedStatus(s, seed, now, !!b.inside).useSeed && plant(s, i, seed, now).ok) out.planted.push(i);
+    }
+  }
+  return out;
+}
+
 // ---------- Blumenbinderei ----------
 // Wert eines Straußes = Summe der Ernte-Belohnungen seiner Blumen
 export const bouquetBase = (id) => Object.entries(C.BOUQUETS[id]?.need || {}).reduce((a, [k, q]) => a + C.SEEDS[k].reward * q, 0);
@@ -1784,6 +1861,9 @@ export function repair(s, now) {
   const okOrder = (o) => obj(o) && obj(o.want) && Object.keys(o.want).every((k) => C.SEEDS[k]) && Number.isFinite(o.coins);
   s.trader = { day: typeof tr.day === 'string' ? tr.day : '', orders: Array.isArray(tr.orders) ? tr.orders.filter(okOrder).slice(0, 8).map((o) => ({ id: String(o.id), want: Object.fromEntries(Object.entries(o.want).map(([k, q]) => [k, num(Number(q), 1, 1)])), coins: num(o.coins, 0), xp: num(Number(o.xp), 0), items: obj(o.items) ? Object.fromEntries(Object.entries(o.items).filter(([k]) => C.ITEMS[k])) : null, special: o.special === 'shiny' || o.special === 'bred' ? o.special : undefined, done: !!o.done })) : [], rep: num(Number(tr.rep), 0), gift: typeof tr.gift === 'string' ? tr.gift : '', offer: typeof tr.offer === 'string' ? tr.offer : '' };
   s.basketLvl = Math.min(C.BASKET_UPGRADES.length, num(Number(s.basketLvl), 0));
+  { const hs = obj(s.helpers) ? s.helpers : {};
+    s.helpers = Object.fromEntries(C.HELPER_ORDER.map((k) => { const h = obj(hs[k]) ? hs[k] : {}; const t = (v) => Math.min(num(Number(v), 0), now + 24 * 3600_000);
+      return [k, { owned: !!h.owned, uses: Math.min(10_000, num(Number(h.uses), 0)), until: t(h.until), ready: t(h.ready), last: t(h.last) }]; })); }
   { const f = obj(s.florist) ? s.florist : {}; const built = !!f.built;
     const slots = built ? Math.min(C.FLORIST.slots.length, Math.max(1, num(Number(f.slots), 1))) : 0;
     const okW = (w) => obj(w) && C.BOUQUETS[w.b] && Number.isFinite(w.coins);

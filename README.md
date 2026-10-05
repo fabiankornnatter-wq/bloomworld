@@ -18,6 +18,7 @@ Mobiles 3D-Garten- und Sammel-Browsergame. Pflanze Blumen, züchte neue Sorten, 
 - **Blumen:** 6 Gartenblumen + 7 Züchtungen (Regenbogentulpe, Sonnentulpe, Goldene Rose, Mondorchidee, Nordlicht-Rose, Schwarze Rose – nur nachts –, legendäre Sternenrose). Funkelblüten (×3).
 - **Gewächshaus:** restaurieren und Blumen kreuzen (Zuchtbuch mit Rezepten).
 - **Gartenbedarf:** Dünger, Turbo-Dünger, Glücksdünger, Zuchtbeschleuniger (einzeln oder im Paket).
+- **Gartenhelfer** (Seitenknopf „Helfer“): Hummel Summsi gießt (ab Level 4), Gartenzwerg Gustav erntet und sät neu (ab Level 8), Blütenfee Flora lässt alles doppelt so schnell wachsen (ab Level 13). Freispielen mit Münzen, dann 10–15 Minuten im Einsatz und 2–6 Stunden Pause; mit jedem Einsatz steigt der Helfer bis Stufe 5 (länger aktiv, kürzere Pause).
 - **Blumenbinderei** (ab Level 5, beim Händler): 13 Sträuße aus Blumen im Korb binden (bis zu 3 Bindeplätze), täglich Strauß-Wünsche aus dem Dorf mit Ruf beim Händler, Regal mit Verkauf; eigenes Story-Kapitel und Erfolg „Meisterfloristik“.
 - **Level 1–30** mit Belohnungen und Freischaltungen (Levelweg), **Story** in 7 Kapiteln mit Eule Ophelia, Tagesaufgaben, tägliches Geschenk.
 - **Events:** Herbstfest (Oktober) mit Herbstblättern, Meilensteinen und Event-Shop; Wintermarkt, Frühlingsblüte, Sommerfest; jedes Wochenende Funkel-Wochenende.

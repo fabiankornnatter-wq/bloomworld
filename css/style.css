@@ -895,3 +895,22 @@ body.visiting #maint { display: none; }
 .flrecipe p.small { margin: 4px 0 0; }
 .flrecipe.locked { opacity: 0.55; }
 .flrecipe .ofoot .small b { color: var(--purple-d); }
+
+/* ---------- Gartenhelfer ---------- */
+.sidebtn.busy { background: linear-gradient(#fffbe0, #ffe6a0); box-shadow: 0 3px 0 #e0b040, 0 0 14px rgba(255, 210, 60, 0.8); animation: helperGlow 1.6s ease-in-out infinite; }
+.sidebtn.busy span { background: #c77d00; font-variant-numeric: tabular-nums; }
+@keyframes helperGlow { 50% { box-shadow: 0 3px 0 #e0b040, 0 0 22px rgba(255, 210, 60, 1); } }
+.card.helper { padding: 12px 14px; }
+.card.helper .hrow { display: flex; align-items: center; gap: 10px; }
+.card.helper .hrow .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.card.helper h4 { margin: 2px 0 0; }
+.card.helper small { color: var(--muted); font-size: 12.5px; }
+.card.helper small b { font-variant-numeric: tabular-nums; }
+.card.helper .hready { color: #2a8f2a; font-weight: 800; }
+.card.helper .hon { color: #b06a00; }
+.card.helper .hstars { color: #f0a810; font-size: 13px; letter-spacing: 1px; }
+.card.helper .hmeta { margin-top: 2px; }
+.card.helper.active { background: linear-gradient(135deg, #fffbe6, #fff); box-shadow: 0 4px 0 #f0d070, 0 6px 12px rgba(0, 0, 0, 0.12); }
+.card.helper.locked > .hrow > svg { filter: grayscale(0.7); opacity: 0.7; }
+.card.helper .btn { flex: none; }
+.card.helper .trtag { align-self: flex-start; }

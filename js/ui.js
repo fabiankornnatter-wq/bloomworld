@@ -8,6 +8,7 @@ import { PHASE_LABEL } from './world/sky.js';
 import { PRIVACY_HTML } from './legal.js';
 import { Detail } from './detail.js';
 import { pTrader, onTraderAct, traderBadge, TRADER_ACTS } from './traderui.js';
+import { pHelpers, onHelperAct, helperButton, HELPER_ACTS } from './helperui.js';
 import { pTrade, onTradeAct, onTradeForm, loadTrades, TRADE_ACTS, seedGiftOptions } from './tradeui.js';
 import { pFriends, pChat, chatTitle, pAdmin, onSocialAct, onSocialForm, updateChat, newsCard, avatar, SOCIAL_ACTS } from './friendsui.js';
 
@@ -31,7 +32,7 @@ const TIER = { selten: ['Selten', 't1'], episch: ['Episch', 't2'], legendär: ['
 const tierTag = (d) => (d.tier ? `<span class="tier ${TIER[d.tier][1]}">${TIER[d.tier][0]}</span>` : d.rare ? '<span class="tier t0">Selten</span>' : '');
 
 const NAV_ITEMS = [['garden', 'Garten'], ['quests', 'Aufgaben'], ['events', 'Events'], ['collection', 'Sammlung'], ['shop', 'Shop'], ['friends', 'Freunde']];
-const TITLES = { quests: 'Aufgaben', events: 'Events', collection: 'Sammlung', shop: 'Shop', friends: 'Freunde', settings: 'Einstellungen', breed: 'Gewächshaus', chat: 'Chat', admin: 'Admin', trader: 'Händler', notify: 'Nachrichten', trade: 'Tauschbörse' };
+const TITLES = { quests: 'Aufgaben', events: 'Events', collection: 'Sammlung', shop: 'Shop', friends: 'Freunde', settings: 'Einstellungen', breed: 'Gewächshaus', chat: 'Chat', admin: 'Admin', trader: 'Händler', notify: 'Nachrichten', trade: 'Tauschbörse', helpers: 'Gartenhelfer' };
 const GH = C.BED_COUNT; // Index der Gewächshaus-Blase
 const TH = C.BED_COUNT + 1 + C.TROPIC.pots; // Index der Tropenhaus-Blase
 // Blasen-Index eines Beets/Topfs (Töpfe liegen hinter der Gewächshaus-Blase)
@@ -74,6 +75,7 @@ export class UI {
     $('bellBtn').insertAdjacentHTML('afterbegin', I.bell);
     $('bellBtn').onclick = () => this.nav('notify');
     $('traderBtn').onclick = () => this.nav('trader');
+    $('helperBtn').onclick = () => this.nav('helpers');
     $('centerBtn').onclick = () => { this.api.sound.play('tap'); this.api.world.resetView(); };
     $('harvestAll').onclick = () => (this.haRain ? this.api.act.useRain() : this.api.act.harvestAll());
     $('quest').onclick = () => this.api.act.questTracker();
@@ -198,6 +200,7 @@ export class UI {
     $('traderBtn').hidden = s.level < C.TRADER.level;
     const tb = traderBadge(s, now), tbe = $('traderBadge');
     tbe.textContent = tb || ''; tbe.hidden = !tb;
+    helperButton(this);
     this.renderQuest(st);
     if (this.mode) this.renderModeBar();
     if (this.panel) this.renderPanel(true);
@@ -299,7 +302,7 @@ export class UI {
   pNotify() {
     const n = this.api.notify?.(), acc = this.api.account();
     if (!n) return '<div class="card center"><p>Keine Benachrichtigungen.</p></div>';
-    const ICONS = { bell: I.bell, flower: this.icons.flower.daisy, drop: I.drop, greenhouse: I.greenhouse, cart: I.cart, bouquet: I.bouquet, gift: I.gift, chat: I.chat, friend: I.NAV.friends, news: I.megaphone, star: I.sparkle };
+    const ICONS = { bell: I.bell, flower: this.icons.flower.daisy, drop: I.drop, greenhouse: I.greenhouse, cart: I.cart, bouquet: I.bouquet, gnome: I.gnome, gift: I.gift, chat: I.chat, friend: I.NAV.friends, news: I.megaphone, star: I.sparkle };
     const ic = (k) => (ICONS[k] || I.bell).startsWith('data:') ? `<img alt="" src="${ICONS[k]}">` : svg(ICONS[k] || I.bell, 30);
     const fmt = (ts) => { const d = this.api.now() - ts; return d < 60_000 ? 'gerade eben' : d < 3600_000 ? `vor ${Math.floor(d / 60_000)} Min` : d < 86400_000 ? `vor ${Math.floor(d / 3600_000)} Std` : new Date(ts).toLocaleDateString('de-DE'); };
     const p = n.push;
@@ -566,7 +569,7 @@ export class UI {
     const el = $('panel');
     // Im Chat nur die Nachrichten auffrischen – das Eingabefeld bleibt unberührt
     if (soft && id === 'chat' && $('chatList')) { updateChat(this); const p = el.querySelector('.pill span'); if (p) p.textContent = num(this.s.coins); return; }
-    const body = { quests: () => this.pQuests(), events: () => this.pEvents(), collection: () => this.pCollection(), friends: () => pFriends(this), shop: () => this.pShop(), settings: () => this.pSettings(), breed: () => this.pBreed(), chat: () => pChat(this), admin: () => pAdmin(this), trader: () => pTrader(this), notify: () => this.pNotify(), trade: () => pTrade(this) }[id]();
+    const body = { quests: () => this.pQuests(), events: () => this.pEvents(), collection: () => this.pCollection(), friends: () => pFriends(this), shop: () => this.pShop(), settings: () => this.pSettings(), breed: () => this.pBreed(), chat: () => pChat(this), admin: () => pAdmin(this), trader: () => pTrader(this), helpers: () => pHelpers(this), notify: () => this.pNotify(), trade: () => pTrade(this) }[id]();
     const prevScroll = el.querySelector('.pbody')?.scrollTop || 0;
     // Eingaben (z. B. halb getippter Spielername) beim Neuzeichnen behalten
     const keep = {}; let focus = null;
@@ -988,6 +991,7 @@ export class UI {
     if (SOCIAL_ACTS.has(a)) { onSocialAct(this, a, el); return; }
     if (TRADE_ACTS.has(a)) { onTradeAct(this, a, el); return; }
     if (TRADER_ACTS.has(a)) { onTraderAct(this, a, el); return; }
+    if (HELPER_ACTS.has(a)) { onHelperAct(this, a, el); return; }
     const A = this.api.act;
     switch (a) {
       case 'closePanel': this.nav(this.panel === 'chat' ? 'friends' : 'garden'); break;

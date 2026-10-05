@@ -12,6 +12,7 @@ import { showAuth } from './authui.js';
 import { Sound } from './audio.js';
 import { UI, fmtTime, bedIdxOfBubble } from './ui.js';
 import { tickFlorist } from './traderui.js';
+import { tickHelpers, helperButton } from './helperui.js';
 import * as Pay from './payments.js';
 import * as I from './icons.js';
 
@@ -32,6 +33,7 @@ let store = null, state, world, ui, saver, cloud = null, user = null, icons;
 let hub = null;    // Freunde & Chat (nur mit Konto)
 let basketWarned = false;
 let floristReady = -1;
+let helpersOn = '';   // gerade aktive Helfer (für die Meldung, wenn einer Pause macht)
 let notifier = null, savedAtBefore = 0, surpriseTick = 0, tutorial = null;
 
 function surprise(sp) {
@@ -377,6 +379,7 @@ function loop(t) {
     ui.setTime(env);
     sound.night = env.name === 'night';
     if (state.trader?.day !== G.dayKey(n)) { G.ensureTrader(state, n); persist(false); ui.refresh(); }
+    if (!visit) helperWork(n);
     // Blumenbinderei: Restzeit im offenen Reiter, Abzeichen sobald ein Strauß fertig ist
     if (!visit && state.florist?.built) {
       const fr = state.florist.jobs.filter((j) => j.start + j.dur <= n).length;
@@ -390,6 +393,29 @@ function loop(t) {
   }
   if (started && env.name !== 'night') { dayTime += dt; if (dayTime > 12 && !state.seenAnimals.includes('butterfly')) discover('butterfly'); }
   autoQuality(dt);
+}
+
+// Gartenhelfer arbeiten lassen und zeigen, was sie getan haben
+function helperWork(n) {
+  const on = G.activeHelpers(state, n).map((h) => h.id).join();
+  const fairy = state.helpers.fairy;
+  if (on || (fairy.owned && fairy.until > fairy.last)) {
+    const w = G.helperTick(state, n);
+    w.watered.forEach((i, k) => later(() => { world.burst(i, 'water'); world.splash(i); }, k * 120));
+    const ups = [], color = eventColor();
+    w.harvested.forEach((r, k) => { ups.push(...r.levelUps); later(() => { world.burst(r.i, 'harvest', r.seed); world.coinRain(r.i, 3); ui.floatReward(r.i, r.reward, r.shiny, r.tokens, color); if (w.planted.includes(r.i)) world.burst(r.i, 'plant'); }, k * 160); });
+    if (w.watered.length) sound.play('water');
+    if (w.harvested.length) sound.play(w.harvested.some((r) => r.shiny) ? 'gold' : 'harvest');
+    if (w.watered.length || w.harvested.length) { changed(); afterLevelUps(ups); }
+    else if (w.grown) persist(false);
+  }
+  if (on !== helpersOn) {
+    const gone = helpersOn.split(',').filter((id) => id && !on.split(',').includes(id));
+    for (const id of gone) ui.toast(`${C.HELPERS[id].name} macht jetzt Pause. Danke für die Hilfe!`);
+    helpersOn = on;
+    ui.refresh();
+  } else helperButton(ui);
+  tickHelpers(ui);
 }
 
 // Neues Story-Kapitel? Ophelia stellt es vor, sobald nichts anderes offen ist
@@ -1045,6 +1071,29 @@ const actions = {
     sound.play('buy');
     ui.toast(`${C.ITEMS[id].name} gekauft.`, 'good');
     changed();
+  },
+
+  // ----- Gartenhelfer -----
+  helperUnlock(id) {
+    const r = G.unlockHelper(state, id);
+    if (!r.ok) return fail(r);
+    sound.play('unlock');
+    ui.modal({ queue: true, title: 'Neuer Gartenhelfer!', html: `${I.helperIcon[id].replace('<svg', '<svg style="width:110px;height:110px;display:block;margin:0 auto"')}<p><b>${C.HELPERS[id].name}</b> hilft dir ab jetzt im Garten.</p><p class="small">${C.HELPERS[id].desc}</p>`, buttons: [['Gleich rufen', 'helperCall', 'gold', `data-id="${id}"`], ['Später', 'closeModal', 'ghost']] });
+    changed();
+  },
+  helperCall(id) {
+    ui.closeModal();
+    const r = G.callHelper(state, id, now());
+    if (!r.ok) return fail(r);
+    sound.play('magic');
+    const w = r.work, fl = (n) => (n === 1 ? 'eine Blume' : `${n} Blumen`), what = w.watered.length ? ` und hat gleich ${fl(w.watered.length)} gegossen` : w.harvested.length ? ` und hat gleich ${fl(w.harvested.length)} geerntet` : '';
+    ui.toast(`${C.HELPERS[id].name} hilft dir jetzt ${Math.round(r.dur / 60_000)} Minuten${what}!`, 'good');
+    if (r.lvlUp) ui.toast(`${C.HELPERS[id].name} ist jetzt Stufe ${r.lvlUp}: länger im Einsatz, kürzere Pause.`, 'good');
+    w.watered.forEach((i) => world.burst(i, 'water'));
+    w.harvested.forEach((x) => world.burst(x.i, 'harvest', x.seed));
+    helpersOn = G.activeHelpers(state, now()).map((h) => h.id).join();
+    changed();
+    afterLevelUps(w.harvested.flatMap((x) => x.levelUps));
   },
 
   // ----- Blumenbinderei -----

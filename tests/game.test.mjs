@@ -903,3 +903,59 @@ test('Straußbuch: alle Blumen existieren, Werte sind sinnvoll', () => {
     assert.ok(G.bouquetBase(id) > 0);
   }
 });
+
+test('Gartenhelfer: freispielen, rufen, Abklingzeit, Stufen', () => {
+  const s = G.newState(T0);
+  s.coins = 10_000;
+  assert.equal(G.unlockHelper(s, 'bee').code, 'level');
+  s.level = 14;
+  assert.equal(G.callHelper(s, 'bee', T0).ok, false, 'erst freispielen');
+  for (const k of C.HELPER_ORDER) assert.ok(G.unlockHelper(s, k).ok);
+  assert.equal(s.coins, 10_000 - C.HELPER_ORDER.reduce((a, k) => a + C.HELPERS[k].cost, 0));
+  const r = G.callHelper(s, 'bee', T0);
+  assert.ok(r.ok);
+  assert.equal(r.dur, C.HELPERS.bee.ms);
+  assert.equal(G.callHelper(s, 'bee', T0 + 1000).code, 'busy');
+  // nach der Wirkdauer: Pause
+  const after = T0 + C.HELPERS.bee.ms + 1000;
+  assert.equal(G.callHelper(s, 'bee', after).code, 'busy');
+  assert.ok(G.helperInfo(s, after).find((h) => h.id === 'bee').cooling);
+  // nach der Pause wieder bereit, Stufen steigen mit Einsätzen
+  s.helpers.bee.uses = C.HELPER_LEVELS[1];
+  const st = G.helperStats('bee', s.helpers.bee.uses);
+  assert.equal(st.lvl, 2);
+  assert.ok(st.dur > C.HELPERS.bee.ms && st.cd < C.HELPERS.bee.cd);
+  assert.ok(G.callHelper(s, 'bee', T0 + C.HELPERS.bee.ms + C.HELPERS.bee.cd + 1).ok);
+});
+
+test('Gartenhelfer: Hummel gießt, Zwerg erntet und sät neu, Fee lässt schneller wachsen', () => {
+  const s = G.newState(T0);
+  s.level = 14; s.coins = 10_000;
+  for (const k of C.HELPER_ORDER) G.unlockHelper(s, k);
+  G.plant(s, 0, 'sunflower', T0, never);
+  G.plant(s, 1, 'daisy', T0, never);
+  const thirst = T0 + C.SEEDS.sunflower.growMs * 0.5;
+  assert.ok(G.bedInfo(s, 0, thirst).thirsty);
+  const w = G.callHelper(s, 'bee', thirst).work;
+  assert.deepEqual(w.watered, [0]);
+  assert.ok(!G.bedInfo(s, 0, thirst).thirsty);
+  const harvested = s.stats.harvested;
+  const g = G.callHelper(s, 'gnome', thirst).work;
+  assert.deepEqual(g.harvested.map((x) => x.i), [1]);
+  assert.equal(s.stats.harvested, harvested + 1);
+  assert.equal(s.beds[1].seed, 'daisy', 'gleich wieder gesät');
+  // Fee: in 10 s Einsatz wächst die Blume wie in 20 s
+  const t = thirst + 1000, p0 = G.bedInfo(s, 0, t).progress;
+  G.callHelper(s, 'fairy', t);
+  G.helperTick(s, t + 10_000);
+  const p1 = G.bedInfo(s, 0, t + 10_000).progress;
+  assert.ok(Math.abs((p1 - p0) - 20_000 / s.beds[0].dur) < 0.01, `${p1 - p0}`);
+  // außerhalb des Einsatzes passiert nichts mehr
+  const late = t + 24 * 3600_000, b0 = { ...s.beds[0] };
+  G.helperTick(s, late);
+  assert.equal(s.beds[0].plantedAt, b0.plantedAt);
+  // Speichern/Laden
+  const fixed = G.repair(JSON.parse(JSON.stringify(s)), T0);
+  assert.ok(fixed.helpers.fairy.owned && fixed.helpers.bee.uses === 1);
+  assert.equal(G.migrate({ v: 5, coins: 5 }, T0).state.helpers.bee.owned, false);
+});
